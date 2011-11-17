@@ -763,9 +763,26 @@ Navigator::GetMozBattery(nsIDOMBatteryManager** aBattery)
 NS_IMETHODIMP
 Navigator::GetPointer(nsIDOMMouseLockable** aPointer)
 {
+  NS_ENSURE_ARG_POINTER(aPointer);
+
   if (!mPointer) {
     mPointer = new nsDOMMouseLockable();
   }
+
+  if (!mDocShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsIDOMWindow> contentDOMWindow = do_GetInterface(mDocShell);
+  if (!contentDOMWindow) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (NS_FAILED(mPointer->Init(contentDOMWindow))) {
+    mPointer = nsnull;
+    return NS_ERROR_FAILURE;
+  }
+
 
   NS_ADDREF(*aPointer = mPointer);
   return NS_OK;
