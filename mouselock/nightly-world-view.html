@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nightly World Viewer</title>
+</head>
+
+<body>
+	<div>
+		<p>The picture shown here has been taken from NASA. Thank you for the wonderful picture!</p>
+		<p>Click to exit demo.</p>
+	</div>
+	<canvas id="canvas" style="background-color: Aliceblue" ></canvas><br />
+	<input type="button" value="Demo" id="button" disabled="disabled"/>
+	<script>
+		var pointer = navigator.pointer;
+		var cvs = document.getElementById('canvas');
+		var ctx = document.getElementById('canvas').getContext('2d');
+		var but = document.getElementById('button');
+		but.onclick = function () {
+			cvs.mozRequestFullScreen();
+			window.setTimeout('pointer.lock(cvs)', 300);
+			cvs.__curX = 0;
+			cvs.__curY = 0;
+		};
+		var img = new Image();
+		img.src = 'img/earth_lights_4800.png';
+		img.onload = function () {
+			document.getElementById('button').disabled="";
+			ctx.drawImage(img, 0, 0, 3360, 1680);
+			
+		}
+		cvs.addEventListener('mousemove', function(e) {
+			if (pointer.islocked()) {				
+				// Check for minimum
+				cvs.__curX = cvs.__curX - e.movementX < 0? cvs.__curX - e.movementX : 0;
+				cvs.__curY = cvs.__curY - e.movementX < 0? cvs.__curY - e.movementY : 0;
+				// Check for maximum
+				if (cvs.__curX < -4500){
+						cvs.__curX = -4500;
+				}
+				if (cvs.__curY < -2250){
+						cvs.__curY = -2250;
+				}
+				ctx.drawImage(img, cvs.__curX, cvs.__curY);
+			}
+		}, false)
+		
+		cvs.addEventListener('click', function() { 
+			if(pointer.islocked()) { 
+				pointer.unlock();  
+				document.mozCancelFullScreen();
+				} }, false);
+		
+		document.body.addEventListener('mouselocklost', function() { console.log('=== Mouse lock lost! ==='); }, false);
+	</script>
+</body>
+
+</html> 
