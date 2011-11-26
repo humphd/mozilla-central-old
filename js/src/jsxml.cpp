@@ -874,28 +874,18 @@ attr_identity(const JSXML *xmla, const JSXML *xmlb)
     return qname_identity(xmla->name, xmlb->name);
 }
 
-template<>
-void
-JSXMLArrayCursor<JSXML>::trace(JSTracer *trc)
-{
-    for (JSXMLArrayCursor<JSXML> *cursor = this; cursor; cursor = cursor->next)
-        MarkXML(trc, cursor->root, "cursor_root");
-}
-
-template<>
-void
-JSXMLArrayCursor<JSObject>::trace(JSTracer *trc)
-{
-    for (JSXMLArrayCursor<JSObject> *cursor = this; cursor; cursor = cursor->next)
-        MarkObject(trc, cursor->root, "cursor_root");
-}
-
 template<class T>
-static void
-XMLArrayCursorTrace(JSTracer *trc, JSXMLArrayCursor<T> *cursor)
+void
+js_XMLArrayCursorTrace(JSTracer *trc, JSXMLArrayCursor<T> *cursor)
 {
-    cursor->trace(trc);
+    for (; cursor; cursor = cursor->next) {
+        if (cursor->root)
+            Mark(trc, (const MarkablePtr<T> &)cursor->root, "cursor_root");
+    }
 }
+
+template void js_XMLArrayCursorTrace<JSXML>(JSTracer *trc, JSXMLArrayCursor<JSXML> *cursor);
+template void js_XMLArrayCursorTrace<JSObject>(JSTracer *trc, JSXMLArrayCursor<JSObject> *cursor);
 
 template<class T>
 static HeapPtr<T> *
@@ -1802,7 +1792,6 @@ ParseXMLSource(JSContext *cx, JSString *src)
     InflateStringToBuffer(cx, suffix, constrlen(suffix), chars + offset, &dstlen);
     chars [offset + dstlen] = 0;
 
-    LeaveTrace(cx);
     xml = NULL;
     filename = NULL;
     lineno = 1;
@@ -7360,7 +7349,7 @@ js_TraceXML(JSTracer *trc, JSXML *xml)
     }
 
     MarkXMLRange(trc, xml->xml_kids.length, xml->xml_kids.vector, "xml_kids");
-    XMLArrayCursorTrace(trc, xml->xml_kids.cursors);
+    js_XMLArrayCursorTrace(trc, xml->xml_kids.cursors);
 
     if (xml->xml_class == JSXML_CLASS_LIST) {
         if (xml->xml_target)
@@ -7371,10 +7360,10 @@ js_TraceXML(JSTracer *trc, JSXML *xml)
         MarkObjectRange(trc, xml->xml_namespaces.length,
                         xml->xml_namespaces.vector,
                         "xml_namespaces");
-        XMLArrayCursorTrace(trc, xml->xml_namespaces.cursors);
+        js_XMLArrayCursorTrace(trc, xml->xml_namespaces.cursors);
 
         MarkXMLRange(trc, xml->xml_attrs.length, xml->xml_attrs.vector, "xml_attrs");
-        XMLArrayCursorTrace(trc, xml->xml_attrs.cursors);
+        js_XMLArrayCursorTrace(trc, xml->xml_attrs.cursors);
     }
 }
 
@@ -7970,7 +7959,6 @@ js_StepXMLListFilter(JSContext *cx, JSBool initialized)
     JSXML *xml, *list;
     JSXMLFilter *filter;
 
-    LeaveTrace(cx);
     sp = cx->regs().sp;
     if (!initialized) {
         /*

@@ -33,13 +33,14 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/gfx/Blur.h"
+
 #include <algorithm>
 #include <math.h>
+#include <string.h>
 
 #include "CheckedInt.h"
 #include "mozilla/Util.h"
-
-#include "mozilla/gfx/Blur.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

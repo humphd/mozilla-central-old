@@ -289,15 +289,12 @@ __try {
   nsresult rv = xpAccessible->GetName(name);
   if (NS_FAILED(rv))
     return GetHRESULT(rv);
-    
-  if (name.IsVoid()) {
-    // Valid return value for the name:
-    // The name was not provided, e.g. no alt attribute for an image.
-    // A screen reader may choose to invent its own accessible name, e.g. from
-    // an image src attribute.
-    // See nsHTMLImageAccessible::GetName()
-    return S_OK;
-  }
+
+  // The name was not provided, e.g. no alt attribute for an image. A screen
+  // reader may choose to invent its own accessible name, e.g. from an image src
+  // attribute. Refer to NS_OK_EMPTY_NAME return value.
+  if (name.IsVoid())
+    return S_FALSE;
 
   *pszName = ::SysAllocStringLen(name.get(), name.Length());
   if (!*pszName)
@@ -1590,6 +1587,13 @@ nsAccessibleWrap::FirePlatformEvent(AccEvent* aEvent)
 
   // Fire MSAA event for client area window.
   NotifyWinEvent(winEvent, hWnd, OBJID_CLIENT, childID);
+
+  // JAWS announces collapsed combobox navigation based on focus events.
+  if (eventType == nsIAccessibleEvent::EVENT_SELECTION &&
+      accessible->Role() == nsIAccessibleRole::ROLE_COMBOBOX_OPTION &&
+      nsWinUtils::IsWindowEmulationFor(kJAWSModuleHandle)) {
+    NotifyWinEvent(EVENT_OBJECT_FOCUS, hWnd, OBJID_CLIENT, childID);
+  }
   return NS_OK;
 }
 

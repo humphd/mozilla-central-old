@@ -66,6 +66,9 @@ const SCRATCHPAD_CONTEXT_CONTENT = 1;
 const SCRATCHPAD_CONTEXT_BROWSER = 2;
 const SCRATCHPAD_L10N = "chrome://browser/locale/devtools/scratchpad.properties";
 const DEVTOOLS_CHROME_ENABLED = "devtools.chrome.enabled";
+const BUTTON_POSITION_SAVE = 0;
+const BUTTON_POSITION_CANCEL = 1;
+const BUTTON_POSITION_DONT_SAVE = 2;
 
 /**
  * The scratchpad object handles the Scratchpad window functionality.
@@ -491,10 +494,12 @@ var Scratchpad = {
 
   /**
    * Open a new Scratchpad window.
+   *
+   * @return nsIWindow
    */
   openScratchpad: function SP_openScratchpad()
   {
-    ScratchpadManager.openScratchpad();
+    return ScratchpadManager.openScratchpad();
   },
 
   /**
@@ -599,22 +604,34 @@ var Scratchpad = {
 
   /**
    * Save the textbox content to the currently open file.
+   *
+   * @param function aCallback
+   *        Optional function you want to call when file is saved
    */
-  saveFile: function SP_saveFile()
+  saveFile: function SP_saveFile(aCallback)
   {
     if (!this.filename) {
-      return this.saveFileAs();
+      return this.saveFileAs(aCallback);
     }
 
     let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
     file.initWithPath(this.filename);
-    this.exportToFile(file, true, false, this.onTextSaved.bind(this));
+
+    this.exportToFile(file, true, false, function(aStatus) {
+      this.onTextSaved();
+      if (aCallback) {
+        aCallback(aStatus);
+      }
+    });
   },
 
   /**
    * Save the textbox content to a new file.
+   *
+   * @param function aCallback
+   *        Optional function you want to call when file is saved
    */
-  saveFileAs: function SP_saveFileAs()
+  saveFileAs: function SP_saveFileAs(aCallback)
   {
     let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
     fp.init(window, this.strings.GetStringFromName("saveFileAs"),
@@ -622,7 +639,13 @@ var Scratchpad = {
     fp.defaultString = "scratchpad.js";
     if (fp.show() != Ci.nsIFilePicker.returnCancel) {
       this.setFilename(fp.file.path);
-      this.exportToFile(fp.file, true, false, this.onTextSaved.bind(this));
+
+      this.exportToFile(fp.file, true, false, function(aStatus) {
+        this.onTextSaved();
+        if (aCallback) {
+          aCallback(aStatus);
+        }
+      });
     }
   },
 
@@ -768,6 +791,8 @@ var Scratchpad = {
     else if (this.filename && this.saved) {
       this.onTextSaved();
     }
+
+    this._triggerObservers("Ready");
   },
 
   /**
@@ -841,6 +866,9 @@ var Scratchpad = {
     if (aStatus && !Components.isSuccessCode(aStatus)) {
       return;
     }
+    if (!document) {
+      return;  // file saved to disk after window has closed
+    }
     document.title = document.title.replace(/^\*/, "");
     this.saved = true;
     this.editor.addEventListener(SourceEditor.EVENTS.TEXT_CHANGED,
@@ -877,6 +905,128 @@ var Scratchpad = {
     this.editor.destroy();
     this.editor = null;
   },
+
+  /**
+   * Prompt to save scratchpad if it has unsaved changes.
+   *
+   * @param function aCallback
+   *        Optional function you want to call when file is saved
+   * @return boolean
+   *         Whether the window should be closed
+   */
+  promptSave: function SP_promptSave(aCallback)
+  {
+    if (this.filename && !this.saved) {
+      let ps = Services.prompt;
+      let flags = ps.BUTTON_POS_0 * ps.BUTTON_TITLE_SAVE +
+                  ps.BUTTON_POS_1 * ps.BUTTON_TITLE_CANCEL +
+                  ps.BUTTON_POS_2 * ps.BUTTON_TITLE_DONT_SAVE;
+
+      let button = ps.confirmEx(window,
+                          this.strings.GetStringFromName("confirmClose.title"),
+                          this.strings.GetStringFromName("confirmClose"),
+                          flags, null, null, null, null, {});
+
+      if (button == BUTTON_POSITION_CANCEL) {
+        return false;
+      }
+      if (button == BUTTON_POSITION_SAVE) {
+        this.saveFile(aCallback);
+      }
+    }
+    return true;
+  },
+
+  /**
+   * Handler for window close event. Prompts to save scratchpad if
+   * there are unsaved changes.
+   *
+   * @param nsIDOMEvent aEvent
+   */
+  onClose: function SP_onClose(aEvent)
+  {
+    let toClose = this.promptSave();
+    if (!toClose) {
+      aEvent.preventDefault();
+    }
+  },
+
+  /**
+   * Close the scratchpad window. Prompts before closing if the scratchpad
+   * has unsaved changes.
+   *
+   * @param function aCallback
+   *        Optional function you want to call when file is saved
+   */
+  close: function SP_close(aCallback)
+  {
+    let toClose = this.promptSave(aCallback);
+    if (toClose) {
+      window.close();
+    }
+  },
+
+  _observers: [],
+
+  /**
+   * Add an observer for Scratchpad events.
+   *
+   * The observer implements IScratchpadObserver := {
+   *   onReady:      Called when the Scratchpad and its SourceEditor are ready.
+   *                 Arguments: (Scratchpad aScratchpad)
+   * }
+   *
+   * All observer handlers are optional.
+   *
+   * @param IScratchpadObserver aObserver
+   * @see removeObserver
+   */
+  addObserver: function SP_addObserver(aObserver)
+  {
+    this._observers.push(aObserver);
+  },
+
+  /**
+   * Remove an observer for Scratchpad events.
+   *
+   * @param IScratchpadObserver aObserver
+   * @see addObserver
+   */
+  removeObserver: function SP_removeObserver(aObserver)
+  {
+    let index = this._observers.indexOf(aObserver);
+    if (index != -1) {
+      this._observers.splice(index, 1);
+    }
+  },
+
+  /**
+   * Trigger named handlers in Scratchpad observers.
+   *
+   * @param string aName
+   *        Name of the handler to trigger.
+   * @param Array aArgs
+   *        Optional array of arguments to pass to the observer(s).
+   * @see addObserver
+   */
+  _triggerObservers: function SP_triggerObservers(aName, aArgs)
+  {
+    // insert this Scratchpad instance as the first argument
+    if (!aArgs) {
+      aArgs = [this];
+    } else {
+      aArgs.unshift(this);
+    }
+
+    // trigger all observers that implement this named handler
+    for (let i = 0; i < this._observers.length; ++i) {
+      let observer = this._observers[i];
+      let handler = observer["on" + aName];
+      if (handler) {
+        handler.apply(observer, aArgs);
+      }
+    }
+  }
 };
 
 XPCOMUtils.defineLazyGetter(Scratchpad, "strings", function () {
@@ -885,3 +1035,4 @@ XPCOMUtils.defineLazyGetter(Scratchpad, "strings", function () {
 
 addEventListener("DOMContentLoaded", Scratchpad.onLoad.bind(Scratchpad), false);
 addEventListener("unload", Scratchpad.onUnload.bind(Scratchpad), false);
+addEventListener("close", Scratchpad.onClose.bind(Scratchpad), false);

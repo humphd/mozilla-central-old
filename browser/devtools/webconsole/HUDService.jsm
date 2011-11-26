@@ -79,12 +79,6 @@ XPCOMUtils.defineLazyGetter(this, "gcli", function () {
   return obj.gcli;
 });
 
-XPCOMUtils.defineLazyGetter(this, "StyleInspector", function () {
-  var obj = {};
-  Cu.import("resource:///modules/devtools/StyleInspector.jsm", obj);
-  return obj.StyleInspector;
-});
-
 XPCOMUtils.defineLazyGetter(this, "CssRuleView", function() {
   let tmp = {};
   Cu.import("resource:///modules/devtools/CssRuleView.jsm", tmp);
@@ -1644,6 +1638,7 @@ HUD_SERVICE.prototype =
   {
     this.filterPrefs[aHUDId][aToggleType] = aState;
     this.adjustVisibilityForMessageType(aHUDId, aToggleType, aState);
+    Services.prefs.setBoolPref(PREFS_PREFIX + aToggleType, aState);
   },
 
   /**
@@ -1857,10 +1852,6 @@ HUD_SERVICE.prototype =
 
     let popupset = hud.chromeDocument.getElementById("mainPopupSet");
     let panels = popupset.querySelectorAll("panel[hudId=" + aHUDId + "]");
-    for (let i = 0; i < panels.length; i++) {
-      panels[i].hidePopup();
-    }
-    panels = popupset.querySelectorAll("panel[hudToolId=" + aHUDId + "]");
     for (let i = 0; i < panels.length; i++) {
       panels[i].hidePopup();
     }
@@ -3569,7 +3560,7 @@ HeadsUpDisplay.prototype = {
       }
       else {
         this.gcliterm = new GcliTerm(aWindow, this.hudId, this.chromeDocument,
-                                     this.console, this.hintNode);
+                                     this.console, this.hintNode, this.consoleWrap);
         aParentNode.appendChild(this.gcliterm.element);
       }
     }
@@ -3667,21 +3658,19 @@ HeadsUpDisplay.prototype = {
     consoleFilterToolbar.setAttribute("id", "viewGroup");
     this.consoleFilterToolbar = consoleFilterToolbar;
 
-    let hintSpacerNode = this.makeXULNode("box");
-    hintSpacerNode.setAttribute("flex", 1);
-
     this.hintNode = this.makeXULNode("div");
     this.hintNode.setAttribute("class", "gcliterm-hint-node");
 
     let hintParentNode = this.makeXULNode("vbox");
     hintParentNode.setAttribute("flex", "0");
     hintParentNode.setAttribute("class", "gcliterm-hint-parent");
-    hintParentNode.appendChild(hintSpacerNode);
+    hintParentNode.setAttribute("pack", "end");
     hintParentNode.appendChild(this.hintNode);
     hintParentNode.hidden = true;
 
     let hbox = this.makeXULNode("hbox");
     hbox.setAttribute("flex", "1");
+    hbox.setAttribute("class", "gcliterm-display");
 
     this.outputNode = this.makeXULNode("richlistbox");
     this.outputNode.setAttribute("class", "hud-output-node");
@@ -3774,8 +3763,8 @@ HeadsUpDisplay.prototype = {
         ]
       },
       {
-        name: "PageWebDeveloper",
-        category: "webdev",
+        name: "PageLogging",
+        category: "logging",
         severities: [
           { name: "ConsoleErrors", prefKey: "error" },
           { name: "ConsoleWarnings", prefKey: "warn" },
@@ -4598,40 +4587,6 @@ function JSTermHelper(aJSTerm)
     propPanel.panel.setAttribute("hudId", aJSTerm.hudId);
   };
 
-  /**
-   * Inspects the passed aNode in the style inspector.
-   *
-   * @param object aNode
-   *        aNode to inspect.
-   * @returns void
-   */
-  aJSTerm.sandbox.inspectstyle = function JSTH_inspectstyle(aNode)
-  {
-    let errstr = null;
-    aJSTerm.helperEvaluated = true;
-
-    if (!Services.prefs.getBoolPref("devtools.styleinspector.enabled")) {
-      errstr = HUDService.getStr("inspectStyle.styleInspectorNotEnabled");
-    } else if (!aNode) {
-      errstr = HUDService.getStr("inspectStyle.nullObjectPassed");
-    } else if (!(aNode instanceof Ci.nsIDOMNode)) {
-      errstr = HUDService.getStr("inspectStyle.mustBeDomNode");
-    } else if (!(aNode.style instanceof Ci.nsIDOMCSSStyleDeclaration)) {
-      errstr = HUDService.getStr("inspectStyle.nodeHasNoStyleProps");
-    }
-
-    if (!errstr) {
-      let chromeWin = HUDService.getHudReferenceById(aJSTerm.hudId).chromeWindow;
-      let styleInspector = new StyleInspector(chromeWin);
-      styleInspector.createPanel(false, function() {
-        styleInspector.panel.setAttribute("hudToolId", aJSTerm.hudId);
-        styleInspector.open(aNode);
-      });
-    } else {
-      aJSTerm.writeOutput(errstr + "\n", CATEGORY_OUTPUT, SEVERITY_ERROR);
-    }
-  };
-
   aJSTerm.sandbox.inspectrules = function JSTH_inspectrules(aNode)
   {
     aJSTerm.helperEvaluated = true;
@@ -5173,6 +5128,7 @@ JSTerm.prototype = {
     }
 
     hud.HUDBox.lastTimestamp = 0;
+    hud.groupDepth = 0;
   },
 
   /**
@@ -6334,18 +6290,17 @@ HeadsUpDisplayUICommands = {
         // Adjust the state of the button appropriately.
         let menuPopup = this.parentNode;
 
-        let allChecked = true;
+        let someChecked = false;
         let menuItem = menuPopup.firstChild;
         while (menuItem) {
-          if (menuItem.getAttribute("checked") !== "true") {
-            allChecked = false;
+          if (menuItem.getAttribute("checked") === "true") {
+            someChecked = true;
             break;
           }
           menuItem = menuItem.nextSibling;
         }
-
         let toolbarButton = menuPopup.parentNode;
-        toolbarButton.setAttribute("checked", allChecked);
+        toolbarButton.setAttribute("checked", someChecked);
         break;
       }
     }
@@ -6383,8 +6338,7 @@ HeadsUpDisplayUICommands = {
 var prefs = Services.prefs;
 
 const GLOBAL_STORAGE_INDEX_ID = "GLOBAL_CONSOLE";
-const PREFS_BRANCH_PREF = "devtools.hud.display.filter";
-const PREFS_PREFIX = "devtools.hud.display.filter.";
+const PREFS_PREFIX = "devtools.webconsole.filter.";
 const PREFS = { network: PREFS_PREFIX + "network",
                 networkinfo: PREFS_PREFIX + "networkinfo",
                 csserror: PREFS_PREFIX + "csserror",
@@ -6395,7 +6349,6 @@ const PREFS = { network: PREFS_PREFIX + "network",
                 info: PREFS_PREFIX + "info",
                 warn: PREFS_PREFIX + "warn",
                 log: PREFS_PREFIX + "log",
-                global: PREFS_PREFIX + "global",
               };
 
 function ConsoleStorage()
@@ -6410,88 +6363,21 @@ function ConsoleStorage()
   // TODO: need to create a method that truncates the message
   // see bug 570543
 
-  // store an index of display prefs
-  this.displayPrefs = {};
-
-  // check prefs for existence, create & load if absent, load them if present
-  let filterPrefs;
-  let defaultDisplayPrefs;
-
-  try {
-    filterPrefs = prefs.getBoolPref(PREFS_BRANCH_PREF);
-  }
-  catch (ex) {
-    filterPrefs = false;
-  }
-
-  // TODO: for FINAL release,
-  // use the sitePreferencesService to save specific site prefs
-  // see bug 570545
-
-  if (filterPrefs) {
-    defaultDisplayPrefs = {
-      network: (prefs.getBoolPref(PREFS.network) ? true: false),
-      networkinfo: (prefs.getBoolPref(PREFS.networkinfo) ? true: false),
-      csserror: (prefs.getBoolPref(PREFS.csserror) ? true: false),
-      cssparser: (prefs.getBoolPref(PREFS.cssparser) ? true: false),
-      exception: (prefs.getBoolPref(PREFS.exception) ? true: false),
-      jswarn: (prefs.getBoolPref(PREFS.jswarn) ? true: false),
-      error: (prefs.getBoolPref(PREFS.error) ? true: false),
-      info: (prefs.getBoolPref(PREFS.info) ? true: false),
-      warn: (prefs.getBoolPref(PREFS.warn) ? true: false),
-      log: (prefs.getBoolPref(PREFS.log) ? true: false),
-      global: (prefs.getBoolPref(PREFS.global) ? true: false),
-    };
-  }
-  else {
-    prefs.setBoolPref(PREFS_BRANCH_PREF, false);
-    // default prefs for each HeadsUpDisplay
-    prefs.setBoolPref(PREFS.network, true);
-    prefs.setBoolPref(PREFS.networkinfo, true);
-    prefs.setBoolPref(PREFS.csserror, true);
-    prefs.setBoolPref(PREFS.cssparser, true);
-    prefs.setBoolPref(PREFS.exception, true);
-    prefs.setBoolPref(PREFS.jswarn, true);
-    prefs.setBoolPref(PREFS.error, true);
-    prefs.setBoolPref(PREFS.info, true);
-    prefs.setBoolPref(PREFS.warn, true);
-    prefs.setBoolPref(PREFS.log, true);
-    prefs.setBoolPref(PREFS.global, false);
-
-    defaultDisplayPrefs = {
-      network: prefs.getBoolPref(PREFS.network),
-      networkinfo: prefs.getBoolPref(PREFS.networkinfo),
-      csserror: prefs.getBoolPref(PREFS.csserror),
-      cssparser: prefs.getBoolPref(PREFS.cssparser),
-      exception: prefs.getBoolPref(PREFS.exception),
-      jswarn: prefs.getBoolPref(PREFS.jswarn),
-      error: prefs.getBoolPref(PREFS.error),
-      info: prefs.getBoolPref(PREFS.info),
-      warn: prefs.getBoolPref(PREFS.warn),
-      log: prefs.getBoolPref(PREFS.log),
-      global: prefs.getBoolPref(PREFS.global),
-    };
-  }
-  this.defaultDisplayPrefs = defaultDisplayPrefs;
+  this.defaultDisplayPrefs = {
+    network: prefs.getBoolPref(PREFS.network),
+    networkinfo: prefs.getBoolPref(PREFS.networkinfo),
+    csserror: prefs.getBoolPref(PREFS.csserror),
+    cssparser: prefs.getBoolPref(PREFS.cssparser),
+    exception: prefs.getBoolPref(PREFS.exception),
+    jswarn: prefs.getBoolPref(PREFS.jswarn),
+    error: prefs.getBoolPref(PREFS.error),
+    info: prefs.getBoolPref(PREFS.info),
+    warn: prefs.getBoolPref(PREFS.warn),
+    log: prefs.getBoolPref(PREFS.log),
+  };
 }
 
 ConsoleStorage.prototype = {
-
-  updateDefaultDisplayPrefs:
-  function CS_updateDefaultDisplayPrefs(aPrefsObject) {
-    prefs.setBoolPref(PREFS.network, (aPrefsObject.network ? true : false));
-    prefs.setBoolPref(PREFS.networkinfo,
-                      (aPrefsObject.networkinfo ? true : false));
-    prefs.setBoolPref(PREFS.csserror, (aPrefsObject.csserror ? true : false));
-    prefs.setBoolPref(PREFS.cssparser, (aPrefsObject.cssparser ? true : false));
-    prefs.setBoolPref(PREFS.exception, (aPrefsObject.exception ? true : false));
-    prefs.setBoolPref(PREFS.jswarn, (aPrefsObject.jswarn ? true : false));
-    prefs.setBoolPref(PREFS.error, (aPrefsObject.error ? true : false));
-    prefs.setBoolPref(PREFS.info, (aPrefsObject.info ? true : false));
-    prefs.setBoolPref(PREFS.warn, (aPrefsObject.warn ? true : false));
-    prefs.setBoolPref(PREFS.log, (aPrefsObject.log ? true : false));
-    prefs.setBoolPref(PREFS.global, (aPrefsObject.global ? true : false));
-  },
 
   sequenceId: function CS_sequencerId()
   {
@@ -6994,7 +6880,7 @@ let commandExports = undefined;
  *        The node to which we add GCLI's hints.
  * @constructor
  */
-function GcliTerm(aContentWindow, aHudId, aDocument, aConsole, aHintNode)
+function GcliTerm(aContentWindow, aHudId, aDocument, aConsole, aHintNode, aConsoleWrap)
 {
   this.context = Cu.getWeakReference(aContentWindow);
   this.hudId = aHudId;
@@ -7020,7 +6906,7 @@ function GcliTerm(aContentWindow, aHudId, aDocument, aConsole, aHintNode)
     completeElement: this.completeNode,
     inputBackgroundElement: this.inputStack,
     hintElement: this.hintNode,
-    completionPrompt: "",
+    consoleWrap: aConsoleWrap,
     gcliTerm: this
   };
 
@@ -7038,7 +6924,15 @@ GcliTerm.prototype = {
    */
   hide: function GcliTerm_hide()
   {
-    this.hintNode.parentNode.hidden = true;
+    let permaHint = false;
+    try {
+      permaHint = Services.prefs.getBoolPref("devtools.gcli.permaHint");
+    }
+    catch (ex) {}
+
+    if (!permaHint) {
+      this.hintNode.parentNode.hidden = true;
+    }
   },
 
   /**

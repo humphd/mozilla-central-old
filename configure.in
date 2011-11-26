@@ -2350,7 +2350,10 @@ case "$target" in
     MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -o $@'
     MOZ_OPTIMIZE_FLAGS="-O3"
     _PEDANTIC=
-    MOZ_MEMORY=1
+    # Statically disable jemalloc on 10.5 and 32-bit 10.6.  See bug 702250.
+    if test "$HAVE_64BIT_OS"; then
+        MOZ_MEMORY=1
+    fi
     CFLAGS="$CFLAGS -fno-common"
     CXXFLAGS="$CXXFLAGS -fno-common"
     DLL_SUFFIX=".dylib"
@@ -4681,10 +4684,10 @@ NECKO_PROTOCOLS_DEFAULT="about data file ftp http res viewsource websocket wyciw
 USE_ARM_KUSER=
 BUILD_CTYPES=1
 MOZ_USE_NATIVE_POPUP_WINDOWS=
-
+MOZ_ANDROID_HISTORY=
 
 case "${target}" in
-*android*|*darwin*)
+*darwin*)
     ACCESSIBILITY=
     ;;
 *)
@@ -4750,6 +4753,10 @@ if test -z "$MOZ_BUILD_APP"; then
   AC_MSG_RESULT([browser])
   MOZ_BUILD_APP=browser
 else
+  # default mobile to be mobile/xul
+  if test "$MOZ_BUILD_APP" = "mobile" ; then
+    MOZ_BUILD_APP=mobile/xul
+  fi
   # We have a valid application only if it has a build.mk file in its top
   # directory.
   if test ! -f "${srcdir}/${MOZ_BUILD_APP}/build.mk" ; then
@@ -7115,6 +7122,21 @@ elif test -z "$_ENABLE_LOGREFCNT"; then
 fi
 
 dnl ========================================================
+dnl moz_dump_painting
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(dump-painting,
+[  --enable-dump-painting          Enable paint debugging.],
+    MOZ_DUMP_PAINTING=1,
+    MOZ_DUMP_PAINTING= )
+if test -n "$MOZ_DUMP_PAINTING"; then
+    AC_DEFINE(MOZ_DUMP_PAINTING)
+    AC_DEFINE(MOZ_LAYERS_HAVE_LOG)
+fi
+if test -n "$MOZ_DEBUG"; then
+    AC_DEFINE(MOZ_DUMP_PAINTING)
+fi
+
+dnl ========================================================
 dnl = Enable trace malloc
 dnl ========================================================
 NS_TRACE_MALLOC=${MOZ_TRACE_MALLOC}
@@ -8445,6 +8467,7 @@ AC_SUBST(MOZ_D3DCOMPILER_CAB)
 AC_SUBST(MOZ_D3DX9_DLL)
 AC_SUBST(MOZ_D3DCOMPILER_DLL)
 
+AC_SUBST(MOZ_ANDROID_HISTORY)
 AC_SUBST(ENABLE_STRIP)
 AC_SUBST(PKG_SKIP_STRIP)
 AC_SUBST(USE_ELF_DYNSTR_GC)
@@ -8480,10 +8503,15 @@ AC_SUBST(MOZ_POST_PROGRAM_COMMAND)
 # - MOZ_APP_DISPLAYNAME: Used in user-visible fields (DLL properties,
 # Mac Bundle name, Updater, Installer), it is typically used for nightly
 # builds (e.g. Aurora for Firefox).
+# - MOZ_APP_VERSION: Defines the application version number.
 # - MOZ_APP_NAME: Used for e.g. the binary program file name. If not set,
 # defaults to a lowercase form of MOZ_APP_BASENAME.
 # - MOZ_APP_PROFILE: When set, used for application.ini's
 # "Profile" field, which controls profile location.
+# - MOZ_APP_ID: When set, used for application.ini's "ID" field, and
+# crash reporter server url.
+# - MOZ_PROFILE_MIGRATOR: When set, enables profile migrator.
+# - MOZ_EXTENSION_MANAGER: When set, enabled extension manager.
 
 if test -z "$MOZ_APP_NAME"; then
    MOZ_APP_NAME=`echo $MOZ_APP_BASENAME | tr A-Z a-z`
@@ -8494,6 +8522,9 @@ AC_SUBST(MOZ_APP_DISPLAYNAME)
 AC_SUBST(MOZ_APP_BASENAME)
 AC_SUBST(MOZ_APP_VENDOR)
 AC_SUBST(MOZ_APP_PROFILE)
+AC_SUBST(MOZ_APP_ID)
+AC_SUBST(MOZ_PROFILE_MIGRATOR)
+AC_SUBST(MOZ_EXTENSION_MANAGER)
 AC_DEFINE_UNQUOTED(MOZ_APP_UA_NAME, "$MOZ_APP_UA_NAME")
 AC_SUBST(MOZ_APP_UA_NAME)
 AC_DEFINE_UNQUOTED(MOZ_APP_UA_VERSION, "$MOZ_APP_VERSION")
@@ -8503,6 +8534,13 @@ AC_DEFINE_UNQUOTED(FIREFOX_VERSION,$FIREFOX_VERSION)
 AC_SUBST(FIREFOX_VERSION)
 AC_DEFINE_UNQUOTED(MOZ_UA_BUILDID, "$MOZ_UA_BUILDID")
 AC_SUBST(MOZ_UA_BUILDID)
+
+# We can't use the static application.ini data when building against
+# a libxul SDK.
+if test -n "$LIBXUL_SDK"; then
+    MOZ_APP_STATIC_INI=
+fi
+AC_SUBST(MOZ_APP_STATIC_INI)
 
 AC_SUBST(MOZ_PKG_SPECIAL)
 

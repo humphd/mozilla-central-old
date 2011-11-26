@@ -72,7 +72,7 @@ class Navigator : public nsIDOMNavigator,
                   public nsIDOMClientInformation,
                   public nsIDOMNavigatorGeolocation,
                   public nsIDOMNavigatorDesktopNotification,
-                  public nsIDOMNavigatorBattery
+                  public nsIDOMMozNavigatorBattery
 {
 public:
   Navigator(nsIDocShell *aDocShell);
@@ -83,7 +83,7 @@ public:
   NS_DECL_NSIDOMCLIENTINFORMATION
   NS_DECL_NSIDOMNAVIGATORGEOLOCATION
   NS_DECL_NSIDOMNAVIGATORDESKTOPNOTIFICATION
-  NS_DECL_NSIDOMNAVIGATORBATTERY
+  NS_DECL_NSIDOMMOZNAVIGATORBATTERY
 
   static void Init();
 

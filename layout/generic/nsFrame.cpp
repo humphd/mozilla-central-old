@@ -575,7 +575,7 @@ nsFrame::DestroyFrom(nsIFrame* aDestructRoot)
 
   if (view) {
     // Break association between view and frame
-    view->SetClientData(nsnull);
+    view->SetFrame(nsnull);
 
     // Destroy the view
     view->Destroy();
@@ -1598,7 +1598,7 @@ WrapPreserve3DListInternal(nsIFrame* aFrame, nsDisplayListBuilder *aBuilder, nsD
     // and then flush this list into newList by wrapping the whole lot with a single
     // nsDisplayTransform.
 
-    if (childFrame && childFrame->GetParent()->Preserves3DChildren()) {
+    if (childFrame && (childFrame->GetParent()->Preserves3DChildren() || childFrame == aFrame)) {
       switch (item->GetType()) {
         case nsDisplayItem::TYPE_TRANSFORM: {
           if (!temp.IsEmpty()) {
@@ -4049,7 +4049,7 @@ nsresult
 nsIFrame::SetView(nsIView* aView)
 {
   if (aView) {
-    aView->SetClientData(this);
+    aView->SetFrame(this);
 
     // Set a property on the frame
     Properties().Set(ViewProperty(), aView);
@@ -6627,12 +6627,11 @@ nsIFrame::FinishAndStoreOverflow(nsOverflowAreas& aOverflowAreas,
      */
     nsRect newBounds(nsPoint(0, 0), aNewSize);
     // Transform affects both overflow areas.
-    if (!Preserves3DChildren()) {
-      NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
-        nsRect& o = aOverflowAreas.Overflow(otype);
-        o = nsDisplayTransform::TransformRect(o, this, nsPoint(0, 0), &newBounds);
-      }
-    } else {
+    NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
+      nsRect& o = aOverflowAreas.Overflow(otype);
+      o = nsDisplayTransform::TransformRect(o, this, nsPoint(0, 0), &newBounds);
+    }
+    if (Preserves3DChildren()) {
       ComputePreserve3DChildrenOverflow(aOverflowAreas, newBounds);
     }
   }
@@ -6785,8 +6784,8 @@ nsIFrame::ComputePreserve3DChildrenOverflow(nsOverflowAreas& aOverflowAreas, con
     }
   }
 
-  aOverflowAreas.Overflow(eVisualOverflow) = childVisual;
-  aOverflowAreas.Overflow(eScrollableOverflow) = childScrollable;
+  aOverflowAreas.Overflow(eVisualOverflow) = aOverflowAreas.Overflow(eVisualOverflow).Union(childVisual);
+  aOverflowAreas.Overflow(eScrollableOverflow) = aOverflowAreas.Overflow(eScrollableOverflow).Union(childScrollable);
 }
 
 void
@@ -7510,8 +7509,21 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
 
     // Construct the parent chain manually since constructing it normally
     // messes up dimensions.
-    reflowState.parentReflowState = &parentReflowState;
-    reflowState.mCBReflowState = &parentReflowState;
+    const nsHTMLReflowState *outerReflowState = aState.OuterReflowState();
+    NS_ASSERTION(!outerReflowState || outerReflowState->frame != this,
+                 "in and out of XUL on a single frame?");
+    if (outerReflowState && outerReflowState->frame == parentFrame) {
+      // We're a frame (such as a text control frame) that jumps into
+      // box reflow and then straight out of it on the child frame.
+      // This means we actually have a real parent reflow state.
+      // nsLayoutUtils::InflationMinFontSizeFor needs this to be linked
+      // up correctly for text control frames, so do so here).
+      reflowState.parentReflowState = outerReflowState;
+      reflowState.mCBReflowState = outerReflowState;
+    } else {
+      reflowState.parentReflowState = &parentReflowState;
+      reflowState.mCBReflowState = &parentReflowState;
+    }
     reflowState.mReflowDepth = aState.GetReflowDepth();
 
     // mComputedWidth and mComputedHeight are content-box, not
@@ -7556,8 +7568,16 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
     // mLastSize before calling Reflow and then switching it back, but
     // However, mLastSize can also be the size passed to BoxReflow by
     // RefreshSizeCache, so that doesn't really make sense.
-    if (metrics->mLastSize.width != aWidth)
+    if (metrics->mLastSize.width != aWidth) {
       reflowState.mFlags.mHResize = true;
+
+      // When font size inflation is enabled, a horizontal resize
+      // requires a full reflow.  See nsHTMLReflowState::InitResizeFlags
+      // for more details.
+      if (nsLayoutUtils::FontSizeInflationEnabled(aPresContext)) {
+        AddStateBits(NS_FRAME_IS_DIRTY);
+      }
+    }
     if (metrics->mLastSize.height != aHeight)
       reflowState.mFlags.mVResize = true;
 

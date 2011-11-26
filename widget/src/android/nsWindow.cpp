@@ -306,8 +306,7 @@ void
 nsWindow::RedrawAll()
 {
     nsIntRect entireRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    AndroidGeckoEvent *event = new AndroidGeckoEvent(AndroidGeckoEvent::DRAW,
-                                                     entireRect);
+    AndroidGeckoEvent *event = new AndroidGeckoEvent(AndroidGeckoEvent::DRAW, entireRect);
     nsAppShell::gAppShell->PostEvent(event);
 }
 
@@ -796,6 +795,22 @@ nsWindow::GetThebesSurface()
     return new gfxImageSurface(gfxIntSize(5,5), gfxImageSurface::ImageFormatRGB24);
 }
 
+
+class DrawToFileRunnable : public nsRunnable {
+public:
+    DrawToFileRunnable(nsWindow* win, const nsAString &path) {
+       mPath = path;
+       mWindow = win;
+   }
+    NS_IMETHOD Run() {
+        mWindow->DrawToFile(mPath);
+        return NS_OK;
+    }
+private:
+    nsString mPath;
+    nsRefPtr<nsWindow> mWindow;
+};
+
 bool
 nsWindow::DrawToFile(const nsAString &path)
 {
@@ -1009,7 +1024,11 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
             break;
 
         case AndroidGeckoEvent::SAVE_STATE:
-            win->DrawToFile(ae->Characters());
+            {
+                nsCOMPtr<nsIThread> thread;
+                nsRefPtr<DrawToFileRunnable> runnable = new DrawToFileRunnable(win, ae->Characters());
+                NS_NewThread(getter_AddRefs(thread), runnable);
+            }
             break;
 
         default:
@@ -1064,7 +1083,10 @@ nsWindow::DrawTo(gfxASurface *targetSurface, const nsIntRect &invalidRect)
     // If we have no covering child, then we need to render this.
     if (coveringChildIndex == -1) {
         nsPaintEvent event(true, NS_PAINT, this);
-        event.region = boundsRect.Intersect(invalidRect);
+
+        nsIntRect tileRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
+        event.region = boundsRect.Intersect(invalidRect).Intersect(tileRect);
+
         switch (GetLayerManager(nsnull)->GetBackendType()) {
             case LayerManager::LAYERS_BASIC: {
                 nsRefPtr<gfxContext> ctx = new gfxContext(targetSurface);
@@ -1072,6 +1094,7 @@ nsWindow::DrawTo(gfxASurface *targetSurface, const nsIntRect &invalidRect)
                 {
                     AutoLayerManagerSetup
                       setupLayerManager(this, ctx, BasicLayerManager::BUFFER_NONE);
+
                     status = DispatchEvent(&event);
                 }
 
@@ -1152,6 +1175,7 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
     AndroidGeckoSoftwareLayerClient &client =
         AndroidBridge::Bridge()->GetSoftwareLayerClient();
     client.BeginDrawing();
+
     unsigned char *bits = client.LockBufferBits();
     nsRefPtr<gfxImageSurface> targetSurface =
         new gfxImageSurface(bits, gfxIntSize(TILE_WIDTH, TILE_HEIGHT), TILE_WIDTH * 2,
@@ -1160,10 +1184,19 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
         ALOG("### Failed to create a valid surface from the bitmap");
     } else {
         DrawTo(targetSurface, ae->Rect());
+
+        nsAutoString metadata;
+        {
+            nsCOMPtr<nsIAndroidDrawMetadataProvider> metadataProvider =
+                AndroidBridge::Bridge()->GetDrawMetadataProvider();
+            if (metadataProvider)
+                metadataProvider->GetDrawMetadata(metadata);
+        }
+
         client.UnlockBuffer();
-        client.EndDrawing(ae->Rect());
+        client.EndDrawing(ae->Rect(), metadata);
     }
-        return;
+    return;
 #endif
 
     if (!sSurfaceExists) {

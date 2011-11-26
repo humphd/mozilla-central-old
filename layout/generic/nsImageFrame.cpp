@@ -986,7 +986,8 @@ nsImageFrame::DisplayAltText(nsPresContext*      aPresContext,
   // Set font and color
   aRenderingContext.SetColor(GetStyleColor()->mColor);
   nsRefPtr<nsFontMetrics> fm;
-  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
+  nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm),
+    nsLayoutUtils::FontSizeInflationFor(this));
   aRenderingContext.SetFont(fm);
 
   // Format the text to display within the formatting rect
@@ -1531,10 +1532,9 @@ nsImageFrame::GetContentForEvent(nsEvent* aEvent,
     nsIntPoint p;
     TranslateEventCoords(
       nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, this), p);
-    bool inside = false;
     nsCOMPtr<nsIContent> area = map->GetArea(p.x, p.y);
     if (area) {
-      area.swap(*aContent);
+      area.forget(aContent);
       return NS_OK;
     }
   }

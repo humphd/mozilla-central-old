@@ -155,6 +155,10 @@
   display: none;
 }
 
+.webconsole-filter-button {
+  margin: 0 3px;
+}
+
 .webconsole-filter-button > .toolbarbutton-menubutton-button,
 .webconsole-filter-button:not([type="menu-button"]) {
   -moz-box-orient: horizontal;
@@ -209,7 +213,7 @@
 }
 
 /* Web Developer styles */
-.webconsole-filter-button[category="webdev"] {
+.webconsole-filter-button[category="logging"] {
   -moz-image-region: rect(24px, 8px, 32px, 0);
 }
 

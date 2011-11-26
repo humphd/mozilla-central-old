@@ -76,11 +76,25 @@ var addon6 = {
   }]
 };
 
+var defaultTheme = {
+  id: "default@tests.mozilla.org",
+  version: "1.0",
+  name: "Default",
+  internalName: "classic/1.0",
+  targetApplications: [{
+    id: "xpcshell@tests.mozilla.org",
+    minVersion: "1",
+    maxVersion: "2"
+  }]
+};
+
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
 do_load_httpd_js();
 var testserver;
+
+let oldSyncGUIDs = {};
 
 function prepare_profile() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
@@ -97,9 +111,10 @@ function prepare_profile() {
   writeInstallRDFForExtension(addon4, profileDir);
   writeInstallRDFForExtension(addon5, profileDir);
   writeInstallRDFForExtension(addon6, profileDir);
+  writeInstallRDFForExtension(defaultTheme, profileDir);
 
   startupManager();
-  installAllFiles([do_get_addon("test_migrate8")],
+  installAllFiles([do_get_addon("test_migrate8"), do_get_addon("test_migrate9")],
                   function() {
     restartManager();
 
@@ -108,13 +123,19 @@ function prepare_profile() {
                                  "addon3@tests.mozilla.org",
                                  "addon4@tests.mozilla.org",
                                  "addon5@tests.mozilla.org",
-                                 "addon6@tests.mozilla.org"],
-                                 function([a1, a2, a3, a4, a5, a6]) {
+                                 "addon6@tests.mozilla.org",
+                                 "addon9@tests.mozilla.org"],
+                                 function([a1, a2, a3, a4, a5, a6, a9]) {
       a2.userDisabled = true;
       a2.applyBackgroundUpdates = false;
       a4.userDisabled = true;
       a6.userDisabled = true;
-  
+      a9.userDisabled = false;
+
+      for each (let addon in [a1, a2, a3, a4, a5, a6]) {
+        oldSyncGUIDs[addon.id] = addon.syncGUID;
+      }
+
       a6.findUpdates({
         onUpdateAvailable: function(aAddon, aInstall6) {
           AddonManager.getInstallForURL("http://localhost:4444/addons/test_migrate4_7.xpi", function(aInstall7) {
@@ -148,6 +169,9 @@ function prepare_profile() {
 }
 
 function perform_migration() {
+  // Turn on disabling for all scopes
+  Services.prefs.setIntPref("extensions.autoDisableScopes", 15);
+
   let dbfile = gProfD.clone();
   dbfile.append("extensions.sqlite");
   let db = AM_Cc["@mozilla.org/storage/service;1"].
@@ -176,10 +200,12 @@ function test_results() {
                                "addon5@tests.mozilla.org",
                                "addon6@tests.mozilla.org",
                                "addon7@tests.mozilla.org",
-                               "addon8@tests.mozilla.org"],
-                               function([a1, a2, a3, a4, a5, a6, a7, a8]) {
+                               "addon8@tests.mozilla.org",
+                               "addon9@tests.mozilla.org"],
+                               function([a1, a2, a3, a4, a5, a6, a7, a8, a9]) {
     // addon1 was enabled
     do_check_neq(a1, null);
+    do_check_eq(a1.syncGUID, oldSyncGUIDs[a1.id]);
     do_check_false(a1.userDisabled);
     do_check_false(a1.appDisabled);
     do_check_true(a1.isActive);
@@ -190,6 +216,7 @@ function test_results() {
 
     // addon2 was disabled
     do_check_neq(a2, null);
+    do_check_eq(a2.syncGUID, oldSyncGUIDs[a2.id]);
     do_check_true(a2.userDisabled);
     do_check_false(a2.appDisabled);
     do_check_false(a2.isActive);
@@ -200,6 +227,7 @@ function test_results() {
 
     // addon3 was pending-disable in the database
     do_check_neq(a3, null);
+    do_check_eq(a3.syncGUID, oldSyncGUIDs[a3.id]);
     do_check_true(a3.userDisabled);
     do_check_false(a3.appDisabled);
     do_check_false(a3.isActive);
@@ -210,6 +238,7 @@ function test_results() {
 
     // addon4 was pending-enable in the database
     do_check_neq(a4, null);
+    do_check_eq(a4.syncGUID, oldSyncGUIDs[a4.id]);
     do_check_false(a4.userDisabled);
     do_check_false(a4.appDisabled);
     do_check_true(a4.isActive);
@@ -230,6 +259,7 @@ function test_results() {
 
     // addon6 was disabled and compatible but a new version has been installed
     do_check_neq(a6, null);
+    do_check_eq(a6.syncGUID, oldSyncGUIDs[a6.id]);
     do_check_eq(a6.version, "2.0");
     do_check_true(a6.userDisabled);
     do_check_false(a6.appDisabled);
@@ -259,8 +289,18 @@ function test_results() {
     do_check_false(a8.userDisabled);
     do_check_false(a8.appDisabled);
     do_check_true(a8.isActive);
+    do_check_false(a8.foreignInstall);
     do_check_true(a8.hasBinaryComponents);
     do_check_false(a8.strictCompatibility);
+
+    // addon9 is the active theme
+    do_check_neq(a9, null);
+    do_check_false(a9.userDisabled);
+    do_check_false(a9.appDisabled);
+    do_check_true(a9.isActive);
+    do_check_false(a9.foreignInstall);
+    do_check_false(a9.hasBinaryComponents);
+    do_check_true(a9.strictCompatibility);
 
     testserver.stop(do_test_finished);
   });

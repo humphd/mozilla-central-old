@@ -82,19 +82,34 @@ NS_IMETHODIMP nsDOMMouseLockable::Unlock()
     // Making the mouse reappear
     nsCOMPtr<nsPIDOMWindow> domWindow( do_QueryInterface( mWindow ) );
     if (!domWindow)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
+		return NS_ERROR_UNEXPECTED;
+	}
         
     nsRefPtr<nsPresContext> presContext;
     domWindow->GetDocShell()->GetPresContext(getter_AddRefs(presContext));
     if (!presContext)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to get presContext in \
+				 domWindow->GetDocShell()->GetPresContext()");
+		return NS_ERROR_UNEXPECTED;
+	}
 
     nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
     if (!shell)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to find presContext->PresShell()");
+		return NS_ERROR_UNEXPECTED;
+	}
+
     nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
     if (!widget)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to find widget in \
+				 shell->GetRootFrame()->GetNearestWidget();");
+		return NS_ERROR_UNEXPECTED;
+	}
         
     presContext->EventStateManager()->SetCursor(NS_STYLE_CURSOR_AUTO, 
                                                 nsnull, false, 0.0f, 
@@ -137,20 +152,34 @@ NS_IMETHODIMP nsDOMMouseLockable::Lock(nsIDOMElement* aTarget)
 
     nsCOMPtr<nsPIDOMWindow> domWindow( do_QueryInterface( mWindow ) );
     if (!domWindow)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
+		return NS_ERROR_UNEXPECTED;
+	}
         
     nsRefPtr<nsPresContext> presContext;
     domWindow->GetDocShell()->GetPresContext(getter_AddRefs(presContext));
     if (!presContext)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to get presContext in \
+				 domWindow->GetDocShell()->GetPresContext()");
+		return NS_ERROR_UNEXPECTED;
+	}
 
     nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
     if (!shell)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to find presContext->PresShell()");
+		return NS_ERROR_UNEXPECTED;
+	}
 
     nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
     if (!widget)
-      return NULL;
+	{
+		NS_ERROR("Unlock(): Unable to find widget in \
+				 shell->GetRootFrame()->GetNearestWidget();");
+		return NS_ERROR_UNEXPECTED;
+	}
         
     presContext->EventStateManager()->SetCursor(NS_STYLE_CURSOR_NONE, 
                                                 nsnull, false, 0.0f, 

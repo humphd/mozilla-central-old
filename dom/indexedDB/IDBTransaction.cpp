@@ -73,6 +73,35 @@ DoomCachedStatements(const nsACString& aQuery,
   return PL_DHASH_REMOVE;
 }
 
+// This runnable doesn't actually do anything beyond "prime the pump" and get
+// transactions in the right order on the transaction thread pool.
+class StartTransactionRunnable : public nsIRunnable
+{
+public:
+  NS_DECL_ISUPPORTS
+
+  NS_IMETHOD Run()
+  {
+    // NOP
+    return NS_OK;
+  }
+};
+
+// Could really use those NS_REFCOUNTING_HAHA_YEAH_RIGHT macros here.
+NS_IMETHODIMP_(nsrefcnt) StartTransactionRunnable::AddRef()
+{
+  return 2;
+}
+
+NS_IMETHODIMP_(nsrefcnt) StartTransactionRunnable::Release()
+{
+  return 1;
+}
+
+NS_IMPL_QUERY_INTERFACE1(StartTransactionRunnable, nsIRunnable)
+
+StartTransactionRunnable gStartTransactionRunnable;
+
 } // anonymous namespace
 
 // static
@@ -119,6 +148,11 @@ IDBTransaction::Create(IDBDatabase* aDatabase,
     NS_ENSURE_SUCCESS(rv, nsnull);
 
     transaction->mCreating = true;
+  }
+
+  if (aMode != nsIIDBTransaction::VERSION_CHANGE) {
+    TransactionThreadPool* pool = TransactionThreadPool::GetOrCreate();
+    pool->Dispatch(transaction, &gStartTransactionRunnable, false, nsnull);
   }
 
   return transaction.forget();
@@ -360,28 +394,13 @@ IDBTransaction::AddStatement(bool aCreate,
 }
 
 already_AddRefed<mozIStorageStatement>
-IDBTransaction::IndexUpdateStatement(bool aAutoIncrement,
-                                     bool aUnique,
-                                     bool aOverwrite)
+IDBTransaction::IndexDataInsertStatement(bool aAutoIncrement,
+                                         bool aUnique)
 {
   if (aAutoIncrement) {
     if (aUnique) {
-      if (aOverwrite) {
-        return GetCachedStatement(
-          "INSERT OR REPLACE INTO ai_unique_index_data "
-            "(index_id, ai_object_data_id, value) "
-          "VALUES (:index_id, :object_data_id, :value)"
-        );
-      }
       return GetCachedStatement(
         "INSERT INTO ai_unique_index_data "
-          "(index_id, aI_object_data_id, value) "
-        "VALUES (:index_id, :object_data_id, :value)"
-      );
-    }
-    if (aOverwrite) {
-      return GetCachedStatement(
-        "INSERT OR REPLACE INTO ai_index_data "
           "(index_id, ai_object_data_id, value) "
         "VALUES (:index_id, :object_data_id, :value)"
       );
@@ -393,23 +412,9 @@ IDBTransaction::IndexUpdateStatement(bool aAutoIncrement,
     );
   }
   if (aUnique) {
-    if (aOverwrite) {
-      return GetCachedStatement(
-        "INSERT OR REPLACE INTO unique_index_data "
-          "(index_id, object_data_id, object_data_key, value) "
-        "VALUES (:index_id, :object_data_id, :object_data_key, :value)"
-      );
-    }
     return GetCachedStatement(
       "INSERT INTO unique_index_data "
         "(index_id, object_data_id, object_data_key, value) "
-      "VALUES (:index_id, :object_data_id, :object_data_key, :value)"
-    );
-  }
-  if (aOverwrite) {
-    return GetCachedStatement(
-      "INSERT INTO index_data ("
-        "index_id, object_data_id, object_data_key, value) "
       "VALUES (:index_id, :object_data_id, :object_data_key, :value)"
     );
   }
@@ -417,6 +422,34 @@ IDBTransaction::IndexUpdateStatement(bool aAutoIncrement,
     "INSERT INTO index_data ("
       "index_id, object_data_id, object_data_key, value) "
     "VALUES (:index_id, :object_data_id, :object_data_key, :value)"
+  );
+}
+
+already_AddRefed<mozIStorageStatement>
+IDBTransaction::IndexDataDeleteStatement(bool aAutoIncrement,
+                                         bool aUnique)
+{
+  if (aAutoIncrement) {
+    if (aUnique) {
+      return GetCachedStatement(
+        "DELETE FROM ai_unique_index_data "
+        "WHERE ai_object_data_id = :object_data_id"
+      );
+    }
+    return GetCachedStatement(
+      "DELETE FROM ai_index_data "
+      "WHERE ai_object_data_id = :object_data_id"
+    );
+  }
+  if (aUnique) {
+    return GetCachedStatement(
+      "DELETE FROM unique_index_data "
+      "WHERE object_data_id = :object_data_id"
+    );
+  }
+  return GetCachedStatement(
+    "DELETE FROM index_data "
+    "WHERE object_data_id = :object_data_id"
   );
 }
 
@@ -820,10 +853,12 @@ CommitHelper::Run()
         }
       }
 
-      event = CreateGenericEvent(NS_LITERAL_STRING(ABORT_EVT_STR));
+      event = CreateGenericEvent(NS_LITERAL_STRING(ABORT_EVT_STR),
+                                 eDoesBubble, eNotCancelable);
     }
     else {
-      event = CreateGenericEvent(NS_LITERAL_STRING(COMPLETE_EVT_STR));
+      event = CreateGenericEvent(NS_LITERAL_STRING(COMPLETE_EVT_STR),
+                                 eDoesNotBubble, eNotCancelable);
     }
     NS_ENSURE_TRUE(event, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
