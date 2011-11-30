@@ -18,8 +18,6 @@
 			document.body.addEventListener('click', function() {
 				if (!document.mozFullScreen){
 					ele.mozRequestFullScreen();
-					window.setTimeout("pointer.lock(ele)", 300);
-					console.log('=== Mouse lock Entered! ===');
 				} else if (pointer.islocked()) {
 					pointer.unlock();
 				} else {
@@ -33,6 +31,16 @@
 					infoText.innerHTML = 'Movement X: ' + e.movementX + '	Movement Y: '+ e.movementY + '	Client X: ' + e.clientX + '		Client Y: ' + e.clientY + '	Screen X:	' + e.screenX + '	Screen Y: ' + e.screenY;
 				}
 			} ,false);
+			
+			document.addEventListener('mozfullscreenchange', function() {
+				console.log("=== Full Screen mode changed ===");
+				if (document.mozFullScreen) {
+					pointer.lock(ele);
+					if (pointer.islocked()) {
+						console.log("=== Mouse lock enabled! ===");
+					}
+				}
+			}, false)
 			
 			ele.addEventListener('mouselocklost', function() {
 				console.log('=== Mouse lock lost! ===');

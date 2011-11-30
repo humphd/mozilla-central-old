@@ -10,7 +10,7 @@
 function fullAndLock() {
   var div = document.getElementById('div');
 
-  div.addEventListener('mozfullscreenchange', function() {
+  document.addEventListener('mozfullscreenchange', function() {
     navigator.pointer.lock(div);
 
     div.addEventListener('mousemove', function(e) {

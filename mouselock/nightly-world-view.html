@@ -18,7 +18,6 @@
 		var but = document.getElementById('button');
 		but.onclick = function () {
 			cvs.mozRequestFullScreen();
-			window.setTimeout('pointer.lock(cvs)', 300);
 			cvs.__curX = 0;
 			cvs.__curY = 0;
 		};
@@ -50,6 +49,16 @@
 				pointer.unlock();  
 				document.mozCancelFullScreen();
 				} }, false);
+		
+		document.addEventListener('mozfullscreenchange', function() {
+			console.log("=== Full Screen mode changed ===");
+			if (document.mozFullScreen) {
+				pointer.lock(cvs);
+				if (pointer.islocked()) {
+					console.log("=== Mouse lock enabled! ===");
+				}
+			}
+		}, false);
 		
 		document.body.addEventListener('mouselocklost', function() { console.log('=== Mouse lock lost! ==='); }, false);
 	</script>

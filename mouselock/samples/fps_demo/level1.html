@@ -360,7 +360,7 @@
                 var invert = false;
                 var mouseSpeed = 0.4;
        
-                canvas.addEventListener("mozfullscreenchange", function(e) {
+                document.addEventListener("mozfullscreenchange", function(e) {
                     navigator.pointer.lock(canvas);
                 }, false);
                 canvas.addEventListener("mousemove", function(e) {
