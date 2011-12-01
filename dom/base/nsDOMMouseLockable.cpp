@@ -153,6 +153,9 @@ nsDOMMouseLockable::ShouldLock(nsIDOMElement* aTarget)
 
   // Check if element is in the DOM tree
   nsCOMPtr<nsIDOMNode> targetNode(do_QueryInterface(aTarget));
+  if (!targetNode) {
+    return false;
+  }
   nsCOMPtr<nsIDOMNode> parentNode;
   targetNode->GetParentNode(getter_AddRefs(parentNode));
   if (!parentNode) {
