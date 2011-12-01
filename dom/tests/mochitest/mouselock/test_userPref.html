@@ -1,0 +1,55 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=92264
+-->
+<head>
+  <title>Test for Bug 633602</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body onload="runTests();">
+	<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">Mozilla Bug 633602</a>
+
+	<p id="display"></p>
+
+	<div id="content" style="display: none">
+	</div>
+	
+	<canvas id="canvas" width="150" height="150"></canvas>
+
+	<pre id="test">
+		<script>
+			SimpleTest.waitForExplicitFinish();
+
+			var pointer = navigator.pointer;
+			var canvas = document.getElementById("canvas");
+			SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only", false);
+
+			document.addEventListener("mozfullscreenchange", function (e) {     
+                if (document.mozFullScreen) {
+                    if (document.mozFullScreenElement === canvas) {
+			// Set Preference to False to see if lock fails
+                        SpecialPowers.setBoolPref("full-screen-api.mouse-lock.enabled", false);
+                        pointer.lock(canvas);
+                        is(pointer.islocked(), false, "Mouse shouldn't be locked when pref setting is false.");
+			
+			// Set Preference to True to see if lock succeeds
+			pointer.unlock();
+			SpecialPowers.setBoolPref("full-screen-api.mouse-lock.enabled", true);
+			pointer.lock(canvas);
+			is(pointer.islocked(), true, "Mouse should be locked when pref setting is true.");
+                    } 
+                }     
+            }, false);
+
+            function runTests() {
+                pointer.lock(canvas);                   
+                isnot(pointer.islocked(), true, "Mouse can't be locked if an element isn't in fullscreen mode");      
+                canvas.mozRequestFullScreen();
+            };
+                </script>
+        </pre>
+</body>
+</html>

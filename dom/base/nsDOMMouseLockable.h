@@ -39,6 +39,8 @@
 #ifndef nsDOMMouseLockable_h___
 #define nsDOMMouseLockable_h___
 
+#define PREF_MOUSE_LOCK_ENABLED "full-screen-api.mouse-lock.enabled"
+
 #include "nsIDOMMouseLockable.h"
 #include "nsIDOMMouseLockableSuccessCallback.h"
 #include "nsIDOMMouseLockableFailureCallback.h"
