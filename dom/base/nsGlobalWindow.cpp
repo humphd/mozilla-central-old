@@ -4465,6 +4465,12 @@ nsGlobalWindow::GetNearestWidget()
 NS_IMETHODIMP
 nsGlobalWindow::SetFullScreen(bool aFullScreen)
 {
+  if (!mFullScreen && aFullScreen) {
+    nsIWidget* widget = GetNearestWidget();
+    if (widget) {
+      nsEventStateManager::StoreLastScreenOffset(widget->WidgetToScreenOffset());
+    }
+  }
   FORWARD_TO_OUTER(SetFullScreen, (aFullScreen), NS_ERROR_NOT_INITIALIZED);
 
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_FAILURE);

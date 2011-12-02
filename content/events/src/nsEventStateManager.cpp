@@ -161,6 +161,7 @@ nsEventStateManager* nsEventStateManager::sActiveESM = nsnull;
 nsIDocument* nsEventStateManager::sMouseOverDocument = nsnull;
 nsWeakFrame nsEventStateManager::sLastDragOverFrame = nsnull;
 nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
+nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
 static PRUint32 gMouseOrKeyboardEventCounter = 0;
@@ -4100,7 +4101,7 @@ nsEventStateManager::SetMouseLock(bool aLocked,
   if (mMouseLocked) {
     // Store the last known ref point so we can reposition the mouse after unlock
     // TODO: this isn't perfect yet, it probably needs to get transformed into screen or widget space...
-    mPreLockPoint = nsIntPoint(sLastRefPoint.x, sLastRefPoint.y);
+    mPreLockPoint = sLastRefPoint + sLastScreenOffset;
 
     // Set the initial mouse lock movement (before the first mouse move event), to 0,0
     nsIntRect bounds;
@@ -4111,6 +4112,12 @@ nsEventStateManager::SetMouseLock(bool aLocked,
     // Unlocking, so return mouse to the original position
     aWidget->SynthesizeNativeMouseMove(mPreLockPoint);
   }
+}
+
+/* static */
+void
+nsEventStateManager::StoreLastScreenOffset(nsIntPoint aScreenOffset) {
+  sLastScreenOffset = aScreenOffset;
 }
 
 void
