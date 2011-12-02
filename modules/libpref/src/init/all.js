@@ -3381,6 +3381,7 @@ pref("full-screen-api.enabled", false);
 pref("full-screen-api.allow-trusted-requests-only", true);
 pref("full-screen-api.key-input-restricted", true);
 pref("full-screen-api.warning.enabled", true);
+pref("full-screen-api.mouse-lock.enabled", true);
 
 // Time limit, in milliseconds, for nsEventStateManager::IsHandlingUserInput().
 // Used to detect long running handlers of user-generated events.

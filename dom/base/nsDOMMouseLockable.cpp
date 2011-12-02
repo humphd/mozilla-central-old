@@ -47,6 +47,9 @@
 #include "nsINode.h"
 #include "nsPLDOMEvent.h"
 #include "nsIInterfaceRequestorUtils.h"
+#include "nsIPrefService.h"
+#include "nsIPrefBranch.h"
+#include "nsIServiceManager.h"
 
 DOMCI_DATA(MouseLockable, nsDOMMouseLockable)
 
@@ -144,6 +147,14 @@ NS_IMETHODIMP nsDOMMouseLockable::Islocked(bool *_retval NS_OUTPARAM)
 bool
 nsDOMMouseLockable::ShouldLock(nsIDOMElement* aTarget)
 {
+  // Check if mouselock is enabled in prefs
+  nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
+  bool mouseLockEnabled;
+  prefs->GetBoolPref(PREF_MOUSE_LOCK_ENABLED, &mouseLockEnabled);
+  if (!mouseLockEnabled) {
+    return false;
+  }
+
   nsCOMPtr<nsIDOMDocument> domDoc;
   mWindow->GetDocument(getter_AddRefs(domDoc));
   if (!domDoc) {
@@ -167,7 +178,7 @@ nsDOMMouseLockable::ShouldLock(nsIDOMElement* aTarget)
   domDoc->GetMozFullScreenElement(getter_AddRefs(lockedElement));
   if (lockedElement != aTarget) {
     return false;
-  }
+  } 
 
   // TODO: Check if window is in focus?
   // TODO: Check if MouseLock preference is set to true
