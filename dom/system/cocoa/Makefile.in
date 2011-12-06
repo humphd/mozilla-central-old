@@ -55,4 +55,11 @@ CMMSRCS     = \
         nsDeviceMotionSystem.mm \
         $(NULL)
 
+
+CPPSRCS     = \
+  CocoaGamepadService.cpp \
+  $(NULL)
+
+LOCAL_INCLUDES = -I$(topsrcdir)/dom/base
+
 include $(topsrcdir)/config/rules.mk
