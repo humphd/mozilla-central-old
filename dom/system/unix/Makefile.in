@@ -59,6 +59,12 @@ CPPSRCS     = \
         $(NULL)
 endif
 
+ifdef MOZ_GAMEPAD
+ifeq (Linux,$(OS_TARGET))
+CPPSRCS += LinuxGamepadService.cpp
+endif
+endif
+
 ifdef MOZ_MAEMO_LIBLOCATION
         CPPSRCS         += MaemoLocationProvider.cpp
         LOCAL_INCLUDES  += $(MOZ_PLATFORM_MAEMO_CFLAGS) \
