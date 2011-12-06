@@ -1,0 +1,20 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Test gamepad  </title>
+ <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<script class="testbody" type="text/javascript">
+function connecthandler(e) {
+  dump("connecthandler: " + e.gamepad.id + "\n");
+  var fakeEvent = document.createEvent("CustomEvent");
+  fakeEvent.initCustomEvent("gamepad-name", true, false, e.gamepad.id);
+  document.dispatchEvent(fakeEvent);
+}
+
+window.addEventListener("MozGamepadConnected", connecthandler);
+</script>
+</body>
+</html>
+

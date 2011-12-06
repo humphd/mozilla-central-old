@@ -56,7 +56,7 @@ namespace dom {
 class GamepadService {
  public:
   // Get the singleton service
-  static GamepadService* GetService();
+  static NS_EXPORT_(GamepadService*) GetService();
   // Destroy the singleton.
   static void DestroyService();
 
@@ -68,28 +68,12 @@ class GamepadService {
   void RemoveListener(nsGlobalWindow* aWindow);
 
   // Add a gamepad to the list of known gamepads, and return its index.
-  PRUint32 AddGamepad(const char* id, PRUint32 numButtons, PRUint32 numAxes);
+  NS_EXPORT_(PRUint32) AddGamepad(const char* id, PRUint32 numButtons, PRUint32 numAxes);
   // Remove the gamepad at |index| from the list of known gamepads.
-  void RemoveGamepad(PRUint32 index);
+  NS_EXPORT_(void) RemoveGamepad(PRUint32 index);
 
-  void NewButtonEvent(PRUint32 index, PRUint32 button, bool pressed);
-  void FireButtonEvent(nsIDOMDocument* domdoc,
-                       nsIDOMEventTarget* target,
-                       nsDOMGamepad* gamepad,
-                       PRUint32 button,
-                       bool pressed);
-  void NewAxisMoveEvent(PRUint32  index, PRUint32 axis, float value);
-  void FireAxisMoveEvent(nsIDOMDocument* domdoc,
-                         nsIDOMEventTarget* target,
-                         nsDOMGamepad* gamepad,
-                         PRUint32 axis,
-                         float value);
-
-  void NewConnectionEvent(PRUint32 index, bool connected);
-  void FireConnectionEvent(nsIDOMDocument* domdoc,
-                           nsIDOMEventTarget* target,
-                           nsDOMGamepad* gamepad,
-                           bool connected);
+  NS_EXPORT_(void) NewButtonEvent(PRUint32 index, PRUint32 button, bool pressed);
+  NS_EXPORT_(void) NewAxisMoveEvent(PRUint32  index, PRUint32 axis, float value);
 
  protected:
   GamepadService();
@@ -97,6 +81,22 @@ class GamepadService {
   virtual void Startup() = 0;
   virtual void Shutdown() = 0;
   void StartCleanupTimer();
+
+  void NewConnectionEvent(PRUint32 index, bool connected);
+  void FireAxisMoveEvent(nsIDOMDocument* domdoc,
+                         nsIDOMEventTarget* target,
+                         nsDOMGamepad* gamepad,
+                         PRUint32 axis,
+                         float value);
+  void FireButtonEvent(nsIDOMDocument* domdoc,
+                       nsIDOMEventTarget* target,
+                       nsDOMGamepad* gamepad,
+                       PRUint32 button,
+                       bool pressed);
+  void FireConnectionEvent(nsIDOMDocument* domdoc,
+                           nsIDOMEventTarget* target,
+                           nsDOMGamepad* gamepad,
+                           bool connected);
 
   // true if the platform-specific backend has started work
   bool mStarted;

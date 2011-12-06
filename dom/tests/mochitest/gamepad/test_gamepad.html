@@ -1,0 +1,31 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Test gamepad  </title>
+  <script type="text/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
+</head>
+<body>
+<script type="text/javascript" src="mock_gamepad.js"></script>
+<iframe id="f" src="http://mochi.test:8888/tests/dom/tests/mochitest/gamepad/gamepad_frame.html"></iframe>
+<script class="testbody" type="text/javascript">
+SimpleTest.waitForExplicitFinish();
+var f = document.getElementById("f");
+f.addEventListener("load", function() {
+  dump("test_gamepad: frame loaded\n");
+  // Add a gamepad
+  var index = GamepadService.AddGamepad("test gamepad", // id
+                                        4, // buttons
+                                        2);// axes
+  dump("test_gamepad: gamepad index: " + index + "\n");
+  // And press a button
+  GamepadService.NewButtonEvent(index, 0, true);
+});
+f.addEventListener("gamepad-name", function(e) {
+  is(e.detail, "test gamepad", "gamepad name correct");
+  SimpleTest.finish();
+});
+</script>
+</body>
+</html>
+
