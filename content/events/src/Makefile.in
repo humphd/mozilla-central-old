@@ -50,8 +50,9 @@ EXPORTS		= \
 		nsEventStateManager.h \
 		nsEventListenerManager.h \
 		nsDOMEventTargetHelper.h \
+		nsDOMGamepad.h \
 		$(NULL)
-		
+
 CPPSRCS		= \
 		nsEventListenerManager.cpp \
 		nsEventStateManager.cpp \
@@ -98,6 +99,15 @@ CPPSRCS		= \
 		nsDOMCustomEvent.cpp \
 		nsDOMCompositionEvent.cpp \
 		$(NULL)
+
+ifdef MOZ_GAMEPAD
+CPPSRCS += \
+  nsDOMGamepad.cpp \
+  nsDOMGamepadButtonEvent.cpp \
+  nsDOMGamepadAxisMoveEvent.cpp \
+  nsDOMGamepadConnectionEvent.cpp \
+  $(NULL) 
+endif
 
 # we don't want the shared lib, but we want to force the creation of a static lib.
 FORCE_STATIC_LIB = 1

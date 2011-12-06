@@ -305,6 +305,14 @@ nsEventListenerManager::AddEventListener(nsIDOMEventListener *aListener,
 #endif
       window->SetHasMouseEnterLeaveEventListeners();
     }
+#ifdef MOZ_GAMEPAD
+  } else if (aType >= NS_MOZGAMEPAD_START &&
+             aType <= NS_MOZGAMEPAD_END) {
+    nsPIDOMWindow* window = GetInnerWindowForTarget();
+    if (window) {
+      window->SetHasGamepadEventListener();
+    }
+#endif
   }
 }
 

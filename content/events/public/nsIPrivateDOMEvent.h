@@ -146,4 +146,12 @@ nsresult
 NS_NewDOMCustomEvent(nsIDOMEvent** aInstancePtrResult, nsPresContext* aPresContext, nsEvent* aEvent);
 nsresult
 NS_NewDOMSmsEvent(nsIDOMEvent** aInstancePtrResult, nsPresContext* aPresContext, nsEvent* aEvent);
+#ifdef MOZ_GAMEPAD
+nsresult
+NS_NewDOMGamepadButtonEvent(nsIDOMEvent** aInstancePtrResult, nsPresContext* aPresContext, class nsEvent *aEvent, class nsIDOMGamepad *aGamepad = NULL, PRUint32 aButton = 0);
+nsresult
+NS_NewDOMGamepadAxisMoveEvent(nsIDOMEvent** aInstancePtrResult, nsPresContext* aPresContext, class nsEvent *aEvent, class nsIDOMGamepad *aGamepad = NULL, PRUint32 aAxis = 0, float aValue = 0.0);
+nsresult
+NS_NewDOMGamepadConnectionEvent(nsIDOMEvent** aInstancePtrResult, nsPresContext* aPresContext, class nsEvent *aEvent, class nsIDOMGamepad *aGamepad = NULL);
+#endif
 #endif // nsIPrivateDOMEvent_h__

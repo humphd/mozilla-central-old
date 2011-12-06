@@ -6070,6 +6070,30 @@ fi
 fi
 
 dnl ========================================================
+dnl Gamepad support
+dnl ========================================================
+case "$target_os" in
+*)
+    MOZ_GAMEPAD=
+    ;;
+esac
+
+MOZ_ARG_DISABLE_BOOL(gamepad,
+[  --disable-gamepad   Disable gamepad support],
+    MOZ_GAMEPAD=,
+    MOZ_GAMEPAD=1)
+
+if test "$MOZ_GAMEPAD"; then
+    case "$target_os" in
+    *)
+        ;;
+   esac
+
+  AC_DEFINE(MOZ_GAMEPAD)
+fi
+AC_SUBST(MOZ_GAMEPAD)
+
+dnl ========================================================
 dnl = Breakpad crash reporting (on by default on supported platforms)
 dnl ========================================================
 

@@ -518,6 +518,13 @@ DOMCI_CLASS(Touch)
 DOMCI_CLASS(TouchList)
 DOMCI_CLASS(TouchEvent)
 
+#ifdef MOZ_GAMEPAD
+DOMCI_CLASS(Gamepad)
+DOMCI_CLASS(GamepadButtonEvent)
+DOMCI_CLASS(GamepadAxisMoveEvent)
+DOMCI_CLASS(GamepadConnectionEvent)
+#endif
+
 DOMCI_CLASS(MozCSSKeyframeRule)
 DOMCI_CLASS(MozCSSKeyframesRule)
 
