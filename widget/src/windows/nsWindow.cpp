@@ -4646,6 +4646,27 @@ bool nsWindow::ProcessMessage(UINT msg, WPARAM &wParam, LPARAM &lParam,
       OnSysColorChanged();
       break;
 
+    case WM_DEVICECHANGE:
+    {
+      const uint DBT_DEVICEARRIVAL        = 0x8000;
+      const uint DBT_DEVICEREMOVECOMPLETE = 0x8004;
+      const uint DBT_DEVNODES_CHANGED     = 0x7;
+
+      nsCOMPtr<nsIObserverService> obsService = mozilla::services::GetObserverService();
+      if (obsService) {
+        switch (wParam) {
+          case DBT_DEVICEARRIVAL:
+          case DBT_DEVICEREMOVECOMPLETE:
+          case DBT_DEVNODES_CHANGED:
+            obsService->NotifyObservers(
+              nsnull, "devices-changed", nsnull
+            );
+          break;
+        }
+      }
+      break;
+    }
+
     case WM_NOTIFY:
       // TAB change
     {
