@@ -6012,6 +6012,18 @@ x86_64)
   ;;
 esac
 
+# Locate a DirectX SDK here so we can use it for both ANGLE and
+# Joystick support.
+# Get the SDK path from the registry.
+# First try to get the June 2010 SDK
+MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK (June 2010)' | head -n 1`
+if test -z "$MOZ_DIRECTX_SDK_REG_KEY" ; then
+  # Otherwise just take whatever comes first
+  MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK' | head -n 1`
+fi
+
+MOZ_DIRECTX_SDK_PATH=`reg query "$MOZ_DIRECTX_SDK_REG_KEY" //v InstallPath | grep REG_SZ | sed 's/.*\([[a-zA-Z]]\)\\:\\\\/\\1\\:\\\\/'`
+
 if test -n "$MOZ_ANGLE"; then
 MOZ_ARG_DISABLE_BOOL(angle,
 [  --disable-angle     Disable building of ANGLE for WebGL->D3D translation],
@@ -6023,18 +6035,8 @@ if test -n "$MOZ_ANGLE"; then
     AC_MSG_ERROR([Building ANGLE requires MSVC.  To build without ANGLE, reconfigure with --disable-angle.])
   fi
 
-  # Get the SDK path from the registry.
-  # First try to get the June 2010 SDK
-  MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK (June 2010)' | head -n 1`
-  if test -z "$MOZ_DIRECTX_SDK_REG_KEY" ; then
-    # Otherwise just take whatever comes first
-    MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK' | head -n 1`
-  fi
-
   if test -n "`echo $MOZ_DIRECTX_SDK_REG_KEY | grep 'February 2010'`" ; then
     AC_MSG_ERROR([Found the February 2010 DirectX SDK. This is too old. We now require the June 2010 DirectX SDK, or newer.  Upgrade your SDK or to explicitly build without ANGLE, reconfigure with --disable-angle.])
-  else
-    MOZ_DIRECTX_SDK_PATH=`reg query "$MOZ_DIRECTX_SDK_REG_KEY" //v InstallPath | grep REG_SZ | sed 's/.*\([[a-zA-Z]]\)\\:\\\\/\\1\\:\\\\/'`
   fi
 
   MOZ_ANGLE=
@@ -6068,6 +6070,51 @@ if test -n "$MOZ_ANGLE"; then
   fi
 fi
 fi
+
+dnl ========================================================
+dnl Gamepad support
+dnl ========================================================
+case "$target_os" in
+darwin*|mingw*|linux*)
+    MOZ_GAMEPAD=1
+    ;;
+*)
+    MOZ_GAMEPAD=
+    ;;
+esac
+
+MOZ_ARG_DISABLE_BOOL(gamepad,
+[  --disable-gamepad   Disable gamepad support],
+    MOZ_GAMEPAD=,
+    MOZ_GAMEPAD=1)
+
+if test "$MOZ_GAMEPAD"; then
+    case "$target_os" in
+    *mingw*)
+        if test -n "$MOZ_DIRECTX_SDK_PATH" ; then
+            if ! test -f "$MOZ_DIRECTX_SDK_PATH"/lib/$MOZ_DIRECTX_SDK_CPU_SUFFIX/dxguid.lib ; then
+               MOZ_GAMEPAD=
+            fi
+        else
+            MOZ_GAMEPAD=
+        fi
+        if test -z "$MOZ_GAMEPAD"; then
+           AC_MSG_ERROR([Couldn't find the DirectX SDK, needed for gamepad support. Please install it or, reconfigure with --disable-gamepad to disable gamepad support.])
+        fi
+        ;;
+    linux*)
+        MOZ_CHECK_HEADER([linux/joystick.h])
+        if test "$ac_cv_header_linux_joystick_h" != "yes"; then
+          AC_MSG_ERROR([Can't find header linux/joystick.h, needed for gamepad support. Please install Linux kernel headers or reconfigure with --disable-gamepad to disable gamepad support.])
+        fi
+        ;;
+    *)
+        ;;
+   esac
+
+  AC_DEFINE(MOZ_GAMEPAD)
+fi
+AC_SUBST(MOZ_GAMEPAD)
 
 dnl ========================================================
 dnl = Breakpad crash reporting (on by default on supported platforms)

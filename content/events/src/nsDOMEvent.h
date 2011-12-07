@@ -175,6 +175,13 @@ public:
     eDOMEvents_volumechange,
     eDOMEvents_mozaudioavailable,
 #endif
+#ifdef MOZ_GAMEPAD
+    eDOMEvents_mozgamepadbuttondown,
+    eDOMEvents_mozgamepadbuttonup,
+    eDOMEvents_mozgamepadaxismove,
+    eDOMEvents_mozgamepadconnected,
+    eDOMEvents_mozgamepaddisconnected,
+#endif
     eDOMEvents_afterpaint,
     eDOMEvents_beforeresize,
     eDOMEvents_mozfullscreenchange,

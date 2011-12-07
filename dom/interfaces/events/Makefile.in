@@ -86,6 +86,10 @@ XPIDLSRCS =					\
 	nsIDOMHashChangeEvent.idl		\
 	nsIDOMCustomEvent.idl			\
 	nsIDOMCompositionEvent.idl		\
+	nsIDOMGamepad.idl		        \
+	nsIDOMGamepadButtonEvent.idl		\
+	nsIDOMGamepadAxisMoveEvent.idl		\
+	nsIDOMGamepadConnectionEvent.idl	\
 	$(NULL)
 
 include $(topsrcdir)/config/rules.mk

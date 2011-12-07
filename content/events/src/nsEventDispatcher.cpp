@@ -895,6 +895,14 @@ nsEventDispatcher::CreateEvent(nsPresContext* aPresContext,
     return NS_NewDOMPopStateEvent(aDOMEvent, aPresContext, nsnull);
   if (aEventType.LowerCaseEqualsLiteral("mozaudioavailableevent"))
     return NS_NewDOMAudioAvailableEvent(aDOMEvent, aPresContext, nsnull);
+#ifdef MOZ_GAMEPAD
+  if (aEventType.LowerCaseEqualsLiteral("mozgamepadbuttonevent"))
+    return NS_NewDOMGamepadButtonEvent(aDOMEvent, aPresContext, nsnull);
+  if (aEventType.LowerCaseEqualsLiteral("mozgamepadaxismoveevent"))
+    return NS_NewDOMGamepadAxisMoveEvent(aDOMEvent, aPresContext, nsnull);
+  if (aEventType.LowerCaseEqualsLiteral("mozgamepadconnectionevent"))
+    return NS_NewDOMGamepadConnectionEvent(aDOMEvent, aPresContext, nsnull);
+#endif
   if (aEventType.LowerCaseEqualsLiteral("closeevent"))
     return NS_NewDOMCloseEvent(aDOMEvent, aPresContext, nsnull);
   if (aEventType.LowerCaseEqualsLiteral("touchevent") &&

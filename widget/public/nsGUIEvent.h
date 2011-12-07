@@ -546,6 +546,18 @@ class nsHashKey;
 #define NS_FULLSCREENCHANGE          (NS_FULL_SCREEN_START)
 #define NS_FULLSCREENERROR           (NS_FULL_SCREEN_START + 1)
 
+#ifdef MOZ_GAMEPAD
+// Gamepad input events
+#define NS_MOZGAMEPAD_START         6000
+#define NS_MOZGAMEPAD_BUTTONDOWN    (NS_MOZGAMEPAD_START)
+#define NS_MOZGAMEPAD_BUTTONUP      (NS_MOZGAMEPAD_START+1)
+#define NS_MOZGAMEPAD_AXISMOVE      (NS_MOZGAMEPAD_START+2)
+#define NS_MOZGAMEPAD_CONNECTED     (NS_MOZGAMEPAD_START+3)
+#define NS_MOZGAMEPAD_DISCONNECTED  (NS_MOZGAMEPAD_START+4)
+// Keep this defined to the same value as the event above
+#define NS_MOZGAMEPAD_END           (NS_MOZGAMEPAD_START+4)
+#endif
+
 /**
  * Return status for event processors, nsEventStatus, is defined in
  * nsEvent.h.

@@ -576,6 +576,11 @@ public:
    * Tell this window that we remove an orientation listener
    */
   virtual void RemoveOrientationEventListener() = 0;
+  
+  /**
+   * Tell this window that there is an observer for gamepad input
+   */
+  virtual void SetHasGamepadEventListener() = 0;
 
   /**
    * Set a arguments for this window. This will be set on the window

@@ -432,6 +432,13 @@ members = [
     'nsIDOMNotifyAudioAvailableEvent.time',
     'nsIDOMHTMLAudioElement.mozWriteAudio',
 
+    # Gamepad
+    'nsIDOMGamepadButtonEvent.button',
+    'nsIDOMGamepadButtonEvent.gamepad',
+    'nsIDOMGamepadAxisMoveEvent.axis',
+    'nsIDOMGamepadAxisMoveEvent.value',
+    'nsIDOMGamepadAxisMoveEvent.gamepad',
+
     # dom/indexedDB
     'nsIIDBCursor.*',
     'nsIIDBCursorWithValue.*',

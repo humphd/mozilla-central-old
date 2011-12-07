@@ -59,6 +59,12 @@ CPPSRCS     = \
         $(NULL)
 endif
 
+ifdef MOZ_GAMEPAD
+ifeq (Linux,$(OS_TARGET))
+CPPSRCS += LinuxGamepadService.cpp
+endif
+endif
+
 ifdef MOZ_MAEMO_LIBLOCATION
         CPPSRCS         += MaemoLocationProvider.cpp
         LOCAL_INCLUDES  += $(MOZ_PLATFORM_MAEMO_CFLAGS) \
@@ -81,5 +87,7 @@ LOCAL_INCLUDES  += $(MOZ_QT_CFLAGS) \
                    $(NULL)
 endif
 endif
+
+LOCAL_INCLUDES += -I$(topsrcdir)/dom/base
 
 include $(topsrcdir)/config/rules.mk

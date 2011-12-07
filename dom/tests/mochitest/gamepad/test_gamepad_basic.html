@@ -1,0 +1,20 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Test gamepad  </title>
+  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<script class="testbody" type="text/javascript">
+
+// Not much we can test here, but this is enough to get the
+// gamepad service up and running, which should test that it
+// doesn't leak anything.
+window.addEventListener("MozGamepadConnected", function() {});
+SimpleTest.ok(true, "dummy check");
+
+</script>
+</body>
+</html>
+

@@ -342,6 +342,12 @@
 #include "nsIControllers.h"
 #include "nsISelection.h"
 #include "nsIBoxObject.h"
+#ifdef MOZ_GAMEPAD
+#include "nsIDOMGamepad.h"
+#include "nsIDOMGamepadButtonEvent.h"
+#include "nsIDOMGamepadAxisMoveEvent.h"
+#include "nsIDOMGamepadConnectionEvent.h"
+#endif
 #ifdef MOZ_XUL
 #include "nsITreeSelection.h"
 #include "nsITreeContentView.h"
@@ -1540,6 +1546,17 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            ARRAY_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(TouchEvent, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
+
+#ifdef MOZ_GAMEPAD
+  NS_DEFINE_CLASSINFO_DATA(Gamepad, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+  NS_DEFINE_CLASSINFO_DATA(GamepadButtonEvent, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+  NS_DEFINE_CLASSINFO_DATA(GamepadAxisMoveEvent, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+  NS_DEFINE_CLASSINFO_DATA(GamepadConnectionEvent, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+#endif
 
   NS_DEFINE_CLASSINFO_DATA(MozCSSKeyframeRule, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
@@ -4164,6 +4181,27 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMTouchEvent)
     DOM_CLASSINFO_UI_EVENT_MAP_ENTRIES
   DOM_CLASSINFO_MAP_END
+
+#ifdef MOZ_GAMEPAD
+  DOM_CLASSINFO_MAP_BEGIN(Gamepad, nsIDOMGamepad)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMGamepad)
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(GamepadButtonEvent, nsIDOMGamepadButtonEvent)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMGamepadButtonEvent)
+    DOM_CLASSINFO_EVENT_MAP_ENTRIES
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(GamepadAxisMoveEvent, nsIDOMGamepadAxisMoveEvent)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMGamepadAxisMoveEvent)
+    DOM_CLASSINFO_EVENT_MAP_ENTRIES
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(GamepadConnectionEvent, nsIDOMGamepadConnectionEvent)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMGamepadConnectionEvent)
+    DOM_CLASSINFO_EVENT_MAP_ENTRIES
+  DOM_CLASSINFO_MAP_END
+#endif
 
   DOM_CLASSINFO_MAP_BEGIN(MozCSSKeyframeRule, nsIDOMMozCSSKeyframeRule)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozCSSKeyframeRule)

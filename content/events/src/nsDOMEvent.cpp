@@ -92,6 +92,13 @@ static const char* const sEventNames[] = {
   "canplaythrough", "seeking", "seeked", "timeupdate", "ended", "ratechange",
   "durationchange", "volumechange", "MozAudioAvailable",
 #endif // MOZ_MEDIA
+#ifdef MOZ_GAMEPAD
+  "MozGamepadButtonDown",
+  "MozGamepadButtonUp",
+  "MozGamepadAxisMove",
+  "MozGamepadConnected",
+  "MozGamepadDisconnected",
+#endif
   "MozAfterPaint",
   "MozBeforeResize",
   "mozfullscreenchange",
@@ -1342,6 +1349,18 @@ const char* nsDOMEvent::GetEventName(PRUint32 aEventType)
     return sEventNames[eDOMEvents_volumechange];
   case NS_MOZAUDIOAVAILABLE:
     return sEventNames[eDOMEvents_mozaudioavailable];
+#endif
+#ifdef MOZ_GAMEPAD
+  case NS_MOZGAMEPAD_BUTTONDOWN:
+    return sEventNames[eDOMEvents_mozgamepadbuttondown];
+  case NS_MOZGAMEPAD_BUTTONUP:
+    return sEventNames[eDOMEvents_mozgamepadbuttonup];
+  case NS_MOZGAMEPAD_AXISMOVE:
+    return sEventNames[eDOMEvents_mozgamepadaxismove];
+  case NS_MOZGAMEPAD_CONNECTED:
+    return sEventNames[eDOMEvents_mozgamepadconnected];
+  case NS_MOZGAMEPAD_DISCONNECTED:
+    return sEventNames[eDOMEvents_mozgamepaddisconnected];
 #endif
   case NS_AFTERPAINT:
     return sEventNames[eDOMEvents_afterpaint];
