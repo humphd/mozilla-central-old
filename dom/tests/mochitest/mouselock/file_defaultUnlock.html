@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+<head>
+  <title>Test for Bug 633602</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
+	<script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">      
+  </script>
+  <script type="application/javascript" src="mouselock_util.js">      
+  </script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+  <a target="_blank"
+	   href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+		   Mozilla Bug 633602
+	</a>
+
+  <p id="display"></p>
+
+  <div id="content" style="display: none">
+  </div>
+  <canvas id="canvas" width="150" height="150"></canvas>
+  <pre id="test">
+    <script>
+      SimpleTest.waitForExplicitFinish();
+      var utils = window.QueryInterface(
+	                Components.interfaces.nsIInterfaceRequestor
+					).getInterface(Components.interfaces.nsIDOMWindowUtils);
+
+      var defaultTest = function(e) {
+
+      //Local Variables
+        var canvas = document.getElementById("canvas");
+        var pointer = navigator.pointer;
+        var runOnce = false;
+
+        //Local Functions
+        var onLockGet = function(e) {
+          ok(pointer.islocked(),
+             "Element should be locked after the lock() function is called");
+          netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
+          utils.sendKeyEvent("keydown", 27, 27, 0);
+          utils.sendKeyEvent("keyup", 27, 27, 0);
+          setTimeout(function() {
+            ok(!pointer.islocked(),
+               "Element should be unlock after ESC key was injected");
+            SimpleTest.finish();
+          },1000);
+        };
+        var onLockFail = function(e) {
+          ok(false,"Lock()'s failed callback was called, lock() did not succeed");
+          SimpleTest.finish();
+        };
+        var onFullScreen = function(e) {
+          if(!runOnce){
+            runOnce = true;
+            pointer.lock(canvas,onLockGet, onLockFail);
+          }
+        };
+
+      //Full screen
+        document.body.mozRequestFullScreen();
+        document.addEventListener("mozfullscreenchange",onFullScreen,false);
+
+        canvas.focus();
+        canvas.mozRequestFullScreen();
+      };
+      defaultTest();
+    </script>
+  </pre>
+</body>
+</html>

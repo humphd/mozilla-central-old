@@ -234,8 +234,6 @@ typedef Vector<UpvarCookie, 8> UpvarCookies;
 
 class Breakpoint;
 class BreakpointSite;
-typedef HashMap<jsbytecode *, BreakpointSite *, DefaultHasher<jsbytecode *>, RuntimeAllocPolicy>
-    BreakpointSiteMap;
 class Debugger;
 class WatchpointMap;
 
@@ -244,6 +242,14 @@ typedef HashMap<JSAtom *,
                 DefaultHasher<JSAtom *>,
                 RuntimeAllocPolicy>
     RegExpPrivateCache;
+
+/*
+ * Env is the type of what ES5 calls "lexical environments" (runtime
+ * activations of lexical scopes). This is currently just JSObject, and is
+ * implemented by Call, Block, With, and DeclEnv objects, among others--but
+ * environments and objects are really two different concepts.
+ */
+typedef JSObject Env;
 
 typedef JSNative             Native;
 typedef JSPropertyOp         PropertyOp;

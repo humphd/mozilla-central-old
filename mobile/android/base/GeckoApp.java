@@ -598,9 +598,13 @@ abstract public class GeckoApp
                 mLastUri = lastHistoryEntry.mUri;
                 mLastTitle = lastHistoryEntry.mTitle;
                 Bitmap bitmap = mSoftwareLayerClient.getBitmap();
-                ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                bitmap.compress(Bitmap.CompressFormat.PNG, 0, bos);
-                mLastScreen = bos.toByteArray();
+                if (bitmap != null) {
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 0, bos);
+                    mLastScreen = bos.toByteArray();
+                } else {
+                    mLastScreen = null;
+                }
             }
         }
     };
@@ -674,8 +678,16 @@ abstract public class GeckoApp
         if (oldBaseURI != null && oldBaseURI.indexOf('#') != -1)
             oldBaseURI = oldBaseURI.substring(0, oldBaseURI.indexOf('#'));
         
-        if (baseURI.equals(oldBaseURI))
+        if (baseURI.equals(oldBaseURI)) {
+            mMainHandler.post(new Runnable() {
+                public void run() {
+                    if (Tabs.getInstance().isSelectedTab(tab)) {
+                        mBrowserToolbar.setTitle(uri);
+                    }
+                }
+            });
             return;
+        }
 
         tab.updateFavicon(null);
         tab.updateFaviconURL(null);
@@ -711,17 +723,21 @@ abstract public class GeckoApp
         });
     }
 
-    File getProfileDir() {
+    public File getProfileDir() {
+        // XXX: TO-DO read profiles.ini to get the default profile
+        return getProfileDir("default");
+    }
+
+    public File getProfileDir(final String profileName) {
         if (mProfileDir == null && !mUserDefinedProfile) {
             File mozDir = new File(GeckoAppShell.sHomeDir, "mozilla");
             File[] profiles = mozDir.listFiles(new FileFilter() {
                 public boolean accept(File pathname) {
-                    return pathname.getName().endsWith(".default");
+                    return pathname.getName().endsWith("." + profileName);
                 }
             });
             if (profiles.length == 1)
                 mProfileDir = profiles[0];
-            // XXX: TO-DO read profiles.ini to get the default profile
         }
         return mProfileDir;
     }
@@ -1093,15 +1109,7 @@ abstract public class GeckoApp
 
                 if (Tabs.getInstance().isSelectedTab(tab)) {
                     mBrowserToolbar.setTitle(tab.getDisplayTitle());
-                    Bitmap screencap = null;
-                    try {
-                        screencap = mSoftwareLayerClient.getBitmap();
-                    } catch (OutOfMemoryError oom) {
-                        Log.e(LOGTAG, "Unable to generate thumbnail", oom);
-                    }
-                    if (screencap != null) {
-                        tab.updateThumbnail(screencap);
-                    }
+                    tab.updateThumbnail(mSoftwareLayerClient.getBitmap());
                 }
                 onTabsChanged(tab);
             }
@@ -1126,7 +1134,7 @@ abstract public class GeckoApp
     }
 
     void handleLinkAdded(final int tabId, String rel, final String href) {
-        if (rel.indexOf("icon") != -1) {
+        if (rel.indexOf("[icon]") != -1) {
             final Tab tab = Tabs.getInstance().getTab(tabId);
             if (tab != null) {
                 tab.updateFaviconURL(href);
@@ -1264,6 +1272,7 @@ abstract public class GeckoApp
             GeckoActionBar actionBar = new GeckoActionBar();
             mBrowserToolbar = (BrowserToolbar) getLayoutInflater().inflate(R.layout.gecko_app_actionbar, null);
 
+            actionBar.setBackgroundDrawable(this, getResources().getDrawable(R.drawable.gecko_actionbar_bg));
             actionBar.setDisplayOptions(this, ActionBar.DISPLAY_SHOW_CUSTOM, ActionBar.DISPLAY_SHOW_CUSTOM |
                                                                              ActionBar.DISPLAY_SHOW_HOME |
                                                                              ActionBar.DISPLAY_SHOW_TITLE |
@@ -1889,9 +1898,10 @@ abstract public class GeckoApp
             if (data != null) {
                 String url = data.getStringExtra(AwesomeBar.URL_KEY);
                 AwesomeBar.Type type = AwesomeBar.Type.valueOf(data.getStringExtra(AwesomeBar.TYPE_KEY));
+                String searchEngine = data.getStringExtra(AwesomeBar.SEARCH_KEY);
                 if (url != null && url.length() > 0) {
                     mBrowserToolbar.setProgressVisibility(true);
-                    loadUrl(url, type);
+                    loadRequest(url, type, searchEngine);
                 }
             }
             break;
@@ -1916,14 +1926,27 @@ abstract public class GeckoApp
         startActivityForResult(intent, CAMERA_CAPTURE_REQUEST);
     }
 
-    public void loadUrl(String url, AwesomeBar.Type type) {
+    // If searchEngine is provided, url will be used as the search query.
+    // Otherwise, the url is loaded.
+    private void loadRequest(String url, AwesomeBar.Type type, String searchEngine) {
         mBrowserToolbar.setTitle(url);
         Log.d(LOGTAG, type.name());
-        if (type == AwesomeBar.Type.ADD) {
-            GeckoAppShell.sendEventToGecko(new GeckoEvent("Tab:Add", url));
-        } else {
-            GeckoAppShell.sendEventToGecko(new GeckoEvent("Tab:Load", url));
+        JSONObject args = new JSONObject();
+        try {
+            args.put("url", url);
+            args.put("engine", searchEngine);
+        } catch (Exception e) {
+            Log.e(LOGTAG, "error building JSON arguments");
         }
+        if (type == AwesomeBar.Type.ADD) {
+            GeckoAppShell.sendEventToGecko(new GeckoEvent("Tab:Add", args.toString()));
+        } else {
+            GeckoAppShell.sendEventToGecko(new GeckoEvent("Tab:Load", args.toString()));
+        }
+    }
+
+    public void loadUrl(String url, AwesomeBar.Type type) {
+        loadRequest(url, type, null);
     }
 
     public GeckoSoftwareLayerClient getSoftwareLayerClient() { return mSoftwareLayerClient; }

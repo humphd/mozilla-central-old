@@ -19,6 +19,14 @@
 #
 # Contributor(s):
 #   David Humphrey <david.humphrey@senecac.on.ca>
+#   Raymond Hung <hung.raymond@gmail.com>
+#   Ching Wei Tseng (Steven) <steven_tseng15@hotmail.com>
+#   Stanley Tsang <nm486@hotmail.com>
+#   James Boelen <james@boelen.ca>
+#   Hyungryul Chun <hello.ryul@gmail.com>
+#   Matthew Schranz <schranz.m@gmail.com>
+#   Abhishek Bhatnagar <abhatnagar1@learn.senecac.on.ca>
+#   Qian Xu <qxu26@learn.senecac.on.ca>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -45,8 +53,19 @@ include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 
 _TEST_FILES	= \
-    navigatorPointer.html \
-    test_fullscreen.html \
+    test_mouseLockable.html \
+    test_FullScreenHarness.html \
+    mouselock_util.js \
+    file_defaultUnlock.html \
+    file_DOMtree.html \
+    file_mouselocklost.html \
+    file_constantxy.html \
+    file_limitlessScroll.html \
+    file_MouseEvents.html \
+    file_movement.html \
+    file_userPref.html \
+    file_syntheticMouseEvent.html \
+    file_targetOutOfFocus.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)

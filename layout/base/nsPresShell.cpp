@@ -203,6 +203,7 @@
 #include "mozilla/FunctionTimer.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
+#include "sampler.h"
 
 #include "Layers.h"
 #include "nsPLDOMEvent.h"
@@ -3974,6 +3975,7 @@ PresShell::FlushPendingNotifications(mozFlushType aType)
   NS_TIME_FUNCTION_MIN_FMT(1.0, "%s (line %d) (document: %s, type: %s)", MOZ_FUNCTION_NAME,
                            __LINE__, docURL__.get(), flushTypeNames[aType - 1]);
 #endif
+  SAMPLE_LABEL("layout", "FlushPendingNotifications");
 
 #ifdef ACCESSIBILITY
 #ifdef DEBUG
@@ -5421,6 +5423,7 @@ PresShell::Paint(nsIView*           aViewToPaint,
                            NSCoordToFloat(bounds__.YMost()));
 #endif
 
+  SAMPLE_LABEL("Paint", "PresShell::Paint");
   NS_ASSERTION(!mIsDestroying, "painting a destroyed PresShell");
   NS_ASSERTION(aViewToPaint, "null view");
   NS_ASSERTION(aWidgetToPaint, "Can't paint without a widget");
@@ -6337,9 +6340,7 @@ PresShell::HandleEventInternal(nsEvent* aEvent, nsEventStatus* aStatus)
           if (aEvent->message == NS_KEY_UP) {
            // ESC key released while in DOM full-screen mode.
            // Exit full-screen mode.
-           NS_DispatchToCurrentThread(
-             NS_NewRunnableMethod(root,
-                                  &nsIDocument::CancelFullScreen));
+            nsIDocument::ExitFullScreen(true);
           }
         } else if (IsFullScreenAndRestrictedKeyEvent(mCurrentEventContent, aEvent)) {
           // Restricted key press while in DOM full-screen mode. Dispatch
@@ -7205,6 +7206,7 @@ bool
 PresShell::DoReflow(nsIFrame* target, bool aInterruptible)
 {
   NS_TIME_FUNCTION_WITH_DOCURL;
+  SAMPLE_LABEL("layout", "DoReflow");
 
   if (mReflowContinueTimer) {
     mReflowContinueTimer->Cancel();
@@ -7290,34 +7292,36 @@ PresShell::DoReflow(nsIFrame* target, bool aInterruptible)
   // root frame, then its desired size had better not change!  If it's
   // initiated at the root, then the size better not change unless its
   // height was unconstrained to start with.
+  nsRect boundsRelativeToTarget = nsRect(0, 0, desiredSize.width, desiredSize.height);
   NS_ASSERTION((target == rootFrame && size.height == NS_UNCONSTRAINEDSIZE) ||
                (desiredSize.width == size.width &&
                 desiredSize.height == size.height),
                "non-root frame's desired size changed during an "
                "incremental reflow");
-  NS_ASSERTION(target == rootFrame || desiredSize.VisualOverflow().IsEqualInterior(
-                 nsRect(nsPoint(0, 0),
-                        nsSize(desiredSize.width, desiredSize.height))),
+  NS_ASSERTION(target == rootFrame ||
+               desiredSize.VisualOverflow().IsEqualInterior(boundsRelativeToTarget),
                "non-root reflow roots must not have visible overflow");
-  NS_ASSERTION(target == rootFrame || desiredSize.ScrollableOverflow().IsEqualEdges(
-                 nsRect(nsPoint(0, 0),
-                        nsSize(desiredSize.width, desiredSize.height))),
+  NS_ASSERTION(target == rootFrame ||
+               desiredSize.ScrollableOverflow().IsEqualEdges(boundsRelativeToTarget),
                "non-root reflow roots must not have scrollable overflow");
   NS_ASSERTION(status == NS_FRAME_COMPLETE,
                "reflow roots should never split");
 
-  target->SetSize(nsSize(desiredSize.width, desiredSize.height));
+  target->SetSize(boundsRelativeToTarget.Size());
 
+  // Always use boundsRelativeToTarget here, not desiredSize.GetVisualOverflowArea(),
+  // because for root frames (where they could be different, since root frames
+  // are allowed to have overflow) the root view bounds need to match the
+  // viewport bounds; the view manager "window dimensions" code depends on it.
   nsContainerFrame::SyncFrameViewAfterReflow(mPresContext, target,
                                              target->GetView(),
-                                             desiredSize.VisualOverflow());
+                                             boundsRelativeToTarget);
   nsContainerFrame::SyncWindowProperties(mPresContext, target,
                                          target->GetView());
 
   target->DidReflow(mPresContext, nsnull, NS_FRAME_REFLOW_FINISHED);
   if (target == rootFrame && size.height == NS_UNCONSTRAINEDSIZE) {
-    mPresContext->SetVisibleArea(nsRect(0, 0, desiredSize.width,
-                                        desiredSize.height));
+    mPresContext->SetVisibleArea(boundsRelativeToTarget);
   }
 
 #ifdef DEBUG

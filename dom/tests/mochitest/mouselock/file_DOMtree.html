@@ -1,0 +1,65 @@
+<!DOCTYPE HTML>
+<html>
+  <!--
+  https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+
+  Test DOM tree in full screen
+  -->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js"></script>
+    <style>
+      body {
+        background-color: black;
+      }
+    </style>
+  </head>
+  <body onload="start();">
+    <script type="text/javascript">
+      var pointer = navigator.pointer;
+      var canvas = document.createElement('canvas');
+      canvas.id = "testCanvas";
+      canvas.width = 250;
+      canvas.height = 250;
+
+      var isMouseLocked = (function() {
+        is(pointer.islocked(),
+           false,
+           "Mouse should NOT be locked if DOM element is not in tree"
+        );
+      });
+
+      document.addEventListener("mozfullscreenchange", function (e) {
+        if (document.mozFullScreen) {
+          pointer.lock(canvas,
+          function() {
+            ok(pointer.islocked(),
+               "Mouse should be locked when DOM element is in the tree."
+            );
+            document.mozCancelFullScreen();
+          });
+        }
+        else {
+          document.body.removeChild(canvas);
+          is(pointer.islocked(),
+             false,
+             "Mouse should NOT be locked if DOM element is removed from tree.");
+          SimpleTest.finish();
+        }
+      }, false);
+
+      function start() {
+        SimpleTest.waitForFocus(function() {
+          pointer.lock(canvas, isMouseLocked, isMouseLocked);
+          document.body.appendChild(canvas);
+          canvas.mozRequestFullScreen();
+        });
+      }
+    </script>
+    <div id="full-screen-element"></div>
+  </body>
+</html>

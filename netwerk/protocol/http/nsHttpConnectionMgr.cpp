@@ -50,6 +50,7 @@
 
 #include "nsISSLSocketControl.h"
 #include "prnetdb.h"
+#include "mozilla/Telemetry.h"
 
 using namespace mozilla;
 
@@ -660,6 +661,8 @@ nsHttpConnectionMgr::GetSpdyPreferred(nsConnectionEntry *aOriginalEntry)
              "Host %s cannot be confirmed to be joined "
              "with %s connections",
              preferred->mConnInfo->Host(), aOriginalEntry->mConnInfo->Host()));
+        mozilla::Telemetry::Accumulate(mozilla::Telemetry::SPDY_NPN_JOIN,
+                                       false);
         return nsnull;
     }
 
@@ -667,6 +670,7 @@ nsHttpConnectionMgr::GetSpdyPreferred(nsConnectionEntry *aOriginalEntry)
     LOG(("nsHttpConnectionMgr::GetSpdyPreferredConnection "
          "Host %s has cert valid for %s connections",
          preferred->mConnInfo->Host(), aOriginalEntry->mConnInfo->Host()));
+    mozilla::Telemetry::Accumulate(mozilla::Telemetry::SPDY_NPN_JOIN, true);
     return preferred;
 }
 
@@ -2096,16 +2100,22 @@ nsHttpConnectionMgr::nsHalfOpenSocket::OnTransportStatus(nsITransport *trans,
 {
     NS_ASSERTION(PR_GetCurrentThread() == gSocketThread, "wrong thread");
 
+    if (mTransaction)
+        mTransaction->OnTransportStatus(trans, status, progress);
+
+    if (trans != mSocketTransport)
+        return NS_OK;
+
     // if we are doing spdy coalescing and haven't recorded the ip address
     // for this entry before then make the hash key if our dns lookup
     // just completed
 
-    if (gHttpHandler->IsSpdyEnabled() &&
+    if (status == nsISocketTransport::STATUS_CONNECTED_TO &&
+        gHttpHandler->IsSpdyEnabled() &&
         gHttpHandler->CoalesceSpdy() &&
         mEnt && mEnt->mConnInfo && mEnt->mConnInfo->UsingSSL() &&
         !mEnt->mConnInfo->UsingHttpProxy() &&
-        mEnt->mCoalescingKey.IsEmpty() &&
-        status == nsISocketTransport::STATUS_CONNECTED_TO) {
+        mEnt->mCoalescingKey.IsEmpty()) {
 
         PRNetAddr addr;
         nsresult rv = mSocketTransport->GetPeerAddr(&addr);
@@ -2129,12 +2139,6 @@ nsHttpConnectionMgr::nsHalfOpenSocket::OnTransportStatus(nsITransport *trans,
             gHttpHandler->ConnMgr()->ProcessSpdyPendingQ(mEnt);
         }
     }
-
-    if (mTransaction)
-        mTransaction->OnTransportStatus(trans, status, progress);
-
-    if (trans != mSocketTransport)
-        return NS_OK;
 
     switch (status) {
     case nsISocketTransport::STATUS_CONNECTING_TO:

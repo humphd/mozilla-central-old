@@ -49,6 +49,7 @@ import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.provider.Browser;
 import android.util.AttributeSet;
+import android.util.Base64;
 import android.util.Log;
 import android.util.Pair;
 import android.view.LayoutInflater;
@@ -66,11 +67,20 @@ import android.widget.SimpleExpandableListAdapter;
 import android.widget.TabHost;
 import android.widget.TextView;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import org.mozilla.gecko.db.BrowserDB;
+import org.mozilla.gecko.db.BrowserDB.URLColumns;
 
 public class AwesomeBarTabs extends TabHost {
     private static final String LOGTAG = "GeckoAwesomeBarTabs";
@@ -82,10 +92,12 @@ public class AwesomeBarTabs extends TabHost {
     private static enum HistorySection { TODAY, YESTERDAY, WEEK, OLDER };
 
     private Context mContext;
+    private boolean mInflated;
     private OnUrlOpenListener mUrlOpenListener;
     private View.OnTouchListener mListTouchListener;
+    private JSONArray mSearchEngines;
 
-    private SimpleCursorAdapter mAllPagesAdapter;
+    private AwesomeBarCursorAdapter mAllPagesCursorAdapter;
     private SimpleCursorAdapter mBookmarksAdapter;
     private SimpleExpandableListAdapter mHistoryAdapter;
 
@@ -94,7 +106,8 @@ public class AwesomeBarTabs extends TabHost {
     private static final int MAX_RESULTS = 100;
 
     public interface OnUrlOpenListener {
-        public abstract void onUrlOpen(AwesomeBarTabs tabs, String url);
+        public void onUrlOpen(String url);
+        public void onSearch(String engine);
     }
 
     private class HistoryListAdapter extends SimpleExpandableListAdapter {
@@ -118,7 +131,7 @@ public class AwesomeBarTabs extends TabHost {
             Map<String,Object> historyItem =
                     (Map<String,Object>) mHistoryAdapter.getChild(groupPosition, childPosition);
 
-            byte[] b = (byte[]) historyItem.get(Browser.BookmarkColumns.FAVICON);
+            byte[] b = (byte[]) historyItem.get(URLColumns.FAVICON);
             ImageView favicon = (ImageView) childView.findViewById(R.id.favicon);
 
             if (b == null) {
@@ -153,7 +166,7 @@ public class AwesomeBarTabs extends TabHost {
             // Use the URL instead of an empty title for consistency with the normal URL
             // bar view - this is the equivalent of getDisplayTitle() in Tab.java
             if (title == null || title.length() == 0) {
-                int urlIndex = cursor.getColumnIndexOrThrow(Browser.BookmarkColumns.URL);
+                int urlIndex = cursor.getColumnIndexOrThrow(URLColumns.URL);
                 title = cursor.getString(urlIndex);
             }
 
@@ -162,12 +175,12 @@ public class AwesomeBarTabs extends TabHost {
         }
 
         public boolean setViewValue(View view, Cursor cursor, int columnIndex) {
-            int faviconIndex = cursor.getColumnIndexOrThrow(Browser.BookmarkColumns.FAVICON);
+            int faviconIndex = cursor.getColumnIndexOrThrow(URLColumns.FAVICON);
             if (columnIndex == faviconIndex) {
                 return updateFavicon(view, cursor, faviconIndex);
             }
 
-            int titleIndex = cursor.getColumnIndexOrThrow(Browser.BookmarkColumns.TITLE);
+            int titleIndex = cursor.getColumnIndexOrThrow(URLColumns.TITLE);
             if (columnIndex == titleIndex) {
                 return updateTitle(view, cursor, titleIndex);
             }
@@ -180,16 +193,7 @@ public class AwesomeBarTabs extends TabHost {
     private class BookmarksQueryTask extends AsyncTask<Void, Void, Cursor> {
         protected Cursor doInBackground(Void... arg0) {
             ContentResolver resolver = mContext.getContentResolver();
-
-            return resolver.query(Browser.BOOKMARKS_URI,
-                                  null,
-                                  // Select all bookmarks with a non-empty URL. When the history
-                                  // is empty there appears to be a dummy entry in the database
-                                  // which has a title of "Bookmarks" and no URL; the length restriction
-                                  // is to avoid picking that up specifically.
-                                  Browser.BookmarkColumns.BOOKMARK + " = 1 AND LENGTH(" + Browser.BookmarkColumns.URL + ") > 0",
-                                  null,
-                                  Browser.BookmarkColumns.TITLE);
+            return BrowserDB.getAllBookmarks(resolver);
         }
 
         protected void onPostExecute(Cursor cursor) {
@@ -198,9 +202,9 @@ public class AwesomeBarTabs extends TabHost {
                 mContext,
                 R.layout.awesomebar_row,
                 cursor,
-                new String[] { AwesomeBar.TITLE_KEY,
-                               AwesomeBar.URL_KEY,
-                               Browser.BookmarkColumns.FAVICON },
+                new String[] { URLColumns.TITLE,
+                               URLColumns.URL,
+                               URLColumns.FAVICON },
                 new int[] { R.id.title, R.id.url, R.id.favicon }
             );
 
@@ -225,15 +229,7 @@ public class AwesomeBarTabs extends TabHost {
         protected Pair<List,List> doInBackground(Void... arg0) {
             Pair<List,List> result = null;
             ContentResolver resolver = mContext.getContentResolver();
-
-            Cursor cursor =
-                    resolver.query(Browser.BOOKMARKS_URI,
-                                   null,
-                                   // Bookmarks that have not been visited have a date value
-                                   // of 0, so don't pick them up in the history view.
-                                   Browser.BookmarkColumns.DATE + " > 0",
-                                   null,
-                                   Browser.BookmarkColumns.DATE + " DESC LIMIT " + MAX_RESULTS);
+            Cursor cursor = BrowserDB.getRecentHistory(resolver, MAX_RESULTS);
 
             Date now = new Date();
             now.setHours(0);
@@ -258,7 +254,7 @@ public class AwesomeBarTabs extends TabHost {
             // Browser content provider don't support limitting the number
             // of returned rows so we limit it here.
             while (cursor.moveToNext()) {
-                long time = cursor.getLong(cursor.getColumnIndexOrThrow(Browser.BookmarkColumns.DATE));
+                long time = cursor.getLong(cursor.getColumnIndexOrThrow(URLColumns.DATE_LAST_VISITED));
                 HistorySection itemSection = getSectionForTime(time, today);
 
                 if (groups == null)
@@ -300,20 +296,20 @@ public class AwesomeBarTabs extends TabHost {
         public Map<String,?> createHistoryItem(Cursor cursor) {
             Map<String,Object> historyItem = new HashMap<String,Object>();
 
-            String url = cursor.getString(cursor.getColumnIndexOrThrow(AwesomeBar.URL_KEY));
-            String title = cursor.getString(cursor.getColumnIndexOrThrow(AwesomeBar.TITLE_KEY));
-            byte[] favicon = cursor.getBlob(cursor.getColumnIndexOrThrow(Browser.BookmarkColumns.FAVICON));
+            String url = cursor.getString(cursor.getColumnIndexOrThrow(URLColumns.URL));
+            String title = cursor.getString(cursor.getColumnIndexOrThrow(URLColumns.TITLE));
+            byte[] favicon = cursor.getBlob(cursor.getColumnIndexOrThrow(URLColumns.FAVICON));
 
             // Use the URL instead of an empty title for consistency with the normal URL
             // bar view - this is the equivalent of getDisplayTitle() in Tab.java
             if (title == null || title.length() == 0)
                 title = url;
 
-            historyItem.put(AwesomeBar.URL_KEY, url);
-            historyItem.put(AwesomeBar.TITLE_KEY, title);
+            historyItem.put(URLColumns.URL, url);
+            historyItem.put(URLColumns.TITLE, title);
 
             if (favicon != null)
-                historyItem.put(Browser.BookmarkColumns.FAVICON, favicon);
+                historyItem.put(URLColumns.FAVICON, favicon);
 
             return historyItem;
         }
@@ -321,7 +317,7 @@ public class AwesomeBarTabs extends TabHost {
         public Map<String,?> createGroupItem(HistorySection section) {
             Map<String,String> groupItem = new HashMap<String,String>();
 
-            groupItem.put(AwesomeBar.TITLE_KEY, getSectionName(section));
+            groupItem.put(URLColumns.TITLE, getSectionName(section));
 
             return groupItem;
         }
@@ -375,11 +371,11 @@ public class AwesomeBarTabs extends TabHost {
                 mContext,
                 result.first,
                 R.layout.awesomebar_header_row,
-                new String[] { AwesomeBar.TITLE_KEY },
+                new String[] { URLColumns.TITLE },
                 new int[] { R.id.title },
                 result.second,
                 R.layout.awesomebar_row,
-                new String[] { AwesomeBar.TITLE_KEY, AwesomeBar.URL_KEY },
+                new String[] { URLColumns.TITLE, URLColumns.URL },
                 new int[] { R.id.title, R.id.url }
             );
 
@@ -410,18 +406,128 @@ public class AwesomeBarTabs extends TabHost {
         }
     }
 
+    private class AwesomeBarCursorAdapter extends SimpleCursorAdapter {
+        private int mLayout;
+        private String[] mFrom;
+        private int[] mTo;
+        private String mSearchTerm;
+
+        public AwesomeBarCursorAdapter(Context context, int layout, Cursor c, String[] from, int[] to) {
+            super(context, layout, c, from, to);
+            mLayout = layout;
+            mTo = to;
+            mFrom = from;
+            mSearchTerm = "";
+        }
+
+        public void filter(String searchTerm) {
+            mSearchTerm = searchTerm;
+            getFilter().filter(searchTerm);
+        }
+
+        // Add the search engines to the number of reported results.
+        @Override
+        public int getCount() {
+            final int resultCount = super.getCount();
+
+            // don't show additional search engines if search field is empty
+            if (mSearchTerm.length() == 0)
+                return resultCount;
+
+            return resultCount + mSearchEngines.length();
+        }
+
+        // If an item is part of the cursor result set, return that entry.
+        // Otherwise, return the search engine data.
+        @Override
+        public Object getItem(int position) {
+            final int resultCount = super.getCount();
+            if (position < resultCount)
+                return super.getItem(position);
+
+            JSONObject engine;
+            String engineName = null;
+            try {
+                engine = mSearchEngines.getJSONObject(position - resultCount);
+                engineName = engine.getString("name");
+            } catch (JSONException e) {
+                Log.e(LOGTAG, "error getting json arguments");
+            }
+
+            return engineName;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            final int resultCount = super.getCount();
+            if (position < resultCount)
+                return super.getView(position, convertView, parent);
+
+            View v;
+            if (convertView == null)
+                v = newView(mContext, null, parent);
+            else
+                v = convertView;
+            bindSearchEngineView(position - resultCount, v);
+
+            return v;
+        }
+
+        private Drawable getDrawableFromDataURI(String dataURI) {
+            String base64 = dataURI.substring(dataURI.indexOf(',') + 1);
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
+            Drawable drawable = (Drawable) Drawable.createFromStream(stream, "src");
+            try {
+                stream.close();
+            } catch (IOException e) { }
+            return drawable;
+        }
+
+        private void bindSearchEngineView(int position, View view) {
+            String name;
+            String iconURI;
+            String searchText = getResources().getString(R.string.awesomebar_search_engine, mSearchTerm);
+            try {
+                JSONObject searchEngine = mSearchEngines.getJSONObject(position);
+                name = searchEngine.getString("name");
+                iconURI = searchEngine.getString("iconURI");
+            } catch (JSONException e) {
+                Log.e(LOGTAG, "error getting json arguments");
+                return;
+            }
+
+            TextView titleView = (TextView) view.findViewById(R.id.title);
+            TextView urlView = (TextView) view.findViewById(R.id.url);
+            ImageView faviconView = (ImageView) view.findViewById(R.id.favicon);
+
+            titleView.setText(name);
+            urlView.setText(searchText);
+            faviconView.setImageDrawable(getDrawableFromDataURI(iconURI));
+        }
+    };
+
     public AwesomeBarTabs(Context context, AttributeSet attrs) {
         super(context, attrs);
 
         Log.d(LOGTAG, "Creating AwesomeBarTabs");
 
         mContext = context;
+        mInflated = false;
+        mSearchEngines = new JSONArray();
+    }
 
-        // Load layout into the custom view
-        LayoutInflater inflater =
-                (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+    @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
 
-        inflater.inflate(R.layout.awesomebar_tabs, this);
+        // HACK: Without this, the onFinishInflate is called twice
+        // This issue is due to a bug when Android inflates a layout with a
+        // parent. Fixed in Honeycomb
+        if (mInflated)
+            return;
+
+        mInflated = true;
 
         // This should be called before adding any tabs
         // to the TabHost.
@@ -496,34 +602,22 @@ public class AwesomeBarTabs extends TabHost {
                       R.id.all_pages_list);
 
         // Load the list using a custom adapter so we can create the bitmaps
-        mAllPagesAdapter = new SimpleCursorAdapter(
+        mAllPagesCursorAdapter = new AwesomeBarCursorAdapter(
             mContext,
             R.layout.awesomebar_row,
             null,
-            new String[] { AwesomeBar.TITLE_KEY,
-                           AwesomeBar.URL_KEY,
-                           Browser.BookmarkColumns.FAVICON },
+            new String[] { URLColumns.TITLE,
+                           URLColumns.URL,
+                           URLColumns.FAVICON },
             new int[] { R.id.title, R.id.url, R.id.favicon }
         );
 
-        mAllPagesAdapter.setViewBinder(new AwesomeCursorViewBinder());
+        mAllPagesCursorAdapter.setViewBinder(new AwesomeCursorViewBinder());
 
-        mAllPagesAdapter.setFilterQueryProvider(new FilterQueryProvider() {
+        mAllPagesCursorAdapter.setFilterQueryProvider(new FilterQueryProvider() {
             public Cursor runQuery(CharSequence constraint) {
                 ContentResolver resolver = mContext.getContentResolver();
-
-                return resolver.query(Browser.BOOKMARKS_URI,
-                                      null,
-                                      // The length restriction on URL is for the same reason as in the general bookmark query
-                                      // (see comment earlier in this file).
-                                      "(" + Browser.BookmarkColumns.URL + " LIKE ? OR " + Browser.BookmarkColumns.TITLE + " LIKE ?)"
-                                        + " AND LENGTH(" + Browser.BookmarkColumns.URL + ") > 0", 
-                                      new String[] {"%" + constraint.toString() + "%", "%" + constraint.toString() + "%",},
-                                      // ORDER BY is number of visits times a multiplier from 1 - 120 of how recently the site 
-                                      // was accessed with a site accessed today getting 120 and a site accessed 119 or more 
-                                      // days ago getting 1
-                                      Browser.BookmarkColumns.VISITS + " * MAX(1, (" +
-                                      Browser.BookmarkColumns.DATE + " - " + new Date().getTime() + ") / 86400000 + 120) DESC LIMIT " + MAX_RESULTS);
+                return BrowserDB.filter(resolver, constraint, MAX_RESULTS);
             }
         });
 
@@ -535,7 +629,7 @@ public class AwesomeBarTabs extends TabHost {
             }
         });
 
-        allPagesList.setAdapter(mAllPagesAdapter);
+        allPagesList.setAdapter(mAllPagesCursorAdapter);
         allPagesList.setOnTouchListener(mListTouchListener);
     }
 
@@ -579,18 +673,26 @@ public class AwesomeBarTabs extends TabHost {
         Map<String,Object> historyItem =
                 (Map<String,Object>) mHistoryAdapter.getChild(groupPosition, childPosition);
 
-        String url = (String) historyItem.get(AwesomeBar.URL_KEY);
+        String url = (String) historyItem.get(URLColumns.URL);
 
         if (mUrlOpenListener != null)
-            mUrlOpenListener.onUrlOpen(this, url);
+            mUrlOpenListener.onUrlOpen(url);
     }
 
     private void handleItemClick(ListView list, int position) {
-        Cursor cursor = (Cursor) list.getItemAtPosition(position);
-        String url = cursor.getString(cursor.getColumnIndexOrThrow(AwesomeBar.URL_KEY));
-
-        if (mUrlOpenListener != null)
-            mUrlOpenListener.onUrlOpen(this, url);
+        Object item = list.getItemAtPosition(position);
+        // If an AwesomeBar entry is clicked, item will be a Cursor containing
+        // the entry's data.  Otherwise, a search engine entry was clicked, and
+        // item will be a String containing the name of the search engine.
+        if (item instanceof Cursor) {
+            Cursor cursor = (Cursor) item;
+            String url = cursor.getString(cursor.getColumnIndexOrThrow(URLColumns.URL));
+            if (mUrlOpenListener != null)
+                mUrlOpenListener.onUrlOpen(url);
+        } else {
+            if (mUrlOpenListener != null)
+                mUrlOpenListener.onSearch((String)item);
+        }
     }
 
     public void setOnUrlOpenListener(OnUrlOpenListener listener) {
@@ -598,7 +700,7 @@ public class AwesomeBarTabs extends TabHost {
     }
 
     public void destroy() {
-        Cursor allPagesCursor = mAllPagesAdapter.getCursor();
+        Cursor allPagesCursor = mAllPagesCursorAdapter.getCursor();
         if (allPagesCursor != null)
             allPagesCursor.close();
 
@@ -624,6 +726,15 @@ public class AwesomeBarTabs extends TabHost {
         getTabWidget().setVisibility(tabsVisibility);
 
         // Perform the actual search
-        mAllPagesAdapter.getFilter().filter(searchTerm);
+        mAllPagesCursorAdapter.filter(searchTerm);
+    }
+
+    public void setSearchEngines(JSONArray engines) {
+        mSearchEngines = engines;
+        GeckoAppShell.getMainHandler().post(new Runnable() {
+            public void run() {
+                mAllPagesCursorAdapter.notifyDataSetChanged();
+            }
+        });
     }
 }
