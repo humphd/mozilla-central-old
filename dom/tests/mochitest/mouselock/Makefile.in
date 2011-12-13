@@ -66,6 +66,7 @@ _TEST_FILES	= \
     file_userPref.html \
     file_syntheticMouseEvent.html \
     file_targetOutOfFocus.html \
+    file_nestedFullScreen.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)
