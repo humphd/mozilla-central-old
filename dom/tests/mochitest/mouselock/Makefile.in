@@ -59,7 +59,7 @@ _TEST_FILES	= \
     file_defaultUnlock.html \
     file_DOMtree.html \
     file_mouselocklost.html \
-    file_constantxy.html \
+    file_screenXYclientXYConst.html \
     file_limitlessScroll.html \
     file_MouseEvents.html \
     file_movement.html \
@@ -67,6 +67,7 @@ _TEST_FILES	= \
     file_syntheticMouseEvent.html \
     file_targetOutOfFocus.html \
     file_nestedFullScreen.html \
+    file_exitMouseLockOnLoseFocus.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)
