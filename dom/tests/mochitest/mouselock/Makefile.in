@@ -68,6 +68,8 @@ _TEST_FILES	= \
     file_targetOutOfFocus.html \
     file_nestedFullScreen.html \
     file_exitMouseLockOnLoseFocus.html \
+    file_differentDOM.html \
+    iframe_differentDOM.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)

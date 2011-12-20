@@ -12,54 +12,74 @@
     <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
     </script>
     <script type="application/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
     <style>
-      body {
-        background-color: black;
-      }
     </style>
   </head>
   <body onload="start();">
-    <script type="text/javascript">
-      var pointer = navigator.pointer;
-      var canvas = document.createElement('canvas');
-      canvas.id = "testCanvas";
-      canvas.width = 250;
-      canvas.height = 250;
+    <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <pre id="test">
+      <script type="text/javascript">
+        /** Test for Bug 633602 **/
 
-      var isMouseLocked = (function() {
-        is(pointer.islocked(),
-           false,
-           "Mouse should NOT be locked if DOM element is not in tree"
-        );
-      });
+        /*
+          Checks if element being locked is attached to the DOM Tree
+          Also checks if pointer is unlocked when element is removed from
+          the DOM Tree
+        */
+        var pointer = navigator.pointer;
+        var canvas = document.createElement('canvas');
 
-      document.addEventListener("mozfullscreenchange", function (e) {
-        if (document.mozFullScreen) {
-          pointer.lock(canvas,
-          function() {
-            ok(pointer.islocked(),
-               "Mouse should be locked when DOM element is in the tree."
-            );
-            document.mozCancelFullScreen();
+        document.addEventListener("mozfullscreenchange", function (e) {
+          if (document.mozFullScreen) {
+            pointer.lock(canvas,function() {
+              /* If element is attached to the DOM Tree, pointer should be
+                 locked */
+              ok(pointer.islocked(), "Mouse should be locked when DOM " +
+                "element is in the tree.");
+
+              /* If the element is removed from the DOM Tree, pointer should
+                 be unlocked */
+              document.body.removeChild(canvas);
+              is(pointer.islocked(), false, "Pointer should be unlocked when " +
+                "an element is removed the DOM Tree");
+              document.mozCancelFullScreen();            
+             }, function () {
+              /* Failure callback shouldn't fire when element is attached to
+                 a DOM Tree and in fullscreen mode */
+              ok(pointer.islocked(), "Mouse should be locked when DOM " +
+                "element is in the tree and failure callback should NOT be " +
+                "dispatched");
+              document.mozCancelFullScreen();            
+             });
+          }
+          else {
+            SimpleTest.finish();
+          }
+        }, false);
+
+        function start() {
+          SimpleTest.waitForFocus(function() {
+            pointer.lock(canvas, function () {
+              /* Success callback shouldn't fire, since DOM is not attached to
+                 a DOM Tree */
+              is(pointer.islocked(), false, "If an element is NOT in the DOM " +
+                "Tree pointer should NOT be locked and success callback " +
+                "should NOT be dispatched");
+              }, function () {
+                /* Element is not attached to a DOM Tree, pointer shouldn't be
+                   locked */
+                is(pointer.islocked(), false, "If an element is NOT in the " +
+                  "DOM Tree pointer should NOT be locked");
+            });
+            document.body.appendChild(canvas);
+            canvas.mozRequestFullScreen();
           });
         }
-        else {
-          document.body.removeChild(canvas);
-          is(pointer.islocked(),
-             false,
-             "Mouse should NOT be locked if DOM element is removed from tree.");
-          SimpleTest.finish();
-        }
-      }, false);
-
-      function start() {
-        SimpleTest.waitForFocus(function() {
-          pointer.lock(canvas, isMouseLocked, isMouseLocked);
-          document.body.appendChild(canvas);
-          canvas.mozRequestFullScreen();
-        });
-      }
-    </script>
-    <div id="full-screen-element"></div>
+      </script>
+    </pre>
   </body>
 </html>
+

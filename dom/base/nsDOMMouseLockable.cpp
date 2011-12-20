@@ -180,21 +180,15 @@ nsDOMMouseLockable::ShouldLock(nsIDOMElement* aTarget)
     return NS_ERROR_UNEXPECTED;
   }
 
-  // Check if element is in the DOM tree
-  nsCOMPtr<nsIDOMNode> targetNode(do_QueryInterface(aTarget));
+  nsCOMPtr<nsINode> targetNode(do_QueryInterface(aTarget));
   if (!targetNode) {
     return false;
   }
-  nsCOMPtr<nsIDOMNode> parentNode;
-  targetNode->GetParentNode(getter_AddRefs(parentNode));
-  if (!parentNode) {
-    return false;
-  }
 
-  // Check if the element belongs to the right DOM
-  nsCOMPtr<nsIDOMDocument> targetDoc;
-  parentNode->GetOwnerDocument(getter_AddRefs(targetDoc));
-  if (targetDoc != domDoc) {
+  // Check if the element is in a DOM tree and also this DOM.
+  nsCOMPtr<nsIDocument> targetDoc = targetNode->GetCurrentDoc();
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  if (!targetDoc || targetDoc != doc) {
     return false;
   }
 

@@ -1,0 +1,74 @@
+<!DOCTYPE HTML>
+<html>
+  <!--
+  https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+
+  Test DOM tree in full screen
+  -->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+    <style>
+    </style>
+  </head>
+  <body>
+    <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <iframe id="iframe" src="iframe_differentDOM.html" mozallowfullscreen="true" 
+      style="display: none" onload="start();" >
+    </iframe>
+    <pre id="test">
+      <script type="text/javascript">    
+        /** Test for Bug 633602 **/
+
+        /*
+          Checks if element belongs to the same DOM as the pointer
+          It loads an iframe, and tries to lock a div from the iframe
+          to the pointer of the parent page. That should fail, since
+          the div belongs to a different DOM.
+        */
+
+        function start() {
+          SimpleTest.waitForFocus(function() {
+            var pointer = navigator.pointer;
+            // Gets a reference to the iframe's div
+            var iframe = document.getElementById('iframe');
+            var iDoc = iframe.contentWindow.document;
+            var div = iDoc.getElementById('div');
+
+            // iframe's document mozfullscreenchange listener
+            iDoc.addEventListener("mozfullscreenchange", function () {
+              if (iDoc.mozFullScreenElement === div) {
+                pointer.lock(div, function () {
+                  /* The success callback shouldn't be fired, since the
+                     element being locked belongs to a different DOM */
+                  is(pointer.islocked(), false, "If an element belongs to a " +
+                    "different DOM Tree pointer should NOT be locked and " +
+                    "success callback should NOT be dispatched");
+                  iDoc.mozCancelFullScreen();
+                }, function () {
+                  /* Pointer shouldn't be locked if the element being locked
+                     belongs to a different DOM */
+                  is(pointer.islocked(), false, "If an element belongs to a " +
+                    "different DOM Tree pointer should NOT be locked");
+                  iDoc.mozCancelFullScreen();
+                });
+              }
+              else {
+                SimpleTest.finish();
+              }
+            }, false);
+
+            div.mozRequestFullScreen();
+          });
+        }
+      </script>
+    </pre>
+  </body>
+</html>
