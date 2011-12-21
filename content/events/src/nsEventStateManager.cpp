@@ -163,6 +163,7 @@ nsIDocument* nsEventStateManager::sMouseOverDocument = nsnull;
 nsWeakFrame nsEventStateManager::sLastDragOverFrame = nsnull;
 nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
+nsCOMPtr<nsIContent> nsEventStateManager::mPointerLockedElement = nsnull;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
 static PRUint32 gMouseOrKeyboardEventCounter = 0;
@@ -776,7 +777,6 @@ nsMouseWheelTransaction::LimitToOnePageScroll(PRInt32 aScrollLines,
 
 nsEventStateManager::nsEventStateManager()
   : mLockCursor(0),
-    mPointerLockedElement(nsnull),
     mPreLockPoint(0,0),
     mCurrentTarget(nsnull),
     mLastMouseOverFrame(nsnull),
@@ -4039,7 +4039,7 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
         // Perform mouse lock by recentering the mouse directly, then remembering the deltas.
         nsIntRect bounds;
         aEvent->widget->GetScreenBounds(bounds);
-        aEvent->lastRefPoint = nsIntPoint(bounds.width/2, bounds.height/2);
+        aEvent->lastRefPoint = GetMouseCoords(bounds);
 
         // refPoint should not be the centre on mousemove
         if (aEvent->refPoint.x == aEvent->lastRefPoint.x &&
@@ -4105,11 +4105,10 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   if (mPointerLockedElement) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
-
-    // Set the initial pointer lock movement (before the first mousemove event), to 0,0
     nsIntRect bounds;
     aWidget->GetScreenBounds(bounds);
-    sLastRefPoint = nsIntPoint(bounds.width/2, bounds.height/2);
+
+    sLastRefPoint = GetMouseCoords(bounds);
     aWidget->SynthesizeNativeMouseMove(sLastRefPoint);
   } else {
     // Unlocking, so return pointer to the original position
@@ -4120,6 +4119,46 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
 void
 nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset) {
   sLastScreenOffset = aScreenOffset;
+}
+
+nsIntPoint
+nsEventStateManager::GetMouseCoords(nsIntRect aScreenBounds) {
+  nsCOMPtr<nsIDOMHTMLElement> lockedElement = do_QueryInterface(mPointerLockedElement);
+  if (!lockedElement) {
+    return nsIntPoint(0,0);
+  }
+
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  lockedElement->GetOwnerDocument(getter_AddRefs(domDoc));
+  if (!domDoc) {
+    return nsIntPoint(0,0);
+  }
+
+  nsCOMPtr<nsIDOMWindow> domWin;
+  domDoc->GetDefaultView(getter_AddRefs(domWin));
+  if (!domWin) {
+    return nsIntPoint(0,0);
+  }
+
+  int offsetWidth, offsetHeight, offsetTop, offsetLeft, innerHeight;
+  domWin->GetInnerHeight(&innerHeight);
+  lockedElement->GetOffsetWidth(&offsetWidth);
+  lockedElement->GetOffsetHeight(&offsetHeight);
+  lockedElement->GetOffsetTop(&offsetTop);
+  lockedElement->GetOffsetLeft(&offsetLeft);
+  
+  /* X,Y coords of the center of the locked element
+  *
+  *  The x coord is the width of the element divived by 2
+  *  plus the distance between the element and the left border of the window
+  *  plus the distance between the left corner of the monitor and the browser
+  *   
+  *  The y coord is the height of the element divived by 2
+  *  plus the distance between the element and the top border of the inner window
+  *  plus the height of the chrome window minus the height of the inner window
+  *  plus the distance between the top corner of the monitor and the browser */
+  return nsIntPoint((offsetWidth/2) + offsetLeft + aScreenBounds.x,
+                    (offsetHeight/2) + offsetTop + (aScreenBounds.height - innerHeight) + aScreenBounds.y);
 }
 
 void
