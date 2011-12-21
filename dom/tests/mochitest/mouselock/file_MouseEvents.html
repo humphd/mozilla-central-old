@@ -15,7 +15,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     #inner { width:50px; height:100%; }
   </style>
 </head>
-<body>
+<body onload="beginTests();">
   <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
   Mozilla Bug 633602</a>
   <p id="display"></p>
@@ -41,6 +41,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       const RIGHT_MOUSE_CLICK = 2;
       const MIDDLE_MOUSE_CLICK = 1;
       const LEFT_MOUSE_CLICK = 0;
+      var moved = 0;
       var fs = document.getElementById('fs');
       var one = document.getElementById('one');
       var outer = document.getElementById('outer');
@@ -50,178 +51,167 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       setup();
 
       /** Test for Bug 633602 **/
-      SimpleTest.waitForExplicitFinish()
-      SimpleTest.waitForFocus(function() {
-        setup();
-        fs.mozRequestFullScreen();
-      });
+      SimpleTest.waitForExplicitFinish();
+      
       document.addEventListener('mozfullscreenchange', mouseCursorRequired,
         false);
+
       function mouseCursorRequired() {
-        if (document.mozFullScreen) {
-          one.innerHTML = "0000";
-          outerResult.innerHTML = "000000000";
-          innerResult.innerHTML = "000000000";
-          if (document.mozFullScreenElement == fs) {
-            navigator.pointer.lock(fs);
-            synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
-            synthesizeMouse(fs, 50, 100, { type: 'mousemove' }, window);
-            is(one.innerHTML.substr(0,1), "0", "The event mouseenter should \
-              not be firing under Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(1,1), "0", "The event mouseover should \
-              not be firing under Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(2,1), "0", "The event mouseleave should \
-              not be firing under Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(3,1), "0", "The event mouseout should \
-              not be firing under Full Screen and Mouse Lock.");
-            document.mozCancelFullScreen();
-          }
+        if (document.mozFullScreenElement == fs) {
+          navigator.pointer.lock(fs, cursorActions);
         } else {
           synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
-          synthesizeMouse(fs, 50, 100, { type: 'mousemove' }, window);
-          is(one.innerHTML.substr(0,1), "1", "The event mouseenter is not \
-            firing under normal circumstances.");
-          is(one.innerHTML.substr(1,1), "1", "The event mouseover is not \
-            firing under normal circumstances.");
-          is(one.innerHTML.substr(2,1), "1", "The event mouseleave is not \
-            firing under normal circumstances.");
-          is(one.innerHTML.substr(3,1), "1", "The event mouseout is \
-            not firing under normal circumstances.");
-          document.removeEventListener('mozfullscreenchange',
-            mouseCursorRequired, false);
-          document.addEventListener('mozfullscreenchange', mouseClicks, false);
-          outer.mozRequestFullScreen();
         }
       }
+
       function mouseClicks() {
-        if (document.mozFullScreen) {
-          one.innerHTML = "0000";
-          outerResult.innerHTML = "000000000";
-          innerResult.innerHTML = "000000000";
-          navigator.pointer.lock(outer);
-          sendMouseEvent({ type: 'click' }, inner, window);
-          synthesizeMouseAtCenter(outer, { type: 'mousedown',
-            button: LEFT_MOUSE_CLICK }, window);
-          synthesizeMouseAtCenter(outer, { type: 'mouseup',
-            button: LEFT_MOUSE_CLICK }, window);
-          synthesizeMouseAtCenter(outer, { type: 'mousedown',
-            button: RIGHT_MOUSE_CLICK }, window);
-          synthesizeMouseAtCenter(outer, { type: 'mouseup',
-            button: RIGHT_MOUSE_CLICK }, window);
-          synthesizeMouseAtCenter(outer, { type: 'mousedown',
-            button: MIDDLE_MOUSE_CLICK }, window);
-          synthesizeMouseAtCenter(outer, { type: 'mouseup',
-            button: MIDDLE_MOUSE_CLICK }, window);
-          var rect = outer.getBoundingClientRect();
-          synthesizeMouseScroll(outer, rect.width/2, rect.height/2,
-            {axis:"vertical", delta:10, type:"DOMMouseScroll"} , window);
-          synthesizeMouse(fs, rect.width/2 + 1, rect.height/2 + 1,
-            { type: 'mousemove' }, window);
-          if (document.mozFullScreenElement == outer) {
-            todo_isnot(innerResult.innerHTML.substr(0,1), '1',
-              "The mouseup event for the right mouse button was sent to an \
-              element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(1,1), '1',
-              "The mouseup event for the middle mouse button was sent to an \
-              element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(2,1), '1',
-              "The mouseup event for the left mouse button was sent to an \
-              element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(3,1), '1',
-              "The mousedown event for the right mouse button was sent to \
-              an element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(4,1), '1',
-              "The mousedown event for the middle mouse button was sent \
-              to an element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(5,1), '1',
-              "The mousedown event for the left mouse button was sent to \
-              an element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(6,1), '1',
-              "The DOMMouseScroll event was sent to an element that was \
-              not locked.");
-            todo_isnot(innerResult.innerHTML.substr(7,1), '1',
-              "The click event was sent to an element that was not locked.");
-            todo_isnot(innerResult.innerHTML.substr(8,1), '1',
-              "The mousemove event was sent to an element that was not \
-              locked.");
-            is(outerResult.innerHTML.substr(0,1), '1',
-              "The full screened mouse locked element did not get the mouseup \
-              event for the right mouse button.");
-            is(outerResult.innerHTML.substr(1,1), '1',
-              "The full screened mouse locked element did not get the mouseup \
-              event for the middle mouse button.");
-            is(outerResult.innerHTML.substr(2,1), '1',
-              "The full screened mouse locked element did not get the mouseup \
-              event for the left mouse button.");
-            is(outerResult.innerHTML.substr(3,1), '1',
-              "The full screened mouse locked element did not get the \
-              mousedown event for the right mouse button.");
-            is(outerResult.innerHTML.substr(4,1), '1',
-              "The full screened mouse locked element did not get the \
-              mousedown event for the middle mouse button.");
-            is(outerResult.innerHTML.substr(5,1), '1',
-              "The full screened mouse locked element did not get the \
-              mousedown event for the left mouse button.");
-            is(outerResult.innerHTML.substr(6,1), '1',
-                "The full screened mouse locked element did not get the \
-                DOMMouseScroll event.");
-            is(outerResult.innerHTML.substr(7,1), '1',
-                "The full screened mouse locked element did not get the \
-                click event.");
-            is(outerResult.innerHTML.substr(8,1), '1',
-                "The full screened mouse locked element did not get the \
-                mousemove event.");
+        if (document.mozFullScreen) {          
+          navigator.pointer.lock(outer, mouseActions);
+        } else {
+          mouseActions();
+        }
+      }
+
+      function cursorTest() {
+        if (moved === 0) {
+          moved++;
+          synthesizeMouse(fs, 50, 101, { type: 'mousemove' }, window);
+        } else {
+          moved = 0;
+          if (navigator.pointer.islocked()) {
+            is(one.innerHTML.substr(0,1), "0",
+              "mouseenter should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(1,1), "0",
+              "mouseover should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(2,1), "0",
+              "mouseleave should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(3,1), "0",
+              "mouseout should not be firing in Full Screen and Mouse Lock.");
+            navigator.pointer.unlock();
+            one.innerHTML = "0000";
             document.mozCancelFullScreen();
+          } else {
+            is(one.innerHTML.substr(0,1), "1",
+              "mouseenter is not firing normally.");
+            is(one.innerHTML.substr(1,1), "1",
+              "mouseover is not is not firing normally.");
+            is(one.innerHTML.substr(2,1), "1",
+              "mouseleave is not is not firing normally.");
+            is(one.innerHTML.substr(3,1), "1",
+              "mouseout is not firing normally.");
+            document.removeEventListener('mozfullscreenchange',
+              mouseCursorRequired, false);
+            fs.removeEventListener('mousemove', cursorTest, false);
+            document.addEventListener('mozfullscreenchange', mouseClicks,
+              false);
+            outer.mozRequestFullScreen();
           }
+        }
+      }
+
+      function cursorActions() {
+        fs.addEventListener('mousemove', cursorTest, false);
+        synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
+      }
+
+      function mouseActions() {
+        outerResult.innerHTML = "000000000";
+        innerResult.innerHTML = "000000000";
+        outer.addEventListener('mousemove', mouseTests, false);
+        sendMouseEvent({ type: 'click' }, inner, window);
+        synthesizeMouseAtCenter(outer, { type: 'mousedown',
+          button: LEFT_MOUSE_CLICK }, window);
+        synthesizeMouseAtCenter(outer, { type: 'mouseup',
+          button: LEFT_MOUSE_CLICK }, window);
+        synthesizeMouseAtCenter(outer, { type: 'mousedown',
+          button: RIGHT_MOUSE_CLICK }, window);
+        synthesizeMouseAtCenter(outer, { type: 'mouseup',
+          button: RIGHT_MOUSE_CLICK }, window);
+        synthesizeMouseAtCenter(outer, { type: 'mousedown',
+          button: MIDDLE_MOUSE_CLICK }, window);
+        synthesizeMouseAtCenter(outer, { type: 'mouseup',
+          button: MIDDLE_MOUSE_CLICK }, window);
+        var rect = outer.getBoundingClientRect();
+        synthesizeMouseScroll(outer, rect.width/2, rect.height/2,
+          {axis:"vertical", delta:10, type:"DOMMouseScroll"} , window);
+        synthesizeMouse(outer, rect.width/2 + 1, rect.height/2 + 1,
+          { type: 'mousemove' }, window);
+      }
+
+      function mouseTests() {
+        if (navigator.pointer.islocked()) {
+          todo_isnot(innerResult.innerHTML.substr(0,1), '1',
+            "Right mouseup event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(1,1), '1',
+            "Middle mouseup event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(2,1), '1',
+            "Left mouseup event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(3,1), '1',
+            "Right mousedown event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(4,1), '1',
+            "Middle mousedown event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(5,1), '1',
+            "Left mousedown event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(6,1), '1',
+            "DOMMouseScroll event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(7,1), '1',
+            "The click event was sent to an unlocked element.");
+          todo_isnot(innerResult.innerHTML.substr(8,1), '1',
+            "mousemove event was sent to an unlocked element.");
+          is(outerResult.innerHTML.substr(0,1), '1',
+            "The locked element did not get a Right mouseup event.");
+          is(outerResult.innerHTML.substr(1,1), '1',
+            "The locked element did not get a Middle mouseup event.");
+          is(outerResult.innerHTML.substr(2,1), '1',
+            "The locked element did not get a Left mouseup event.");
+          is(outerResult.innerHTML.substr(3,1), '1',
+            "The locked element did not get a Right mousedown event.");
+          is(outerResult.innerHTML.substr(4,1), '1',
+            "The locked element did not get a Middle mousedown event.");
+          is(outerResult.innerHTML.substr(5,1), '1',
+            "The locked element did not get the mousedown event.");
+          is(outerResult.innerHTML.substr(6,1), '1',
+            "The mouse locked element did not get a DOMMouseScroll event.");
+          is(outerResult.innerHTML.substr(7,1), '1',
+            "The mouse locked element did not get a click event.");
+          is(outerResult.innerHTML.substr(8,1), '1',
+            "The locked element did not get a mousemove event.");
+          navigator.pointer.unlock();
+          outer.removeEventListener('mousemove', mouseTests, false);
+          document.mozCancelFullScreen();
         } else {
           is(innerResult.innerHTML.substr(0,1), '1',
-            "The mouseup event for the right mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Right mouseup event did not fire normally.");
           is(innerResult.innerHTML.substr(1,1), '1',
-            "The mouseup event for the middle mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Middle mouseup event did not fire normally.");
           is(innerResult.innerHTML.substr(2,1), '1',
-            "The mouseup event for the left mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Left mouseup event did not fire normally.");
           is(innerResult.innerHTML.substr(3,1), '1',
-            "The mousedown event for the right mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Right mousedown event did not fire normally.");
           is(innerResult.innerHTML.substr(4,1), '1',
-            "The mousedown event for the middle mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Middle mousedown event did not fire normally.");
           is(innerResult.innerHTML.substr(5,1), '1',
-            "The mousedown event for the left mouse button did not fire for \
-            inner element under normal circumstances.");
+            "Left mousedown event did not fire normally.");
           is(innerResult.innerHTML.substr(6,1), '1',
-            "The DOMMouseScroll event did not fire for inner element under \
-            normal circumstances.");
+            "DOMMouseScroll event did not fire normally.");
           is(innerResult.innerHTML.substr(7,1), '1',
-            "The click event did not fire for inner element under normal \
-            circumstances.");
+            "Click event did not fire normally.");
           is(outerResult.innerHTML.substr(0,1), '1',
-            "The mouseup event for the right mouse button did not bubble up \
-            to the outer element under normal circumstances.");
+            "Right mouseup event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(1,1), '1',
-            "The mouseup event for the middle mouse button did not bubble up \
-            to the outer element under normal circumstances.");
+            "Middle mouseup event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(2,1), '1',
-            "The mouseup event for the left mouse button did not bubble up to \
-            the outer element under normal circumstances.");
+            "Left mouseup event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(3,1), '1',
-            "The mousedown event for the right mouse button did not bubble \
-            up to the outer element under normal circumstances.");
+            "Right mousedown event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(4,1), '1',
-            "The mousedown event for the middle mouse button did not bubble \
-            up to the outer element under normal circumstances.");
+            "Middle mousedown event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(5,1), '1',
-            "The mousedown event for the left mouse button did not bubble up \
-            to the outer element under normal circumstances.");
+            "Left mousedown event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(6,1), '1',
-            "The DOMMouseScroll event did not bubble up to the outer element \
-            under normal circumstances.");
+            "DOMMouseScroll event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(7,1), '1',
-            "The click event did not bubble up to the outer element under \
-            normal circumstances.");
+            "Click event did not bubble to the outer element.");
           SimpleTest.finish();
         }
       }
@@ -347,6 +337,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         inner.addEventListener('mousemove', function() {
           innerResult.innerHTML = innerResult.innerHTML.substr(0,8) + '1';
         },false);
+      }
+
+      function beginTests() {
+        setup();
+        fs.mozRequestFullScreen();
       }
     </script>
   </pre>

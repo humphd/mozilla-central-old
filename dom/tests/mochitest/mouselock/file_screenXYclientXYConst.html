@@ -34,7 +34,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       SimpleTest.waitForExplicitFinish();
 
-      var pointer = navigator.pointer;
+      var pointer = navigator.mozPointer;
       var div;
       var countMoves = 0;
       // The width and height of a div element
@@ -50,7 +50,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       var moveUnlocked = function (e) {
         // Mouse should be unlocked here
-        is(pointer.islocked(), false, "Mouse should be unlocked");
+        is(pointer.isLocked(), false, "Mouse should be unlocked");
         // clientX/clientY should be equal to divWidth/divHeight
         // since the mouse isn't locked
         is(e.clientX, divWidth, "clientX should be dynamic since mouse isn't "
@@ -74,7 +74,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       var moveUnlockedAgain = function (e) {
         // Mouse should be unlocked here
-        is(pointer.islocked(), false, "Mouse should be unlocked");
+        is(pointer.isLocked(), false, "Mouse should be unlocked");
         // clientX/clientY should be equal to divWidth+10/divHeight+10
         // since the mouse isn't locked
         is(e.clientX, divWidth+10, "clientX should be dynamic since "
@@ -101,7 +101,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       var moveLocked = function (e) {
         // Mouse should be locked here
-        ok(pointer.islocked(), "Mouse should be locked");
+        ok(pointer.isLocked(), "Mouse should be locked");
         // When mouse lock is enabled clientX, clientY, screenX, and screenY
         // must hold constant values 
         // as if the mouse did not move at all once mouse lock was entered

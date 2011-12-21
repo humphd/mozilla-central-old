@@ -66,7 +66,10 @@ _TEST_FILES	= \
     file_userPref.html \
     file_syntheticMouseEvent.html \
     file_targetOutOfFocus.html \
+    file_fullscreen.html \
     file_nestedFullScreen.html \
+    file_doubleLockCallBack.html \
+    file_unlockOnUnload.html \
     file_exitMouseLockOnLoseFocus.html \
     file_differentDOM.html \
     iframe_differentDOM.html \

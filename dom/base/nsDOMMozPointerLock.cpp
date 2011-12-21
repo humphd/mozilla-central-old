@@ -72,6 +72,8 @@ NS_IMPL_CYCLE_COLLECTION_2(nsDOMMozPointerLock,
                            mWindow,
                            mPointerLockedElement)
 
+nsCOMPtr<nsIDOMElement> nsDOMMozPointerLock::mPointerLockedElement =  nsnull;
+
 static void
 DispatchPointerLockLost(nsINode* aTarget)
 {
@@ -84,8 +86,7 @@ DispatchPointerLockLost(nsINode* aTarget)
 }
 
 nsDOMMozPointerLock::nsDOMMozPointerLock() :
-  mWindow(nsnull),
-  mPointerLockedElement(nsnull)
+  mWindow(nsnull)
 {
 }
 

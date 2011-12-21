@@ -20,7 +20,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   <div id="div"></div>
   <pre id="test">
     <script type="application/javascript">
-   
       /** Test for Bug 633602 **/
       SimpleTest.waitForExplicitFinish();
       
@@ -34,28 +33,28 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         event, and tests if the mouse was unlocked when the window lost focus
       */
 
-      var pointer = navigator.pointer;
+      var pointer = navigator.mozPointer;
       var div = document.getElementById("div");
 
 
-      div.addEventListener("mouselocklost", function() {
-        is(pointer.islocked(), false, "Mouselocklost event should trigger " +
+      div.addEventListener("mozpointerlocklost", function() {
+        is(pointer.isLocked(), false, "Mouselocklost event should trigger " +
           " when window loses focus and mouse should be unlocked");
         SimpleTest.finish();
       }, false);
 
       document.addEventListener("mozfullscreenchange", function() {
-        if (document.mozFullScreenElement === div) {
+        if (document.mozFullScreen && document.mozFullScreenElement === div) {
           // Mouse should be locked if the element is in fullscreen mode
           pointer.lock(div, function () {
             // Test if mouse is locked when success callback is dispatched
-            ok(pointer.islocked(), "When success callback is dispatched, " +
+            ok(pointer.isLocked(), "When success callback is dispatched, " +
               "mouse should be locked");
 
             // Open a new window to switch focus and blur the current window
             var w =window.open();
             w.close();
-          });            
+          });
         }
       }, false);
 

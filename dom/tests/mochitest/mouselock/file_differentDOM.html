@@ -36,7 +36,7 @@
 
         function start() {
           SimpleTest.waitForFocus(function() {
-            var pointer = navigator.pointer;
+            var pointer = navigator.mozPointer;
             // Gets a reference to the iframe's div
             var iframe = document.getElementById('iframe');
             var iDoc = iframe.contentWindow.document;
@@ -48,14 +48,14 @@
                 pointer.lock(div, function () {
                   /* The success callback shouldn't be fired, since the
                      element being locked belongs to a different DOM */
-                  is(pointer.islocked(), false, "If an element belongs to a " +
+                  is(pointer.isLocked(), false, "If an element belongs to a " +
                     "different DOM Tree pointer should NOT be locked and " +
                     "success callback should NOT be dispatched");
                   iDoc.mozCancelFullScreen();
                 }, function () {
                   /* Pointer shouldn't be locked if the element being locked
                      belongs to a different DOM */
-                  is(pointer.islocked(), false, "If an element belongs to a " +
+                  is(pointer.isLocked(), false, "If an element belongs to a " +
                     "different DOM Tree pointer should NOT be locked");
                   iDoc.mozCancelFullScreen();
                 });

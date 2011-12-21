@@ -1,0 +1,70 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+<head>
+  <title>Test for Bug 633602</title>
+  <script type="text/javascript"
+          src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="text/javascript"
+          src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript"
+          src="mouselock_util.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  <style type="text/css">
+      #test-element { background-color: #94E01B; width:100px; height:100px; }
+  </style>
+</head>
+<body onload="runTests();">
+  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+    Mozilla Bug 633602</a>
+  <div id="content">
+    <div id="test-element"></div>
+  </div>
+  <pre id="test">
+    <script type="application/javascript">
+      function runTests() {
+        /** Test for Bug 633602 **/
+        //This test checks to ensure that if pointer.lock is called on the same
+        //element twice, it still fires the successful lock callback both times.
+        SimpleTest.waitForExplicitFinish();
+
+        SimpleTest.waitForFocus(function() {
+          var pointer = navigator.pointer,
+            testElement = document.getElementById("test-element");
+
+          document.addEventListener("mozfullscreenchange", function (e) {
+            if (document.mozFullScreen && 
+                document.mozFullScreenElement === testElement) {
+              pointer.lock(
+                testElement,
+                function () {
+                  pointer.lock(testElement,
+                    function() {
+                      ok(pointer.islocked(),
+                         "Mouse was not locked when success callback fired");
+                      document.mozCancelFullScreen();
+                      SimpleTest.finish();
+                    },
+                    function() {
+                      ok(false, "Mouse couldn't double lock same element");
+                      SimpleTest.finish();
+                    }
+                  );
+                },
+                function () {
+                  ok(false, "Mouse couldn't lock fullscreened element");
+                  SimpleTest.finish();
+                }
+              );
+            }
+          });
+
+          testElement.mozRequestFullScreen();
+        });
+      }
+    </script>
+  </pre>
+</body>
+</html>

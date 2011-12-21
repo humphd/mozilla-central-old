@@ -109,7 +109,7 @@ private:
   bool ShouldLock(nsIDOMElement*);
 
   nsCOMPtr<nsIDOMWindow>  mWindow;
-  nsCOMPtr<nsIDOMElement> mPointerLockedElement;
+  static nsCOMPtr<nsIDOMElement> mPointerLockedElement;
 };
 
 #endif /* nsDOMMozPointerLock_h___ */

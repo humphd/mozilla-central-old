@@ -1,0 +1,174 @@
+<!DOCTYPE HTML>
+<html>
+  <!-- https://bugzilla.mozilla.org/show_bug.cgi?id=92264 -->
+  
+  <head>
+    <title>
+      Test for Bug 633602
+    </title>
+    <script src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"
+    />
+  </head>
+  
+  <body onload="runTests();">
+    <a target="_blank"
+      href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+        Mozilla Bug 633602
+    </a>
+    <p id="display">
+    </p>
+    <div id="content" style="display: none">
+    </div>
+    <canvas id="canvas" width="150" height="150">
+    </canvas>
+    <pre id="test">
+      <script>
+        function runTests() {
+          /** Test for Bug 633602 **/
+          //This test validates the following requirements:
+
+          //* that islocked returns true if mouse is locked, false otherwise.
+          //* that lock expects 3 arguments, a DOM element, a success callback
+          //  and a failure callback.
+          //* that lock returns immediately and calls callbacks when lock
+          //  succeeds or fails.
+          //* that unlock cancels the locked state.
+
+          SimpleTest.waitForExplicitFinish();
+          SimpleTest.waitForFocus(function() {
+            const pointer = navigator.pointer,
+              canvas = document.getElementById("canvas");
+
+            var lockTestDone = false,
+              unlockTestDone = false,
+              finish = false;
+
+            document.addEventListener("mozfullscreenchange", function(e) {
+              if (document.mozFullScreen) {
+                if (document.mozFullScreenElement === canvas) {
+                  if (lockTestDone === true && unlockTestDone === true) {
+                    pointer.lock(
+                      canvas,
+                      function() {
+                        ok(pointer.islocked(),
+                           "Mouse wasn't locked when success callback fired");
+
+                        finish = true;
+                        document.mozCancelFullScreen();
+                      },
+                      function() {
+                        ok(false,
+                           "Mouse didn't lock fullscreened element");
+
+                        SimpleTest.finish();
+                      }
+                    );
+                  } else {
+                    pointer.lock(
+                      canvas,
+                      function() {
+                        ok(pointer.islocked(),
+                           "Mouse wasn't locked when success callback fired");
+                        pointer.unlock();
+
+                        isnot(pointer.islocked(), true,
+                              "Mouse was locked after unlock call");
+
+                        pointer.lock(
+                          canvas,
+                          function() {
+                            ok(pointer.islocked(),
+                               "Mouse unlocked when success callback fired " +
+                               "after relock");
+                            lockTestDone = true;
+                            document.mozCancelFullScreen();
+                          },
+                          function() {
+                            ok(false, "Mouse couldn't relock after unlock");
+
+                            SimpleTest.finish();
+                          }
+                        );
+                      },
+                      function() {
+                        ok(false,
+                           "Mouse didn't lock fullscreened element");
+
+                        SimpleTest.finish();
+                      }
+                    );
+                  }
+                } else {
+                  pointer.lock(
+                    canvas,
+                    function() {
+                      ok(false,
+                         "Mouse locked without fullscreen on locking element");
+
+                      SimpleTest.finish();
+                    },
+                    function() {
+                      isnot(pointer.islocked(), true,
+                            "Mouse was locked when failure callback was fired");
+                      unlockTestDone = true;
+
+                      document.mozCancelFullScreen();
+                    }
+                  );
+                }
+              } else if (finish === false) {
+                if (lockTestDone === true && unlockTestDone === false) {
+                  pointer.lock(
+                    canvas,
+                    function() {
+                      ok(false,
+                         "Mouse locked without fullscreen mode");
+
+                      SimpleTest.finish();
+                    },
+                    function() {
+                      isnot(pointer.islocked(), true,
+                            "Mouse was locked when failure callback was fired");
+
+                      document.body.mozRequestFullScreen();
+                    }
+                  );
+                } else {
+                  canvas.mozRequestFullScreen();
+                }
+              } else {
+                isnot(pointer.islocked(), true,
+                      "Mouse did not unlock after fullscreen was taken away");
+
+                SimpleTest.finish();
+              }
+            }, false);
+
+            pointer.lock(
+              canvas,
+              function() {
+                ok(false,
+                   "Mouse locked without fullscreen mode");
+
+                SimpleTest.finish();
+              },
+              function() {
+                isnot(pointer.islocked(), true,
+                      "Mouse was locked when failure callback was fired");
+
+                canvas.mozRequestFullScreen();
+              }
+            );
+            }
+          ); // waitForFocus
+        } // runTests
+      </script>
+    </pre>
+  </body>
+
+</html>
