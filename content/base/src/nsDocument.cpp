@@ -73,6 +73,7 @@
 
 #include "nsGUIEvent.h"
 #include "nsAsyncDOMEvent.h"
+#include "nsIDOMNodeFilter.h"
 
 #include "nsIDOMStyleSheet.h"
 #include "nsDOMAttribute.h"
@@ -5024,11 +5025,14 @@ NS_IMETHODIMP
 nsDocument::CreateNodeIterator(nsIDOMNode *aRoot,
                                PRUint32 aWhatToShow,
                                nsIDOMNodeFilter *aFilter,
-                               bool aEntityReferenceExpansion,
+                               PRUint8 aOptionalArgc,
                                nsIDOMNodeIterator **_retval)
 {
   *_retval = nsnull;
-
+  
+  if(!aOptionalArgc)
+    aWhatToShow = nsIDOMNodeFilter::SHOW_ALL;
+  
   if (!aRoot)
     return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
 
@@ -5042,10 +5046,9 @@ nsDocument::CreateNodeIterator(nsIDOMNode *aRoot,
 
   nsNodeIterator *iterator = new nsNodeIterator(root,
                                                 aWhatToShow,
-                                                aFilter,
-                                                aEntityReferenceExpansion);
+                                                aFilter);
   NS_ENSURE_TRUE(iterator, NS_ERROR_OUT_OF_MEMORY);
-
+  
   NS_ADDREF(*_retval = iterator);
 
   return NS_OK; 
