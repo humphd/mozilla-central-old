@@ -361,16 +361,16 @@
                 var mouseSpeed = 0.4;
        
                 document.addEventListener("mozfullscreenchange", function(e) {
-                    navigator.pointer.lock(canvas);
+                    navigator.mozPointer.lock(canvas);
                 }, false);
                 canvas.addEventListener("mousemove", function(e) {
                     var dRad = -camParent.rotation[1]*(Math.PI/180.0);
-                    var mDist = Math.sqrt(e.movementX*e.movementX+e.movementY*e.movementY);
+                    var mDist = Math.sqrt(e.mozMovementX*e.mozMovementX+e.mozMovementY*e.mozMovementY);
   
-                    camParent.rotation[1] -= e.movementX * mouseSpeed;
+                    camParent.rotation[1] -= e.mozMovementX * mouseSpeed;
                     if (scene.camera.rotation[0]>90) scene.camera.rotation[0] = 90;
                     if (scene.camera.rotation[0]<-90) scene.camera.rotation[0] = -90;
-                    scene.camera.rotation[0] -= e.movementY * mouseSpeed * (invert?-1:1);
+                    scene.camera.rotation[0] -= e.mozMovementY * mouseSpeed * (invert?-1:1);
                 }, false);
                 mvc.setEvents({
                     /*mouseMove: function (ctx, mpos, mdelta, keyState) {
