@@ -12,7 +12,7 @@
 	<canvas id="canvas" style="background-color: Aliceblue" ></canvas><br />
 	<input type="button" value="Demo" id="button" disabled="disabled"/>
 	<script>
-		var pointer = navigator.pointer;
+		var pointer = navigator.mozPointer;
 		var cvs = document.getElementById('canvas');
 		var ctx = document.getElementById('canvas').getContext('2d');
 		var but = document.getElementById('button');
@@ -29,10 +29,10 @@
 			
 		}
 		cvs.addEventListener('mousemove', function(e) {
-			if (pointer.islocked()) {				
+			if (pointer.isLocked()) {				
 				// Check for minimum
-				cvs.__curX = cvs.__curX - e.movementX < 0? cvs.__curX - e.movementX : 0;
-				cvs.__curY = cvs.__curY - e.movementX < 0? cvs.__curY - e.movementY : 0;
+				cvs.__curX = cvs.__curX - e.mozMovementX < 0? cvs.__curX - e.mozMovementX : 0;
+				cvs.__curY = cvs.__curY - e.mozMovementY < 0? cvs.__curY - e.mozMovementY : 0;
 				// Check for maximum
 				if (cvs.__curX < -4500){
 						cvs.__curX = -4500;
@@ -45,7 +45,7 @@
 		}, false)
 		
 		cvs.addEventListener('click', function() { 
-			if(pointer.islocked()) { 
+			if(pointer.isLocked()) { 
 				pointer.unlock();  
 				document.mozCancelFullScreen();
 				} }, false);
@@ -54,7 +54,7 @@
 			console.log("=== Full Screen mode changed ===");
 			if (document.mozFullScreen) {
 				pointer.lock(cvs);
-				if (pointer.islocked()) {
+				if (pointer.isLocked()) {
 					console.log("=== Mouse lock enabled! ===");
 				}
 			}

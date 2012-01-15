@@ -13,12 +13,12 @@
 		</div>
 		<script>
 			var ele = document.getElementById('div');
-			var pointer = navigator.pointer;
+			var pointer = navigator.mozPointer;
 			var infoText = document.getElementById('info');
 			document.body.addEventListener('click', function() {
 				if (!document.mozFullScreen){
 					ele.mozRequestFullScreen();
-				} else if (pointer.islocked()) {
+				} else if (pointer.isLocked()) {
 					pointer.unlock();
 				} else {
 					document.mozCancelFullScreen();
@@ -27,8 +27,8 @@
 
 			// Mouse move event listener
 			ele.addEventListener('mousemove', function(e) {
-				if (pointer.islocked()) {
-					infoText.innerHTML = 'Movement X: ' + e.movementX + '	Movement Y: '+ e.movementY + '	Client X: ' + e.clientX + '		Client Y: ' + e.clientY + '	Screen X:	' + e.screenX + '	Screen Y: ' + e.screenY;
+				if (pointer.isLocked()) {
+					infoText.innerHTML = 'Movement X: ' + e.mozMovementX + '	Movement Y: '+ e.mozMovementY + '	Client X: ' + e.clientX + '		Client Y: ' + e.clientY + '	Screen X:	' + e.screenX + '	Screen Y: ' + e.screenY;
 				}
 			} ,false);
 			
@@ -36,7 +36,7 @@
 				console.log("=== Full Screen mode changed ===");
 				if (document.mozFullScreen) {
 					pointer.lock(ele);
-					if (pointer.islocked()) {
+					if (pointer.isLocked()) {
 						console.log("=== Mouse lock enabled! ===");
 					}
 				}
