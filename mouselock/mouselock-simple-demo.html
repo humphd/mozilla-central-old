@@ -18,7 +18,7 @@
 			document.body.addEventListener('click', function() {
 				if (!document.mozFullScreen){
 					ele.mozRequestFullScreen();
-				} else if (pointer.isLocked()) {
+				} else if (pointer.isLocked) {
 					pointer.unlock();
 				} else {
 					document.mozCancelFullScreen();
