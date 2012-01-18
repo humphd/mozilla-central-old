@@ -17,7 +17,7 @@ function fullAndLock() {
 
     if (document.mozFullScreen &&
         document.mozFullScreenElement === div &&
-        !pointer.islocked()) {
+        !pointer.islocked) {
       function moveHandler(e) {
         div.innerHTML = "Mouse Locked: movementX=" + e.movementX + ", movementY=" + e.movementY;
       }

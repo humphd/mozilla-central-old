@@ -26,10 +26,9 @@
 		img.onload = function () {
 			document.getElementById('button').disabled="";
 			ctx.drawImage(img, 0, 0, 3360, 1680);
-			
 		}
 		cvs.addEventListener('mousemove', function(e) {
-			if (pointer.islocked()) {				
+			if (pointer.isLocked) {
 				// Check for minimum
 				cvs.__curX = cvs.__curX - e.movementX < 0? cvs.__curX - e.movementX : 0;
 				cvs.__curY = cvs.__curY - e.movementX < 0? cvs.__curY - e.movementY : 0;
@@ -43,25 +42,27 @@
 				ctx.drawImage(img, cvs.__curX, cvs.__curY);
 			}
 		}, false)
-		
-		cvs.addEventListener('click', function() { 
-			if(pointer.islocked()) { 
-				pointer.unlock();  
+
+		cvs.addEventListener('click', function() {
+			if(pointer.isLocked) {
+				pointer.unlock();
 				document.mozCancelFullScreen();
-				} }, false);
-		
+				}
+    }, false);
+
 		document.addEventListener('mozfullscreenchange', function() {
 			console.log("=== Full Screen mode changed ===");
 			if (document.mozFullScreen) {
 				pointer.lock(cvs);
-				if (pointer.islocked()) {
+				if (pointer.isLocked) {
 					console.log("=== Mouse lock enabled! ===");
 				}
 			}
 		}, false);
-		
-		document.body.addEventListener('mouselocklost', function() { console.log('=== Mouse lock lost! ==='); }, false);
+
+		document.body.addEventListener('mouselocklost', function() {
+      console.log('=== Mouse lock lost! ===');
+    }, false);
 	</script>
 </body>
-
-</html> 
+</html>
