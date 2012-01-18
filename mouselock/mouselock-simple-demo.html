@@ -13,12 +13,12 @@
 		</div>
 		<script>
 			var ele = document.getElementById('div');
-			var pointer = navigator.pointer;
+			var pointer = navigator.mozPointer;
 			var infoText = document.getElementById('info');
 			document.body.addEventListener('click', function() {
 				if (!document.mozFullScreen){
 					ele.mozRequestFullScreen();
-				} else if (pointer.isLocked) {
+				} else if (pointer.isLocked()) {
 					pointer.unlock();
 				} else {
 					document.mozCancelFullScreen();

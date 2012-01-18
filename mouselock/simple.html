@@ -13,13 +13,13 @@ function fullAndLock() {
   var div = document.getElementById('div');
 
   document.addEventListener('mozfullscreenchange', function() {
-    var pointer = navigator.pointer;
+    var pointer = navigator.mozPointer;
 
     if (document.mozFullScreen &&
         document.mozFullScreenElement === div &&
         !pointer.islocked) {
       function moveHandler(e) {
-        div.innerHTML = "Mouse Locked: movementX=" + e.movementX + ", movementY=" + e.movementY;
+        div.innerHTML = "Mouse Locked: movementX=" + e.mozMovementX + ", movementY=" + e.mozMovementY;
       }
 
       pointer.lock(
