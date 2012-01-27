@@ -48,11 +48,10 @@ interface nsIDOMTreeWalker;
 // Introduced in DOM Level 2:
 interface nsIDOMDocumentTraversal : nsISupports
 {
-  nsIDOMNodeIterator createNodeIterator(in nsIDOMNode root,
-                                        in unsigned long whatToShow,
-                                        in nsIDOMNodeFilter filter,
-                                        in boolean entityReferenceExpansion)
-                                        raises(DOMException);
+  [optional_argc] nsIDOMNodeIterator createNodeIterator(in nsIDOMNode root,
+                                                        [optional] in unsigned long whatToShow,
+                                                        [optional] in nsIDOMNodeFilter filter)
+                                                          raises(DOMException);
   nsIDOMTreeWalker   createTreeWalker(in nsIDOMNode root,
                                       in unsigned long whatToShow,
                                       in nsIDOMNodeFilter filter,
