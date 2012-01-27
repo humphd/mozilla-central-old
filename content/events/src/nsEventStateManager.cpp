@@ -4042,9 +4042,7 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
     {
       if (sPointerLockedElement && aEvent->widget) {
         // Perform mouse lock by recentering the mouse directly, then remembering the deltas.
-        nsIntRect bounds;
-        aEvent->widget->GetScreenBounds(bounds);
-        aEvent->lastRefPoint = GetMouseCoords(bounds);
+        aEvent->lastRefPoint = GetMouseCoords();
 
         // refPoint should not be the centre on mousemove
         if (aEvent->refPoint.x == aEvent->lastRefPoint.x &&
@@ -4110,10 +4108,7 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   if (sPointerLockedElement) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
-    nsIntRect bounds;
-    aWidget->GetScreenBounds(bounds);
-
-    sLastRefPoint = GetMouseCoords(bounds);
+    sLastRefPoint = GetMouseCoords();
     aWidget->SynthesizeNativeMouseMove(sLastRefPoint);
 
     // Retarget all events to this element via capture.
@@ -4134,46 +4129,14 @@ nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset)
 }
 
 nsIntPoint
-nsEventStateManager::GetMouseCoords(nsIntRect aScreenBounds)
+nsEventStateManager::GetMouseCoords()
 {
   NS_ASSERTION(sPointerLockedElement, "sPointerLockedElement is null in GetMouseCoords!");
 
-  nsCOMPtr<nsIDOMHTMLElement> lockedElement =
-    do_QueryInterface(sPointerLockedElement);
+  nsIntRect screenRect = sPointerLockedElement->GetPrimaryFrame()->GetScreenRect();
 
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  lockedElement->GetOwnerDocument(getter_AddRefs(domDoc));
-  if (!domDoc) {
-    return nsIntPoint(0,0);
-  }
-
-  nsCOMPtr<nsIDOMWindow> domWin;
-  domDoc->GetDefaultView(getter_AddRefs(domWin));
-  if (!domWin) {
-    return nsIntPoint(0,0);
-  }
-
-  int offsetWidth, offsetHeight, offsetTop, offsetLeft, innerHeight;
-  domWin->GetInnerHeight(&innerHeight);
-  lockedElement->GetOffsetWidth(&offsetWidth);
-  lockedElement->GetOffsetHeight(&offsetHeight);
-  lockedElement->GetOffsetTop(&offsetTop);
-  lockedElement->GetOffsetLeft(&offsetLeft);
-
-  /**
-   * X,Y coords of the center of the locked element
-   *
-   *  The x coord is the width of the element divived by 2
-   *  plus the distance between the element and the left border of the window
-   *  plus the distance between the left corner of the monitor and the browser
-   *
-   *  The y coord is the height of the element divived by 2
-   *  plus the distance between the element and the top border of the inner window
-   *  plus the height of the chrome window minus the height of the inner window
-   *  plus the distance between the top corner of the monitor and the browser
-   **/
-  return nsIntPoint((offsetWidth/2) + offsetLeft + aScreenBounds.x,
-                    (offsetHeight/2) + offsetTop + (aScreenBounds.height - innerHeight) + aScreenBounds.y);
+  return nsIntPoint((screenRect.width/2) + screenRect.x,
+                    (screenRect.height/2) + screenRect.y);
 }
 
 void
