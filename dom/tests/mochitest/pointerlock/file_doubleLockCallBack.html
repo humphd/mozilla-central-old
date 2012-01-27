@@ -16,51 +16,46 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       #test-element { background-color: #94E01B; width:100px; height:100px; }
   </style>
 </head>
-<body onload="runTests();">
+<body onload="start();">
   <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
     Mozilla Bug 633602</a>
   <div id="content">
     <div id="test-element"></div>
   </div>
   <pre id="test">
-    <script type="application/javascript">
-      function runTests() {
-        /** Test for Bug 633602 **/
-        //This test checks to ensure that if pointer.lock is called on the same
-        //element twice, it still fires the successful lock callback both times.
-        SimpleTest.waitForExplicitFinish();
+    <script type="text/javascript">
+      /** Test for Bug 633602 **/
+      /*
+       * This test checks to ensure that if pointer.lock is called on the same
+       * element twice, it still fires the successful lock callback both times.
+       */
+      SimpleTest.waitForExplicitFinish();
+      var pointer = navigator.mozPointer;
+      var testElement = document.getElementById("test-element");
 
-        SimpleTest.waitForFocus(function() {
-          var pointer = navigator.pointer,
-            testElement = document.getElementById("test-element");
-
-          document.addEventListener("mozfullscreenchange", function (e) {
-            if (document.mozFullScreen && 
-                document.mozFullScreenElement === testElement) {
-              pointer.lock(
-                testElement,
-                function () {
-                  pointer.lock(testElement,
-                    function() {
-                      ok(pointer.islocked(),
-                         "Mouse was not locked when success callback fired");
-                      document.mozCancelFullScreen();
-                      SimpleTest.finish();
-                    },
-                    function() {
-                      ok(false, "Mouse couldn't double lock same element");
-                      SimpleTest.finish();
-                    }
-                  );
-                },
-                function () {
-                  ok(false, "Mouse couldn't lock fullscreened element");
-                  SimpleTest.finish();
-                }
-              );
-            }
+      document.addEventListener("mozfullscreenchange", function (e) {
+        if (document.mozFullScreen &&
+            document.mozFullScreenElement === testElement) {
+          pointer.lock(testElement, function () {
+            // Call lock again on 1st Success callback
+            pointer.lock(testElement, function() {
+              ok(pointer.isLocked, "Mouse was locked before this call, " +
+                "Success Callback of nested call executed again");
+              document.mozCancelFullScreen();
+              SimpleTest.finish();
+            }, function() {
+              ok(false, "Mouse failed to double lock same element");
+              SimpleTest.finish();
+            });
+          }, function () {
+            ok(pointer.isLocked, "Mouse failed to lock fullscreened element");
+            SimpleTest.finish();
           });
+        }
+      }, false);
 
+      function start() {
+        SimpleTest.waitForFocus(function() {
           testElement.mozRequestFullScreen();
         });
       }

@@ -20,7 +20,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     <div id="content">
     </div>
     <pre id="test">
-      <script type="text/javascript">
+      <script type="application/javascript">
         SimpleTest.waitForExplicitFinish();
         // Ensure the full-screen api is enabled,
         // and will be disabled on test exit.
@@ -34,25 +34,24 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
                                   false);
 
-        // Run the tests which go full-screen in new window,s, as mochitests
+        // Run the tests which go full-screen in new window, as Mochitests
         // normally run in an iframe, which by default will not have the
         // mozallowfullscreen attribute set, so full-screen won't work.
         var gTestFiles = [
-          //"file_doubleLockCallBack.html",
-          //"file_fullscreen.html",
-          //"file_unlockOnUnload.html",
-          //"file_MouseEvents.html",
-          "file_nestedFullScreen.html",
           "file_DOMtree.html",
+          "file_nestedFullScreen.html",
           "file_differentDOM.html",
-          //"file_syntheticMouseEvent.html",
-          "file_screenXYclientXYConst.html",
-          //"file_limitlessScroll.html",
-          //"file_userPref.html",
-          //"file_mouselocklost.html",
-          //"file_defaultUnlock.html",
-          //"file_targetOutOfFocus.html",
-          "file_exitMouseLockOnLoseFocus.html"
+          "file_fullscreen.html",
+          "file_doubleLockCallBack.html",
+          "file_unlockOnUnload.html",
+          "file_exitMouseLockOnLoseFocus.html",
+          "file_mouselocklost.html",
+          "file_defaultUnlock.html",
+          /*"file_MouseEvents.html",
+          "file_movementXY.html",*/
+          "file_userPref.html",
+          "file_targetOutOfFocus.html",
+          "file_constantXY.html"
         ];
 
         var testWindow = null;

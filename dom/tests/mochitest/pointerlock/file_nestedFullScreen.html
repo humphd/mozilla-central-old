@@ -1,69 +1,77 @@
 <!DOCTYPE HTML>
 <html>
-<!--
-https://bugzilla.mozilla.org/show_bug.cgi?id=633602
--->
-<head>
-  <title>Test for Bug 633602</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
-  <script type="text/javascript" src="mouselock_util.js"></script>
-  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
-</head>
-<body onload="start();">
-  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">Mozilla Bug 633602</a>
-  <p id="display"></p>
-  <div id="content" style="display: none">
-  </div>
+  <!--
+  https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+  -->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js">
+    </script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  </head>
+  <body onload="start();">
+    <a target="_blank"
+       href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <p id="display"></p>
+    <div id="parentDiv">
+      <div id="childDiv">
+      </div>
+    </div>
 
-	<div id="parentDiv">
-		<div id="childDiv">
-		</div>
-	</div>
-
-  <pre id="test">
+    <pre id="test">
     <script type="application/javascript">
-      /** Test for Bug 633602 **/
+      /*
+       * Test for Bug 633602 
+       * Check that when there is a nested HTML tag, lock is not allowed
+       * to the child element when parent is in lock
+       */
+      
       SimpleTest.waitForExplicitFinish();
 
       var pointer = navigator.mozPointer;
-			var parentDiv;
-			var childDiv;
-			var finish = false;
+      var finish = false;
+      var parentDiv, childDiv;
 
       document.addEventListener("mozfullscreenchange", function() {
-				// Must call document.mozCancelFullScreen twice, since there are
-				// two nested elements in fullscreen mode
-				if (finish) {
-					finish = false;
-					// Cancel fullscreen on parentDiv
-					document.mozCancelFullScreen();
+        // Must call document.mozCancelFullScreen twice, since there are
+        // two nested elements in fullscreen mode
+        if (finish) {
+          finish = false;
+          // Cancel fullscreen on parentDiv
+          document.mozCancelFullScreen();
           SimpleTest.finish();
-       	} else if (document.mozFullScreenElement === parentDiv) {
-					pointer.lock(parentDiv, function () {
-						// Mouse should be locked to the parentDiv
-						ok (pointer.isLocked, "Mouse should be locked to parentDiv");
-						childDiv.mozRequestFullScreen();
-					});
+        } else if (document.mozFullScreenElement === parentDiv) {
+          pointer.lock(parentDiv, function () {
+            // Mouse should be locked to the parentDiv
+            ok(pointer.isLocked, "Mouse should be locked to parentDiv");
+            childDiv.mozRequestFullScreen();
+          });
         } else if (document.mozFullScreenElement === childDiv) {
-					// Mouse wasn't locked to childDiv, it was locked to parentDiv
-					// If childDiv receives fullscreen, mouse should be unlocked
-					is(pointer.isLocked(), false, "Mouse shouldn't be locked to childDiv");
-					finish = true;
-					// Cancel fullscreen on childDiv
-					document.mozCancelFullScreen();
-				}
+          // Mouse wasn't locked to childDiv, it was locked to parentDiv
+          // If childDiv receives fullscreen, mouse should be unlocked
+          is(pointer.isLocked, false, "Mouse shouldn't be locked to childDiv");
+          finish = true;
+          // Cancel fullscreen on childDiv
+          document.mozCancelFullScreen();
+        }
       }, false);
 
-      function start() {
-				parentDiv = document.getElementById("parentDiv");
-				childDiv = document.getElementById("childDiv");
+      function start()
+      {
+        parentDiv = document.getElementById("parentDiv");
+        childDiv = document.getElementById("childDiv");
 
         SimpleTest.waitForFocus(function() {
           parentDiv.mozRequestFullScreen();
         });
       }
     </script>
-  </pre>
-</body>
+    </pre>
+  </body>
 </html>

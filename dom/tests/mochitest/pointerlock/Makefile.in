@@ -53,18 +53,16 @@ include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 
 _TEST_FILES	= \
-    test_mouseLockable.html \
+    test_MozPointerLock.html \
     test_FullScreenHarness.html \
     mouselock_util.js \
     file_defaultUnlock.html \
     file_DOMtree.html \
     file_mouselocklost.html \
-    file_screenXYclientXYConst.html \
-    file_limitlessScroll.html \
+    file_constantXY.html \
     file_MouseEvents.html \
-    file_movement.html \
+    file_movementXY.html \
     file_userPref.html \
-    file_syntheticMouseEvent.html \
     file_targetOutOfFocus.html \
     file_fullscreen.html \
     file_nestedFullScreen.html \
@@ -72,7 +70,6 @@ _TEST_FILES	= \
     file_unlockOnUnload.html \
     file_exitMouseLockOnLoseFocus.html \
     file_differentDOM.html \
-    iframe_differentDOM.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)

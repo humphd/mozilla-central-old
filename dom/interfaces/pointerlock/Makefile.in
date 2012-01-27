@@ -45,11 +45,11 @@ MODULE         = dom
 XPIDL_MODULE   = dom_pointerlock
 GRE_MODULE     = 1
 
-XPIDLSRCS =                                   \
-	nsIDOMMozNavigatorPointerLock.idl           \
-	nsIDOMMozPointerLock.idl		                \
-	nsIMozPointerLockSuccessCallback.idl		  \
-	nsIMozPointerLockFailureCallback.idl		  \
-  $(NULL)
+XPIDLSRCS =					\
+	nsIDOMMozNavigatorPointerLock.idl	\
+	nsIDOMMozPointerLock.idl		\
+	nsIMozPointerLockSuccessCallback.idl	\
+	nsIMozPointerLockFailureCallback.idl	\
+	$(NULL)
 
 include $(topsrcdir)/config/rules.mk

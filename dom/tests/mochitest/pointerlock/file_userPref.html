@@ -5,79 +5,80 @@
   -->
   <head>
     <title>Test for Bug 633602</title>
-    <script type="text/javascript"
-            src="/tests/SimpleTest/SimpleTest.js"></script>
-    <script src="/tests/SimpleTest/EventUtils.js"
-            type="text/javascript"></script>
-    <script type="application/javascript"
-            src="mouselock_util.js"></script>
-    <link rel="stylesheet" type="text/css"
-          href="/tests/SimpleTest/test.css" />
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js">
+    </script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   </head>
-  <body onload="runTests();">
+  <body onload="start();">
     <a target="_blank"
        href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
       Mozilla Bug 633602</a>
     <p id="display"></p>
     <div id="content" style="display: none">
+      <canvas id="canvas" width="150" height="150"></canvas>
     </div>
-
-    <canvas id="canvas" width="150" height="150"></canvas>
-
     <pre id="test">
-      <script type="text/javascript">
+      <script type="application/javascript">
+        /*
+         * Test for Bug 633602 
+         * Test to ensure that pointer lock is allowed when the user preference
+         * setting for pointer lock is true and the element is in fullscreen.
+         */
         SimpleTest.waitForExplicitFinish();
 
-        var pointer = navigator.pointer;
-        var canvas;
-        SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                  false);
+        var pointer = navigator.mozPointer;
+        var canvas = document.getElementById("canvas");
 
-        function doTests () {
-          if (document.mozFullScreen) {
-            if (document.mozFullScreenElement === canvas) {
-              // Set Preference to True to see if lock succeeds and element is
+        document.addEventListener("mozfullscreenchange", function(e) {
+          if (document.mozFullScreen &&
+              document.mozFullScreenElement === canvas) {
+            // Set Preference to True to see if lock succeeds and element is
+            // in fullscreen
+            SpecialPowers.setBoolPref("full-screen-api.pointer-lock.enabled",
+                                      true );
+
+            pointer.lock(canvas, function() {
+              is(pointer.isLocked, true, "Mouse should be locked when " +
+                 "pref setting is true and element is in fullscreen.");
+              pointer.unlock();
+
+              // Set Preference to False to see if lock fails and element is
               // in fullscreen
-              SpecialPowers.setBoolPref("full-screen-api.mouse-lock.enabled",
-                                        true );
+              SpecialPowers.setBoolPref("full-screen-api.pointer-lock.enabled",
+                                        false);
 
               pointer.lock(canvas, function() {
-                is(pointer.islocked(), true, "Mouse should be locked when " +
-                   "pref setting is true and element is in fullscreen.");
-                pointer.unlock();
-
-                // Set Preference to False to see if lock fails and element is
-                // in fullscreen
-                SpecialPowers.setBoolPref("full-screen-api.mouse-lock.enabled",
-                                          false);
-
-                pointer.lock(canvas, function() {}, function() {
-                  is(pointer.islocked(), false, "Mouse shouldn't be locked " +
-                     "when pref setting is false and element is in fullscreen");
-                  document.removeEventListener("mozfullscreenchange", doTests,
-                                                false);
-                  document.mozCancelFullScreen();
-                  SpecialPowers.setBoolPref("full-screen-api.mouse-lock.enabled",
-                                            true);
-                  SimpleTest.finish();
-                });
+                is(pointer.isLocked, true, "Success Callback - pointer should " +
+                 "not be locked as user pref is set to false");
+                SimpleTest.finish();
+              }, function() {
+                is(pointer.isLocked, false, "Mouse shouldn't be locked " +
+                   "when pref setting is false and element is in fullscreen");
+                document.mozCancelFullScreen();
+                SpecialPowers.setBoolPref("full-screen-api.pointer-lock.enabled",
+                                          true);
+                SimpleTest.finish();
               });
-            }
+            }, function() {
+              is(pointer.isLocked, false, "Failure Callback - pointer should " +
+                 "not be locked");
+              SimpleTest.finish();
+            });
+          } else {
+            SimpleTest.finish();
           }
-        }
+        }, false);
 
-        document.addEventListener("mozfullscreenchange", doTests, false);
-
-        function runTests() {
-          canvas = document.getElementById("canvas");
-          pointer.lock(canvas, function() {}, function() {
-            is(pointer.islocked(), false, "Mouse lock can't be locked if " +
-               "user preference is set to true.");
-            canvas.mozRequestFullScreen();
+        function start() {
+          SimpleTest.waitForFocus(function() {
+              canvas.mozRequestFullScreen();
           });
         }
       </script>
     </pre>
   </body>
 </html>
-

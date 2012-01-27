@@ -15,7 +15,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     #inner { width:50px; height:100%; }
   </style>
 </head>
-<body onload="beginTests();">
+<body onload="setup();">
   <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
   Mozilla Bug 633602</a>
   <p id="display"></p>
@@ -48,7 +48,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var inner = document.getElementById('inner');
       var outerResult = document.getElementById('outerResult');
       var innerResult = document.getElementById('innerResult');
-      setup();
+      var pointer = navigator.mozPointer;
 
       /** Test for Bug 633602 **/
       SimpleTest.waitForExplicitFinish();
@@ -57,16 +57,17 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         false);
 
       function mouseCursorRequired() {
-        if (document.mozFullScreenElement == fs) {
-          navigator.pointer.lock(fs, cursorActions);
+        if (document.mozFullScreen && document.mozFullScreenElement === fs) {
+          pointer.lock(fs, cursorActions);
         } else {
-          synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
+          synthesizeMouse(fs, 110, 110, { type: 'mousemove' }, window);
         }
       }
 
       function mouseClicks() {
-        if (document.mozFullScreen) {          
-          navigator.pointer.lock(outer, mouseActions);
+        if (document.mozFullScreen && document.mozFullScreenElement === outer) {          
+          outer.addEventListener('mousemove', mouseTests, false);
+          pointer.lock(outer, mouseActions);
         } else {
           mouseActions();
         }
@@ -75,10 +76,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       function cursorTest() {
         if (moved === 0) {
           moved++;
+          synthesizeMouse(fs, 50, 50, { type: 'mousemove' }, window);
+        } else if (moved === 1) {
+          moved++;
           synthesizeMouse(fs, 50, 101, { type: 'mousemove' }, window);
         } else {
           moved = 0;
-          if (navigator.pointer.islocked()) {
+          if (pointer.isLocked) {
             is(one.innerHTML.substr(0,1), "0",
               "mouseenter should not be firing in Full Screen and Mouse Lock.");
             is(one.innerHTML.substr(1,1), "0",
@@ -87,7 +91,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
               "mouseleave should not be firing in Full Screen and Mouse Lock.");
             is(one.innerHTML.substr(3,1), "0",
               "mouseout should not be firing in Full Screen and Mouse Lock.");
-            navigator.pointer.unlock();
+            pointer.unlock();
             one.innerHTML = "0000";
             document.mozCancelFullScreen();
           } else {
@@ -111,13 +115,12 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       function cursorActions() {
         fs.addEventListener('mousemove', cursorTest, false);
-        synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
+        synthesizeMouse(fs, 110, 110, { type: 'mousemove' }, window);
       }
 
       function mouseActions() {
         outerResult.innerHTML = "000000000";
         innerResult.innerHTML = "000000000";
-        outer.addEventListener('mousemove', mouseTests, false);
         sendMouseEvent({ type: 'click' }, inner, window);
         synthesizeMouseAtCenter(outer, { type: 'mousedown',
           button: LEFT_MOUSE_CLICK }, window);
@@ -139,7 +142,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }
 
       function mouseTests() {
-        if (navigator.pointer.islocked()) {
+        if (pointer.isLocked) {
           todo_isnot(innerResult.innerHTML.substr(0,1), '1',
             "Right mouseup event was sent to an unlocked element.");
           todo_isnot(innerResult.innerHTML.substr(1,1), '1',
@@ -176,8 +179,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "The mouse locked element did not get a click event.");
           is(outerResult.innerHTML.substr(8,1), '1',
             "The locked element did not get a mousemove event.");
-          navigator.pointer.unlock();
-          outer.removeEventListener('mousemove', mouseTests, false);
+          pointer.unlock();
           document.mozCancelFullScreen();
         } else {
           is(innerResult.innerHTML.substr(0,1), '1',
@@ -196,6 +198,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "DOMMouseScroll event did not fire normally.");
           is(innerResult.innerHTML.substr(7,1), '1',
             "Click event did not fire normally.");
+          is(innerResult.innerHTML.substr(8,1), '1',
+            "mousemove event did not fire normally.");
           is(outerResult.innerHTML.substr(0,1), '1',
             "Right mouseup event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(1,1), '1',
@@ -212,6 +216,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "DOMMouseScroll event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(7,1), '1',
             "Click event did not bubble to the outer element.");
+          is(outerResult.innerHTML.substr(8,1), '1',
+            "mousemove event did not bubble to the outer element.");
+          outer.removeEventListener('mousemove', mouseTests, false);
           SimpleTest.finish();
         }
       }
@@ -337,10 +344,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         inner.addEventListener('mousemove', function() {
           innerResult.innerHTML = innerResult.innerHTML.substr(0,8) + '1';
         },false);
+
+        startTests();
       }
 
-      function beginTests() {
-        setup();
+      function startTests() {
         fs.mozRequestFullScreen();
       }
     </script>
