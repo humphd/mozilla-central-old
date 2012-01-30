@@ -1,0 +1,65 @@
+<!DOCTYPE HTML>
+<html>
+  <!-- https://bugzilla.mozilla.org/show_bug.cgi?id=633602 -->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="application/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  </head>
+  <body onload="start();">
+    <a target="_blank"
+       href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <div id="content">
+      <div style="background-color:blue; width:500px; height:500px;
+        float: left;" id="blueBox">
+        <p style="color:White" id='info'>
+          MouseLock Element
+        </p>
+      </div>
+    </div>
+    <pre id="test">
+      <script type="text/javascript">
+        /*
+         * Test for Bug 633602
+         * This test is to verify that the mouselocklost event fired by
+         * the browser has the bubbles attribute set to true, and
+         * the target attribute is the correct element
+         */
+        SimpleTest.waitForExplicitFinish();
+        var pointer = navigator.mozPointer;
+        var blueBox = document.getElementById("blueBox");
+
+        document.addEventListener("mozfullscreenchange", function() {
+          if (document.mozFullScreen &&
+              document.mozFullScreenElement === blueBox) {
+            // If we've locked on to the blueBox element, proceed with test
+            pointer.lock(blueBox, function(){
+              pointer.unlock();
+            });
+          }
+        }, false);
+
+        blueBox.addEventListener("mozpointerlocklost", function(e) {
+          // Since pointer.unlock() and mozCancelFullScreen calls the same
+          // function, seperate test for each case is not needed
+          ok(e.bubbles, "Manual unlock request - The mouselocklost event " +
+            "should have it's bubbles attribute set to true");
+          is((e.target || e.srcElement).id, "blueBox", "target is blueBox");
+          SimpleTest.finish();
+        }, false);
+
+        function start() {
+          SimpleTest.waitForFocus(function() {
+            blueBox.mozRequestFullScreen();
+          });
+        }
+      </script>
+    </pre>
+  </body>
+</html>

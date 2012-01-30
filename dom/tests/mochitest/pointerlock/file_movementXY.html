@@ -1,0 +1,105 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="text/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  </head>
+  <body onload="start();">
+    <a target="_blank" 
+      href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <div id="div"></div>
+    <pre id="test">
+      <script type="application/javascript">
+        /*
+         * Test for Bug 633602
+         * This test checks if mozMovementX and mozMovementY 
+         * are present in a mouse event object.
+         * It also checks the values for mozMovementXY.
+         * They should be equal to the current screenXY minus
+         * the last screenXY
+         * This test will also test that the incremental movement does
+         * not exceed the width of the screen eventually.
+         */
+
+        SimpleTest.waitForExplicitFinish();
+        // The width and height of a div element
+        // These values will be used to move the mouse
+        var divWidth = 0;
+        var divHeight = 0;
+        var div;
+        var ePrevious;
+        var moves = 0;
+        var totalX = 0;
+        var totalY = 0;
+        var pointer = navigator.mozPointer;
+
+        var moveMouse = function(e) {
+          // Mouse event object should have both mozMovementX and mozMovementY
+          ok("mozMovementX" in e && "mozMovementY" in e, "mozMovementX and " +
+            "mozMovementY should exist in mouse events objects.");
+
+          // Remove the current mousemove listener from "div" and add a new one
+          div.removeEventListener("mousemove", moveMouse, false);
+          div.addEventListener("mousemove", moveMouseAgain, false);
+
+          //Save current mouse event object to be used later in the test
+          ePrevious = e;
+
+          synthesizeMouse(div, divWidth+10, divHeight+10, {
+            type: "mousemove"
+          }, window);
+        };
+
+        var moveMouseAgain = function(e) {
+          /*
+           * mozMovementXY should be equal to the current screenXY
+           * minus last screenXY
+           */
+          is(e.mozMovementX, e.screenX - ePrevious.screenX, "mozMovementX " +
+            "should be equal to eNow.screenX-ePrevious.screenX");
+          is(e.mozMovementY, e.screenY - ePrevious.screenY, "mozMovementY " +
+            "should be equal to eNow.screenY-ePrevious.screenY");
+          document.mozCancelFullScreen();
+        };
+
+        document.addEventListener("mozfullscreenchange", function() {
+          if (document.mozFullScreenElement === div) {
+            /*
+             * Set the values for divWidth and divHeight
+             * It's dividing by two to make sure the value is a valid coord
+             * The value is being rounded since it's not possible to move
+             * the mouse to broken values
+             */
+            divWidth = Math.round(div.offsetWidth / 2);
+            divHeight = Math.round(div.offsetHeight / 2);
+            // Moving the mouse when the pointer is not locked
+            synthesizeMouse(div, divWidth, divHeight, {
+              type: "mousemove"
+            }, window);
+          } 
+          else {
+            SimpleTest.finish();
+          }
+        }, false);
+
+        function start() {
+          div = document.getElementById("div");
+          div.addEventListener("mousemove", moveMouse, false);
+          SimpleTest.waitForFocus(function() {
+            div.mozRequestFullScreen();
+          });
+        }
+      </script>
+    </pre>
+  </body>
+</html>

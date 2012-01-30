@@ -5,71 +5,145 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 -->
 <head>
   <title>Test for Bug 633602</title>
-  <script src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script src="/tests/SimpleTest/EventUtils.js"></script>
-	<script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">      
+  <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
   </script>
-  <script type="application/javascript" src="mouselock_util.js">      
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
   </script>
+  <script type="application/javascript" src="mouselock_util.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
-<body>
+<body onload="start();">
   <a target="_blank"
-	   href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
-		   Mozilla Bug 633602
-	</a>
-
-  <p id="display"></p>
-
-  <div id="content" style="display: none">
-  </div>
+       href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+    Mozilla Bug 633602
+  </a>
   <canvas id="canvas" width="150" height="150"></canvas>
   <pre id="test">
-    <script>
+    <script type="text/javascript">
+      /*
+       * Test for Bug 633602
+       * Check that the mouselock is unlocked on default key. Namely ESC
+       * Also check that another key ('a' in this case) does not cause a unlock
+       */
       SimpleTest.waitForExplicitFinish();
-      var utils = window.QueryInterface(
-	                Components.interfaces.nsIInterfaceRequestor
-					).getInterface(Components.interfaces.nsIDOMWindowUtils);
-
-      var defaultTest = function(e) {
-
       //Local Variables
-        var canvas = document.getElementById("canvas");
-        var pointer = navigator.pointer;
-        var runOnce = false;
+      var canvas = document.getElementById("canvas");
+      var pointer = navigator.mozPointer;
+      var gKeyTestIndex = 0;
+      var gKeyName;
+      var gKeyCode;
+      var gKeySuppressed;
+      var gKeyReceived = false;
+     
+      var keyList = [
+        { code: "VK_A", suppressed: true },
+        { code: "VK_ESCAPE", suppressed: false},
+        { code: "VK_W", suppressed: true },
+      ];
 
-        //Local Functions
-        var onLockGet = function(e) {
-          ok(pointer.islocked(),
-             "Element should be locked after the lock() function is called");
-          netscape.security.PrivilegeManager.enablePrivilege("UniversalXPConnect");
-          utils.sendKeyEvent("keydown", 27, 27, 0);
-          utils.sendKeyEvent("keyup", 27, 27, 0);
-          setTimeout(function() {
-            ok(!pointer.islocked(),
-               "Element should be unlock after ESC key was injected");
-            SimpleTest.finish();
-          },1000);
-        };
-        var onLockFail = function(e) {
-          ok(false,"Lock()'s failed callback was called, lock() did not succeed");
+      function keyHandler(event) {
+        gKeyReceived = true;
+      }
+
+      window.addEventListener("keydown", keyHandler, false);
+      window.addEventListener("keypress", keyHandler, false);
+      window.addEventListener("keyup", keyHandler, false);
+
+      function checkKeyEffect() {
+        if (gKeySuppressed) {
+          ok(pointer.isLocked,
+             "Mouselock shouldn't exit for " + gKeyName + " press");
+        } else {
+          is(pointer.isLocked, false,
+             "Mouselock lost for " + gKeyName + " key press");
+        }
+        if (gKeyTestIndex < keyList.length) {
+          setTimeout(testNextKey, 0);
+        } else {
+          document.mozCancelFullScreen();
           SimpleTest.finish();
-        };
-        var onFullScreen = function(e) {
-          if(!runOnce){
-            runOnce = true;
-            pointer.lock(canvas,onLockGet, onLockFail);
-          }
-        };
+        }
+      }
 
-      //Full screen
-        document.body.mozRequestFullScreen();
-        document.addEventListener("mozfullscreenchange",onFullScreen,false);
+      function testTrustedKeyEvents() {
+        document.body.focus();
+        gKeyReceived = false;
+        synthesizeKey(gKeyName, {});
+        setTimeout(checkKeyEffect, 0);
+      }
 
-        canvas.focus();
-        canvas.mozRequestFullScreen();
-      };
-      defaultTest();
+      function testScriptInitiatedKeyEvents() {
+        // Script initiated untrusted key events
+        // should not cause full-screen exit.
+        document.body.focus();
+        gKeyReceived = false;
+        var evt = document.createEvent("KeyEvents");
+        evt.initKeyEvent("keydown", true, true, window,
+                         false, false, false, false,
+                         gKeyCode, 0);
+        document.body.dispatchEvent(evt);
+ 
+        evt = document.createEvent("KeyEvents");
+        evt.initKeyEvent("keypress", true, true, window,
+                         false, false, false, false,
+                         gKeyCode, 0);
+        document.body.dispatchEvent(evt);
+ 
+        evt = document.createEvent("KeyEvents");
+        evt.initKeyEvent("keyup", true, true, window,
+                         false, false, false, false,
+                         gKeyCode, 0);
+        document.body.dispatchEvent(evt);
+   
+        ok(gKeyReceived, "dispatchEvent should dispatch events synchronously");
+        ok(pointer.isLocked,
+           "Mouselock shouldn't be lost to script initiated events for " + gKeyName);
+      }
+
+      function testNextKey() {
+        if (!document.mozFullScreen) {
+          canvas.mozRequestFullScreen();
+        } else {
+          // mozRequestFullScreen() is async...
+          setTimeout(function() {
+            ok(document.mozFullScreen, "Must be in full-screen mode");
+            gKeyName = keyList[gKeyTestIndex].code;
+            gKeyCode = KeyEvent["DOM_" + gKeyName];
+            gKeySuppressed = keyList[gKeyTestIndex].suppressed;
+            gKeyTestIndex++;
+            ok(pointer.isLocked, "Mouse is locked befoe testing " + gKeyName); 
+            testScriptInitiatedKeyEvents();
+            testTrustedKeyEvents();
+          }, 0);
+        }
+      }
+
+      document.addEventListener("mozfullscreenchange", function(e) {
+        if (document.mozFullScreen && 
+            document.mozFullScreenElement === canvas) {
+          pointer.lock(canvas, function() {
+            // Success Callback
+            ok(pointer.isLocked, "Mouse locked on fullscreen");
+            window.focus();
+            // Start key test
+            setTimeout(testNextKey, 0);
+          }, function() {
+            // Failure Callback
+            ok(pointer.isLocked, "pointer.lock() failed to lock mouse");
+          });
+        }
+      }, false);
+      
+      function start() {
+        SimpleTest.waitForFocus(function() {
+          pointer.lock(canvas, function() {
+            ok(pointer.isLocked, "mouse locked");
+          }, function() {
+            isnot(pointer.isLocked, true, "mouse not locked");
+          });
+          canvas.mozRequestFullScreen();
+        });
+      }
     </script>
   </pre>
 </body>

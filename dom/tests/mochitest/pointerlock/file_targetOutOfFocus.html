@@ -1,60 +1,78 @@
 <!DOCTYPE HTML>
 <html>
-<!--
-https://bugzilla.mozilla.org/show_bug.cgi?id=633602
--->
-<head>
-  <title>Test for Bug 633602</title>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
-  <script type="text/javascript" src="mouselock_util.js"></script>
-  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
-</head>
-<body onload="start();">
-  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">Mozilla Bug 633602</a>
-  <p id="display"></p>
-  <div id="content" style="display: none">
-  </div>
-  <div id="div"></div>
-  <input id="input" type="text" />
-  <pre id="test">
-    <script type="application/javascript">
-      /** Test for Bug 633602 **/
-      SimpleTest.waitForExplicitFinish();
-
-      var pointer = navigator.pointer;
-      var div;
-      var input;
-
-      document.addEventListener("mozfullscreenchange", function() {
-        if (document.mozFullScreenElement === div) {
-          input.addEventListener('focus', function() {
-            // Lock the mouse if the focused element is not the element being locked
-          	pointer.lock(
-              div,
-              function () {
-                // Even when the element being locked is not in focus, the mouse should be locked
-                ok(pointer.islocked(), "Mouse should be locked even if the element being locked is not focused");
-                document.mozCancelFullScreen();
-              }
-            );
-          }, false);
-
-     		 	input.focus();
-        } else {
-          SimpleTest.finish();
-        }
-      }, false);
-
-      function start() {
-        div = document.getElementById("div");
-        input = document.getElementById("input");
-
-        SimpleTest.waitForFocus(function() {
-          div.mozRequestFullScreen();
-        });
-      }
+  <!--
+  https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+  -->
+  <head>
+    <title>Test for Bug 633602</title>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
     </script>
-  </pre>
-</body>
+    <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="text/javascript" src="mouselock_util.js"></script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  </head>
+  <body onload="start();">
+    <a target="_blank" 
+      href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <p id="display"></p>
+    <div id="content" style="display: none">
+    </div>
+    <div id="div"></div>
+    <input id="input" type="text" />
+    <pre id="test">
+      <script type="application/javascript">
+        /*
+         * Test for Bug 633602
+         * Checks if an element can be locked even withouth focus
+         * It gives the focus to an input element and then tries to lock
+         * the pointer to a div
+         * The lock should be successful
+        */
+        SimpleTest.waitForExplicitFinish();
+
+        var pointer = navigator.mozPointer;
+        var div = document.getElementById("div");
+        var input = document.getElementById("input");
+
+        input.addEventListener("focus", function() {
+          /*
+           * Lock the mouse if the focused element is not the element
+           * being locked
+           */
+          pointer.lock(div, function() {
+            /*
+             * Even when the element being locked is not in focus
+             * the mouse should be locked
+             */
+            ok(pointer.isLocked, "Mouse should be locked even if " +
+              "the element being locked is not focused");
+            input.blur();
+            input.removeEventListener("focus", function() {}, false);
+            document.mozCancelFullScreen();
+          }, function() {
+            is(pointer.isLocked, false, "Mouse failed to lock when" +
+              "the element is not focused");
+          });
+        }, false);
+
+        document.addEventListener("mozfullscreenchange", function() {
+          if (document.mozFullScreenElement === div) {
+            input.focus();
+          }
+          else {
+            SimpleTest.finish();
+          }
+        }, false);
+
+        function start() {
+          SimpleTest.waitForFocus(function() {
+            div.mozRequestFullScreen();
+          });
+        }
+      </script>
+    </pre>
+  </body>
 </html>

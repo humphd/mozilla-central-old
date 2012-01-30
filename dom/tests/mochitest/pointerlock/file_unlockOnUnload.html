@@ -16,46 +16,43 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       #test-element { background-color: #94E01B; width:100px; height:100px; }
   </style>
 </head>
-<body onload="runTests();" onunload="runUnload();">
+<body onload="start();" onunload="runUnload();">
   <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
     Mozilla Bug 633602</a>
   <div id="content">
     <div id="test-element"></div>
   </div>
   <pre id="test">
-    <script type="application/javascript">
-      function runTests() {
-        /** Test for Bug 633602 **/
-        //This test checks to ensure that mouse lock is lost when a 
-        //window unloads
-        SimpleTest.waitForExplicitFinish();
+    <script type="text/javascript">
+      /*
+       * Test for Bug 633602 
+       * This test checks to ensure that mouselock is lost when window unloads
+       */
+      SimpleTest.waitForExplicitFinish();
+      var pointer = navigator.mozPointer;
+      var testElement = document.getElementById("test-element");
 
-        SimpleTest.waitForFocus(function() {
-          var testElement = document.getElementById("test-element");
-
-          document.addEventListener("mozfullscreenchange", function (e) {
-            if (document.mozFullScreen &&
-                document.mozFullScreenElement === testElement) {
-              navigator.pointer.lock(
-                testElement,
-                function () {
-                  window.close();
-                },
-                function () {
-                  ok(false, "Mouse couldn't lock fullscreened element");
-                  SimpleTest.finish();
-                }
-              );
-            }
+      document.addEventListener("mozfullscreenchange", function(e) {
+        if(document.mozFullScreen &&
+            document.mozFullScreenElement === testElement) {
+          pointer.lock(testElement, function () {
+              // After lock, close the window to check for "Unload"
+              window.close();
+            }, function () {
+              ok(pointer.isLocked, "Mouse failed to lock fullscreen element");
+              SimpleTest.finish();
           });
+        }
+      }, false);
 
+      function start() {
+        SimpleTest.waitForFocus(function() {
           testElement.mozRequestFullScreen();
         });
       }
 
       function runUnload() {
-        isnot(navigator.pointer.islocked(), true,
-              "Mouse was locked during unload");
+        is(pointer.isLocked, false, "Mouse unlocked on unload");
         SimpleTest.finish();
       }
     </script>

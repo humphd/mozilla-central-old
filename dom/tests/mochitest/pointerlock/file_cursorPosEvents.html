@@ -1,0 +1,126 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+<head>
+  <title>Test for Bug 633602 - Mouse Events Allowed and Suppressed.</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+  </script>
+  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="mouselock_util.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+  <style type="text/css">
+    #fs > div { width:100px; height:100px; }
+  </style>
+</head>
+<body onload="setup();">
+  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+  Mozilla Bug 633602</a>
+  <p id="display"></p>
+<div id="content">
+  <div id="fs">
+    <div id="one" style="background-color:Green;">0000</div>
+    <div id="outer" style="background-color:Gray;">
+    </div>
+  </div>
+  <pre id="test">
+    <script type="application/javascript">
+      /*
+       * Test for Bug 633602
+       * Test will check to make sure that the following mouse events can be
+       * executed prior to mouse lock and after mouse lock.
+       *  - mouseover, mouseout, mouseenter, mouseleave
+       */
+      SimpleTest.waitForExplicitFinish();
+      var moved = 0;
+      var fs = document.getElementById('fs');
+      var one = document.getElementById('one');
+      var outer = document.getElementById('outer');
+      var pointer = navigator.mozPointer;
+
+      document.addEventListener('mozfullscreenchange', mouseCursorRequired,
+        false);
+
+      function mouseCursorRequired() {
+        if (document.mozFullScreen && document.mozFullScreenElement === fs) {
+          pointer.lock(fs, cursorActions);
+        } else {
+          synthesizeMouse(fs, 110, 110, { type: 'mousemove' }, window);
+        }
+      }
+
+      function cursorTest() {
+        if (moved === 0) {
+          moved++;
+          synthesizeMouse(fs, 50, 50, { type: 'mousemove' }, window);
+        } else if (moved === 1) {
+          moved++;
+          synthesizeMouse(fs, 50, 101, { type: 'mousemove' }, window);
+        } else {
+          moved = 0;
+          if (pointer.isLocked) {
+            is(one.innerHTML.substr(0,1), "0",
+              "mouseenter should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(1,1), "0",
+              "mouseover should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(2,1), "0",
+              "mouseleave should not be firing in Full Screen and Mouse Lock.");
+            is(one.innerHTML.substr(3,1), "0",
+              "mouseout should not be firing in Full Screen and Mouse Lock.");
+            pointer.unlock();
+            one.innerHTML = "0000";
+            document.mozCancelFullScreen();
+          } else {
+            is(one.innerHTML.substr(0,1), "1",
+              "mouseenter is not firing normally.");
+            is(one.innerHTML.substr(1,1), "1",
+              "mouseover is not is not firing normally.");
+            is(one.innerHTML.substr(2,1), "1",
+              "mouseleave is not is not firing normally.");
+            is(one.innerHTML.substr(3,1), "1",
+              "mouseout is not firing normally.");
+            document.removeEventListener('mozfullscreenchange',
+              mouseCursorRequired, false);
+            fs.removeEventListener('mousemove', cursorTest, false);
+            SimpleTest.finish();
+          }
+        }
+      }
+
+      function cursorActions() {
+        fs.addEventListener('mousemove', cursorTest, false);
+        synthesizeMouse(fs, 110, 110, { type: 'mousemove' }, window);
+      }
+
+      function setup() {
+        // Events that only exist because a mouse exists
+        one.addEventListener('mouseout', function() {
+          one.innerHTML = one.innerHTML.substr(0,3) + '1';
+        } , false);
+
+        one.addEventListener('mouseleave', function() {
+          one.innerHTML = one.innerHTML.substr(0,2) +
+          '1' + one.innerHTML.substr(3);
+        } , false);
+
+        one.addEventListener('mouseover', function() {
+          one.innerHTML = one.innerHTML.substr(0,1) +
+          '1' + one.innerHTML.substr(2); } , false);
+
+        one.addEventListener('mouseenter', function() {
+          one.innerHTML = '1' + one.innerHTML.substr(1);
+          } , false);
+
+        startTests();
+      }
+
+      function startTests() {
+        SimpleTest.waitForFocus(function() {
+          fs.mozRequestFullScreen();
+        });
+      }
+    </script>
+  </pre>
+</body>
+</html>

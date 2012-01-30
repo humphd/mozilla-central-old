@@ -20,19 +20,16 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     <script class="testbody" type="text/javascript">
     function start() {
       SimpleTest.waitForExplicitFinish();
-
-      var pointer = navigator.pointer;
-
+      var pointer = navigator.mozPointer;
       ok(pointer, "expected navigator.pointer to exist.");
-
-      ok(pointer instanceof MouseLockable, "expected navigator.pointer to be a MouseLockable.");
-
-      ok(MouseLockable.prototype.lock, "MouseLockable should have lock!.");
-      ok(MouseLockable.prototype.unlock, "MouseLockable should have unlock.");
-      ok(MouseLockable.prototype.islocked, "MouseLockable should have islocked.");
-
-      is(pointer.islocked(), false, "Mouse Lock should initially be false.");
-
+      ok(pointer instanceof MozPointerLock,
+         "expected navigator.pointer to be a MozPointerLock.");
+      ok(MozPointerLock.prototype.lock, "MozPointerLock should have lock!.");
+      ok(MozPointerLock.prototype.unlock,
+         "MozPointerLock should have unlock.");
+      ok(MozPointerLock.prototype.hasOwnProperty("isLocked"),
+         "MozPointerLock should have islocked.");
+      is(pointer.isLocked, false, "Mouse Lock should initially be false.");
       SimpleTest.finish();
     }
     </script>

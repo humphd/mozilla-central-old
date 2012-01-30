@@ -15,13 +15,12 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     #inner { width:50px; height:100%; }
   </style>
 </head>
-<body onload="beginTests();">
+<body onload="setup();">
   <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
   Mozilla Bug 633602</a>
   <p id="display"></p>
 <div id="content">
   <div id="fs">
-    <div id="one" style="background-color:Green;">0000</div>
     <div id="outer" style="background-color:Gray;">
       <div id="inner" style="background-color:Red;margin:auto;"></div>
     </div>
@@ -30,94 +29,39 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   </div>
   <pre id="test">
     <script type="application/javascript">
-      /** Test will check to make sure that the following mouse events can be
-       ** executed prior to mouse lock and after mouse lock.
-       **   - mouseover, mouseout, mouseenter, mouseleave
-       **   - click, mousedown, mouseup, DOMMouseScroll
-       ** Mousedown and mouseup tests left, middle, and right mouse buttons.
-       **/
-      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-        false);
+      /*
+       * Test for Bug 633602
+       * Test will check to make sure that the following mouse events can be
+       * executed prior to mouse lock and after mouse lock.
+       *  - mouseover, mouseout, mouseenter, mouseleave
+       *  - click, mousedown, mouseup, DOMMouseScroll
+       * Mousedown and mouseup tests left, middle, and right mouse buttons.
+       */
+      SimpleTest.waitForExplicitFinish();
       const RIGHT_MOUSE_CLICK = 2;
       const MIDDLE_MOUSE_CLICK = 1;
       const LEFT_MOUSE_CLICK = 0;
       var moved = 0;
-      var fs = document.getElementById('fs');
-      var one = document.getElementById('one');
       var outer = document.getElementById('outer');
       var inner = document.getElementById('inner');
       var outerResult = document.getElementById('outerResult');
       var innerResult = document.getElementById('innerResult');
-      setup();
+      var pointer = navigator.mozPointer;
 
-      /** Test for Bug 633602 **/
-      SimpleTest.waitForExplicitFinish();
-      
-      document.addEventListener('mozfullscreenchange', mouseCursorRequired,
-        false);
-
-      function mouseCursorRequired() {
-        if (document.mozFullScreenElement == fs) {
-          navigator.pointer.lock(fs, cursorActions);
-        } else {
-          synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
-        }
-      }
+      document.addEventListener('mozfullscreenchange', mouseClicks, false);
 
       function mouseClicks() {
-        if (document.mozFullScreen) {          
-          navigator.pointer.lock(outer, mouseActions);
+        if (document.mozFullScreen && document.mozFullScreenElement === outer) {          
+          outer.addEventListener('mousemove', mouseTests, false);
+          pointer.lock(outer, mouseActions);
         } else {
           mouseActions();
         }
       }
 
-      function cursorTest() {
-        if (moved === 0) {
-          moved++;
-          synthesizeMouse(fs, 50, 101, { type: 'mousemove' }, window);
-        } else {
-          moved = 0;
-          if (navigator.pointer.islocked()) {
-            is(one.innerHTML.substr(0,1), "0",
-              "mouseenter should not be firing in Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(1,1), "0",
-              "mouseover should not be firing in Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(2,1), "0",
-              "mouseleave should not be firing in Full Screen and Mouse Lock.");
-            is(one.innerHTML.substr(3,1), "0",
-              "mouseout should not be firing in Full Screen and Mouse Lock.");
-            navigator.pointer.unlock();
-            one.innerHTML = "0000";
-            document.mozCancelFullScreen();
-          } else {
-            is(one.innerHTML.substr(0,1), "1",
-              "mouseenter is not firing normally.");
-            is(one.innerHTML.substr(1,1), "1",
-              "mouseover is not is not firing normally.");
-            is(one.innerHTML.substr(2,1), "1",
-              "mouseleave is not is not firing normally.");
-            is(one.innerHTML.substr(3,1), "1",
-              "mouseout is not firing normally.");
-            document.removeEventListener('mozfullscreenchange',
-              mouseCursorRequired, false);
-            fs.removeEventListener('mousemove', cursorTest, false);
-            document.addEventListener('mozfullscreenchange', mouseClicks,
-              false);
-            outer.mozRequestFullScreen();
-          }
-        }
-      }
-
-      function cursorActions() {
-        fs.addEventListener('mousemove', cursorTest, false);
-        synthesizeMouse(fs, 50, 99, { type: 'mousemove' }, window);
-      }
-
       function mouseActions() {
         outerResult.innerHTML = "000000000";
         innerResult.innerHTML = "000000000";
-        outer.addEventListener('mousemove', mouseTests, false);
         sendMouseEvent({ type: 'click' }, inner, window);
         synthesizeMouseAtCenter(outer, { type: 'mousedown',
           button: LEFT_MOUSE_CLICK }, window);
@@ -139,7 +83,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }
 
       function mouseTests() {
-        if (navigator.pointer.islocked()) {
+        if (pointer.isLocked) {
           todo_isnot(innerResult.innerHTML.substr(0,1), '1',
             "Right mouseup event was sent to an unlocked element.");
           todo_isnot(innerResult.innerHTML.substr(1,1), '1',
@@ -176,8 +120,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "The mouse locked element did not get a click event.");
           is(outerResult.innerHTML.substr(8,1), '1',
             "The locked element did not get a mousemove event.");
-          navigator.pointer.unlock();
-          outer.removeEventListener('mousemove', mouseTests, false);
+          pointer.unlock();
           document.mozCancelFullScreen();
         } else {
           is(innerResult.innerHTML.substr(0,1), '1',
@@ -196,6 +139,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "DOMMouseScroll event did not fire normally.");
           is(innerResult.innerHTML.substr(7,1), '1',
             "Click event did not fire normally.");
+          is(innerResult.innerHTML.substr(8,1), '1',
+            "mousemove event did not fire normally.");
           is(outerResult.innerHTML.substr(0,1), '1',
             "Right mouseup event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(1,1), '1',
@@ -212,28 +157,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "DOMMouseScroll event did not bubble to the outer element.");
           is(outerResult.innerHTML.substr(7,1), '1',
             "Click event did not bubble to the outer element.");
+          is(outerResult.innerHTML.substr(8,1), '1',
+            "mousemove event did not bubble to the outer element.");
+          outer.removeEventListener('mousemove', mouseTests, false);
           SimpleTest.finish();
         }
       }
 
       function setup() {
-        // Events that only exist because a mouse exists
-        one.addEventListener('mouseout', function() {
-          one.innerHTML = one.innerHTML.substr(0,3) + '1';
-        } , false);
-
-        one.addEventListener('mouseleave', function() {
-          one.innerHTML = one.innerHTML.substr(0,2) +
-          '1' + one.innerHTML.substr(3);
-        } , false);
-
-        one.addEventListener('mouseover', function() {
-          one.innerHTML = one.innerHTML.substr(0,1) +
-          '1' + one.innerHTML.substr(2); } , false);
-
-        one.addEventListener('mouseenter', function() {
-          one.innerHTML = '1' + one.innerHTML.substr(1);
-          } , false);
 
         // Events that should be there regardless of mouse state
         outer.addEventListener('click', function() {
@@ -337,11 +268,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         inner.addEventListener('mousemove', function() {
           innerResult.innerHTML = innerResult.innerHTML.substr(0,8) + '1';
         },false);
+
+        startTests();
       }
 
-      function beginTests() {
-        setup();
-        fs.mozRequestFullScreen();
+      function startTests() {
+        SimpleTest.waitForFocus(function() {
+          outer.mozRequestFullScreen();
+        });
       }
     </script>
   </pre>
