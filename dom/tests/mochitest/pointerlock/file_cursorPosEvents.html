@@ -20,7 +20,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   <p id="display"></p>
 <div id="content">
   <div id="fs">
-    <div id="one" style="background-color:Green;">0000</div>
+    <div id="one" style="background-color:Green;"></div>
     <div id="outer" style="background-color:Gray;">
     </div>
   </div>
@@ -36,9 +36,12 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var moved = 0;
       var fs = document.getElementById('fs');
       var one = document.getElementById('one');
-      var oneInner = one.innerHTML;
       var outer = document.getElementById('outer');
       var pointer = navigator.mozPointer;
+      var mouseEnter = 0;
+      var mouseLeave = 0;
+      var mouseOver = 0;
+      var mouseOut = 0;
 
       document.addEventListener('mozfullscreenchange', mouseCursorRequired,
         false);
@@ -61,25 +64,23 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         } else {
           moved = 0;
           if (pointer.isLocked) {
-            is(oneInner.substr(0,1), "0",
+            is(mouseEnter, 0,
               "mouseenter should not be firing in Full Screen and Mouse Lock.");
-            is(oneInner.substr(1,1), "0",
+            is(mouseOver, 0,
               "mouseover should not be firing in Full Screen and Mouse Lock.");
-            is(oneInner.substr(2,1), "0",
+            is(mouseLeave, 0,
               "mouseleave should not be firing in Full Screen and Mouse Lock.");
-            is(oneInner.substr(3,1), "0",
+            is(mouseOut, 0,
               "mouseout should not be firing in Full Screen and Mouse Lock.");
             pointer.unlock();
-            oneInner = "0000";
-            document.mozCancelFullScreen();
           } else {
-            is(oneInner.substr(0,1), "1",
+            is(mouseEnter, 1,
               "mouseenter is not firing normally.");
-            is(oneInner.substr(1,1), "1",
+            is(mouseOver, 1,
               "mouseover is not is not firing normally.");
-            is(oneInner.substr(2,1), "1",
+            is(mouseLeave, 1,
               "mouseleave is not is not firing normally.");
-            is(oneInner.substr(3,1), "1",
+            is(mouseOut, 1,
               "mouseout is not firing normally.");
             document.removeEventListener('mozfullscreenchange',
               mouseCursorRequired, false);
@@ -95,22 +96,29 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }
 
       function setup() {
+        document.addEventListener('pointerlocklost', function() {
+            mouseEnter = 0;
+            mouseOver = 0;
+            mouseLeave = 0;
+            mouseOut = 0;
+            document.mozCancelFullScreen();
+        }, false);
+
         // Events that only exist because a mouse exists
         one.addEventListener('mouseout', function() {
-          oneInner = oneInner.substr(0,3) + '1';
+          mouseOut = 1;
         } , false);
 
         one.addEventListener('mouseleave', function() {
-          oneInner = oneInner.substr(0,2) +
-          '1' + oneInner.substr(3);
+          mouseLeave = 1;
         } , false);
 
         one.addEventListener('mouseover', function() {
-          oneInner = oneInner.substr(0,1) +
-          '1' + oneInner.substr(2); } , false);
+          mouseOver = 1;
+        } , false);
 
         one.addEventListener('mouseenter', function() {
-          oneInner = '1' + oneInner.substr(1);
+          mouseEnter = 1;
           } , false);
 
         startTests();
