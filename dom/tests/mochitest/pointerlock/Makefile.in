@@ -72,6 +72,7 @@ _TEST_FILES	= \
     file_differentDOM.html \
     iframe_differentDOM.html \
     file_cursorPosEvents.html \
+    file_pointerLockCSSDisplay.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)
