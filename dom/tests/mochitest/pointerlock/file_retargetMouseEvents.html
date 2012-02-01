@@ -1,0 +1,117 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+<head>
+  <title>Test for Bug 633602</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+  </script>
+  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="text/javascript" src="mouselock_util.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body onload="start();">
+  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+    Mozilla Bug 633602
+  </a>
+
+  <div id="parent">
+    <div id="child" style="width: 100%; height: 100%">
+    </div>
+  </div>
+
+  <pre id="test">
+    <script type="application/javascript">
+      /*
+       * Test for Bug 633602
+       * Retarget mouse events to the locked element
+       */
+
+      SimpleTest.waitForExplicitFinish();
+      var parent = document.getElementById("parent");
+      var child = document.getElementById("child");
+
+      var pointer = navigator.mozPointer;
+
+      /*
+        The event listeners for the child element shouldn't be fired
+        Mouse events will only happen when the pointer is locked
+        and if the pointer is locked all the mouse events should be
+        retargetted to the locked element
+      */
+      child.addEventListener("mousemove", function (e) {
+        ok(false, "Child shouldn't receive mousemove event");
+      });
+
+      child.addEventListener("mousedown", function (e) {
+        ok(false, "Child shouldn't receive mousedown event");
+      });
+
+      child.addEventListener("mouseup", function (e) {
+        ok(false, "Child shouldn't receive mouseup event");
+      });
+
+      child.addEventListener("click", function (e) {
+        ok(false, "Child shouldn't receive click event");
+      });
+
+      /*
+        Event listeners for the parent element
+      */
+      var moveParent = function (e) {
+        ok(true, "Only the locked element should receive mousemove events");
+        parent.removeEventListener("mousemove", moveParent);
+        parent.addEventListener("mousedown", downParent);
+        synthesizeMouseAtCenter(child, {type: "mousedown"}, window);
+      };
+
+      var downParent = function (e) {
+        ok(true, "Only the locked element should receive mousedown events");
+        parent.removeEventListener("mousedown", downParent);
+        parent.addEventListener("mouseup", upParent);
+        synthesizeMouseAtCenter(child, {type: "mouseup"}, window);
+      };
+
+      var upParent = function (e) {
+        ok(true, "Only the locked element should receive mouseup events");
+        parent.removeEventListener("mouseup", upParent);
+        parent.addEventListener("click", clickParent);
+        synthesizeMouseAtCenter(child, {type: "click"}, window);
+      };
+
+      var clickParent = function (e) {
+        ok(true, "Only the locked element should receive click events");
+        parent.removeEventListener("click", clickParent);
+        document.mozCancelFullScreen();
+      };
+      var successCallback = function () {
+        parent.addEventListener("mousemove", moveParent);
+        synthesizeMouseAtCenter(child, {type: "mousemove"}, window);
+      };
+
+      var failureCallback = function () {
+        ok(false, "Failed to lock the pointer");
+        document.mozCancelFullScreen();
+      };
+
+      document.addEventListener("mozfullscreenchange", function (e)  {
+        if (document.mozFullScreen && 
+            document.mozFullScreenElement === parent) {
+          pointer.lock(parent, successCallback, failureCallback);
+        }
+        else {
+          SimpleTest.finish();
+        }     
+      }, false);
+
+      function start() {
+        SimpleTest.waitForFocus(function() {
+          parent.mozRequestFullScreen();
+        });
+      }
+    </script>
+  </pre>
+</body>
+</html>
+
