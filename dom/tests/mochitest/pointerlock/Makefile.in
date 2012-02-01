@@ -60,7 +60,6 @@ _TEST_FILES	= \
     file_DOMtree.html \
     file_pointerLockLost.html \
     file_constantXY.html \
-    file_MouseEvents.html \
     file_movementXY.html \
     file_userPref.html \
     file_targetOutOfFocus.html \
@@ -71,8 +70,9 @@ _TEST_FILES	= \
     file_exitMouseLockOnLoseFocus.html \
     file_differentDOM.html \
     iframe_differentDOM.html \
-    file_cursorPosEvents.html \
+    file_retargetMouseEvents.html \
     file_pointerLockCSSDisplay.html \
+    file_childIframe.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)

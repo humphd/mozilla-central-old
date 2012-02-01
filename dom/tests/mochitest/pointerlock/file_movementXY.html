@@ -4,7 +4,7 @@
 https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 -->
   <head>
-    <title>Test for Bug 633602</title>
+    <title>Bug 633602 - file_movementXY.html</title>
     <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
     </script>
     <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
@@ -27,8 +27,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
          * It also checks the values for mozMovementXY.
          * They should be equal to the current screenXY minus
          * the last screenXY
-         * This test will also test that the incremental movement does
-         * not exceed the width of the screen eventually.
+         * This test will also test that the incremental movement is
+         * not constrained to the width of the screen.
          */
 
         SimpleTest.waitForExplicitFinish();
@@ -38,9 +38,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         var divHeight = 0;
         var div;
         var ePrevious;
-        var moves = 0;
-        var totalX = 0;
-        var totalY = 0;
+        var moves = 1;
         var pointer = navigator.mozPointer;
 
         var moveMouse = function(e) {
@@ -69,8 +67,42 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             "should be equal to eNow.screenX-ePrevious.screenX");
           is(e.mozMovementY, e.screenY - ePrevious.screenY, "mozMovementY " +
             "should be equal to eNow.screenY-ePrevious.screenY");
-          document.mozCancelFullScreen();
+
+          div.removeEventListener("mousemove", moveMouseAgain, false);
+          synthesizeMouse(div, divWidth, divHeight, {
+            type: "mousemove"
+          }, window);
+          pointer.lock(div, function () {
+            div.addEventListener("mousemove", infiniteMouseMove, false);
+
+            // Move the mouse a quarter of the screen from the center.
+            synthesizeMouse(div, divWidth + divWidth/2, 
+              divHeight + divHeight/2, { type: "mousemove" }, window);
+          }, function () {
+            ok(pointer.isLocked, "Pointer should be allowed to lock");
+          });
         };
+
+        var infiniteMouseMove = function(e) {
+          if (moves < 3) {
+            // Makes the mouse move 3 times total
+            moves++;
+            synthesizeMouse(div, divWidth, divHeight, {
+              type: "mousemove"
+            }, window);
+          } else {
+            div.removeEventListener("mousemove", infiniteMouseMove, false);
+            var totalX = divWidth + ((divWidth / 2) * 3);
+            var totalY = divHeight + ((divHeight / 2) * 3);
+            ok(totalX > div.offsetWidth,
+               "Should have moved more than one screen's worth in width." +
+               "TotalX: " + totalX + " Screensize X: " + div.offsetWidth);
+            ok(totalY > div.offsetHeight,
+               "Should have moved more than one screen's worth in height." +
+               "TotalY: " + totalY + " Screensize Y: " + div.offsetHeight);
+            document.mozCancelFullScreen();
+          }
+        }
 
         document.addEventListener("mozfullscreenchange", function() {
           if (document.mozFullScreenElement === div) {
