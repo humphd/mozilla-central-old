@@ -16,8 +16,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     Mozilla Bug 633602
   </a>
 
-  <div id="parent">
-    <div id="child" style="width: 100%; height: 100%">
+  <div id="parent" style="width: 100%; height: 600px; background-color: blue;">
+    <div id="child" style="width: 100%; height: 100%; background-color: red">
     </div>
   </div>
 
@@ -56,12 +56,16 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         ok(false, "Child shouldn't receive click event");
       });
 
+      child.addEventListener("DOMMouseScroll", function (e) {
+        todo(false, "Child shouldn't receive scroll event");
+      });
+
       /*
         Event listeners for the parent element
       */
-      var moveParent = function (e) {
+      var scrollParent = function (e) {
         ok(true, "Only the locked element should receive mousemove events");
-        parent.removeEventListener("mousemove", moveParent);
+        parent.removeEventListener("DOMMouseScroll", scrollParent);
         parent.addEventListener("mousedown", downParent);
         synthesizeMouseAtCenter(child, {type: "mousedown"}, window);
       };
@@ -83,11 +87,18 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var clickParent = function (e) {
         ok(true, "Only the locked element should receive click events");
         parent.removeEventListener("click", clickParent);
-        document.mozCancelFullScreen();
-      };
-      var successCallback = function () {
         parent.addEventListener("mousemove", moveParent);
         synthesizeMouseAtCenter(child, {type: "mousemove"}, window);
+      };
+
+      var moveParent = function (e) {
+        ok(true, "Only the locked element should receive scroll events");
+        parent.removeEventListener("mousemove", moveParent);
+        document.mozCancelFullScreen();
+      }
+      var successCallback = function () {
+        parent.addEventListener("DOMMouseScroll", scrollParent);
+        synthesizeMouseScroll(child, 5, 5, {'delta': 10, 'type': "DOMMouseScroll"});
       };
 
       var failureCallback = function () {
@@ -114,4 +125,3 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   </pre>
 </body>
 </html>
-
