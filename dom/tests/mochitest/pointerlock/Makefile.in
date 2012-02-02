@@ -73,6 +73,7 @@ _TEST_FILES	= \
     file_retargetMouseEvents.html \
     file_pointerLockCSSDisplay.html \
     file_childIframe.html \
+    file_cursorPosEvents.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)
