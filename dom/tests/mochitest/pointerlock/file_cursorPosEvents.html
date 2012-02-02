@@ -53,19 +53,25 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }
 
       function cursorTest() {
+        if (moved == 0) {
+          moved++;
+          parent.addEventListener('mousemove', cursorTest, false);
           synthesizeMouseAtCenter(child, { type: 'mousemove' }, window);
-          parent.addEventListener('mousemove', function() {
-            ok(!mouseEnter,
-              "mouseenter should not happen in Full Screen and Pointer Lock.");
-            ok(!mouseOver,
-              "mouseover should not happen in Full Screen and Pointer Lock.");
-            ok(!mouseLeave,
-              "mouseleave should not happen in Full Screen and Pointer Lock.");
-            ok(!mouseOut,
-              "mouseout should not happen in Full Screen and Pointer Lock.");
-            pointer.unlock();
-          }, false);
+        } else if (moved == 1) {
+          moved++;
           synthesizeMouseAtCenter(parent, { type: 'mousemove' }, window);
+        } else {
+          ok(!mouseEnter,
+            "mouseenter should not happen in Full Screen and Pointer Lock.");
+          ok(!mouseOver,
+            "mouseover should not happen in Full Screen and Pointer Lock.");
+          ok(!mouseLeave,
+            "mouseleave should not happen in Full Screen and Pointer Lock.");
+          ok(!mouseOut,
+            "mouseout should not happen in Full Screen and Pointer Lock.");
+          pointer.unlock();
+          
+        }
       }
 
       function setup() {
