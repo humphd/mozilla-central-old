@@ -13,7 +13,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body onload="start();">
-  <a target="_blank" 
+  <a target="_blank"
     href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
     Mozilla Bug 633602
   </a>
@@ -33,13 +33,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       SimpleTest.waitForExplicitFinish();
       var pointer = navigator.mozPointer;
-      var div = document.getElementById("div");
-
-      div.addEventListener("mozpointerlocklost", function() {
-        is(pointer.isLocked, false, "Mouselocklost event should trigger " +
-          "when window loses focus and mouse should be unlocked");
-        SimpleTest.finish();
-      }, false);
+      var pointerLockLost = false;
+      var div, newWindow;
 
       document.addEventListener("mozfullscreenchange", function() {
         if (document.mozFullScreen && document.mozFullScreenElement === div) {
@@ -49,14 +44,28 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             ok(pointer.isLocked, "Success Callback - mouse should be locked");
             // Open a new window to switch focus and blur the current window
             // On opening a new window, the mozpointerlocklost should trigger
-            var newWindow = window.open();
-            newWindow.close();
+            newWindow = window.open();
           });
+        } else {
+          ok(pointerLockLost, "Mouselocklost event should trigger " +
+            "when window loses focus and mouse should be unlocked");
+
+          if (newWindow) {
+            newWindow.close();
+          }
+
+          SimpleTest.finish();
         }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          div = document.getElementById("div");
+
+          div.addEventListener("mozpointerlocklost", function() {
+            pointerLockLost = true;
+          }, false);
+
           div.mozRequestFullScreen();
         });
       }

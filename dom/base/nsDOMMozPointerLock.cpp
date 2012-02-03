@@ -138,7 +138,7 @@ nsDOMMozPointerLock::Unlock()
 
   nsCOMPtr<nsINode> node = do_QueryInterface(mPointerLockedElement);
   if (!node) {
-    NS_ERROR("Unlock(): unable to get nsINode for locked element.");
+    NS_WARNING("Unlock(): unable to get nsINode for locked element.");
     return NS_ERROR_UNEXPECTED;
   }
   DispatchPointerLockLost(node);
@@ -147,33 +147,33 @@ nsDOMMozPointerLock::Unlock()
   // Making the pointer reappear
   nsCOMPtr<nsPIDOMWindow> domWindow( do_QueryInterface( mWindow ) );
   if (!domWindow) {
-    NS_ERROR("Unlock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
+    NS_WARNING("Unlock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsIDocShell *docShell = domWindow->GetDocShell();
   if (!docShell) {
-    NS_ERROR("Unlock(): No DocShell (window already closed?)");
+    NS_WARNING("Unlock(): No DocShell (window already closed?)");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsRefPtr<nsPresContext> presContext;
   docShell->GetPresContext(getter_AddRefs(presContext));
   if (!presContext)	{
-    NS_ERROR("Unlock(): Unable to get presContext in \
+    NS_WARNING("Unlock(): Unable to get presContext in \
               domWindow->GetDocShell()->GetPresContext()");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
   if (!shell)	{
-    NS_ERROR("Unlock(): Unable to find presContext->PresShell()");
+    NS_WARNING("Unlock(): Unable to find presContext->PresShell()");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
   if (!widget) {
-    NS_ERROR("Unlock(): Unable to find widget in \
+    NS_WARNING("Unlock(): Unable to find widget in \
               shell->GetRootFrame()->GetNearestWidget();");
     return NS_ERROR_UNEXPECTED;
   }
@@ -210,7 +210,7 @@ nsDOMMozPointerLock::ShouldLock(nsIDOMElement* aTarget)
   nsCOMPtr<nsIDOMDocument> domDoc;
   mWindow->GetDocument(getter_AddRefs(domDoc));
   if (!domDoc) {
-    NS_ERROR("ShouldLock(): Unable to get document");
+    NS_WARNING("ShouldLock(): Unable to get document");
     return false;
   }
 
@@ -237,7 +237,7 @@ nsDOMMozPointerLock::ShouldLock(nsIDOMElement* aTarget)
   nsCOMPtr<nsIContent> content = do_QueryInterface(aTarget);
   doc->FlushPendingNotifications(Flush_Layout);
   if (!(content && content->GetPrimaryFrame())) {
-    NS_ERROR("ShouldLock(): Unable to get frame for element");
+    NS_WARNING("ShouldLock(): Unable to get frame for element");
     return false;
   }
 
@@ -253,7 +253,7 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
 
   nsCOMPtr<nsIContent> element = do_QueryInterface(aTarget);
   if (!element) {
-    NS_ERROR("Lock: Unable to get nsIContent for locked element");
+    NS_WARNING("Lock: Unable to get nsIContent for locked element");
     return NS_ERROR_FAILURE;
   }
 
@@ -269,40 +269,40 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
 
     nsCOMPtr<nsPIDOMWindow> domWindow = do_QueryInterface(mWindow);
     if (!domWindow) {
-      NS_ERROR("Lock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
+      NS_WARNING("Lock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
       return NS_ERROR_FAILURE;
     }
 
     nsIDocShell *docShell = domWindow->GetDocShell();
     if (!docShell) {
-      NS_ERROR("Lock(): No DocShell (window already closed?)");
+      NS_WARNING("Lock(): No DocShell (window already closed?)");
       return NS_ERROR_UNEXPECTED;
     }
 
     nsRefPtr<nsPresContext> presContext;
     docShell->GetPresContext(getter_AddRefs(presContext));
     if (!presContext)	{
-      NS_ERROR("Lock(): Unable to get presContext in \
+      NS_WARNING("Lock(): Unable to get presContext in \
                 domWindow->GetDocShell()->GetPresContext()");
       return NS_ERROR_FAILURE;
     }
 
     nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
     if (!shell) {
-      NS_ERROR("Lock(): Unable to find presContext->PresShell()");
+      NS_WARNING("Lock(): Unable to find presContext->PresShell()");
       return NS_ERROR_FAILURE;
     }
 
     nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
     if (!widget) {
-      NS_ERROR("Lock(): Unable to find widget in \
+      NS_WARNING("Lock(): Unable to find widget in \
                 shell->GetRootFrame()->GetNearestWidget();");
       return NS_ERROR_FAILURE;
     }
 
     nsCOMPtr<nsINode> node = do_QueryInterface(element);
     if (!node) {
-      NS_ERROR("Lock(): unable to get nsINode for locked element.");
+      NS_WARNING("Lock(): unable to get nsINode for locked element.");
       return NS_ERROR_UNEXPECTED;
     }
     node->AddMutationObserver(this);

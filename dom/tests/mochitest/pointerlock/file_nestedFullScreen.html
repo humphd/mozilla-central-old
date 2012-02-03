@@ -19,46 +19,51 @@
       Mozilla Bug 633602
     </a>
     <p id="display"></p>
+
     <div id="parentDiv">
-      <div id="childDiv">
-      </div>
+      <div id="childDiv"></div>
     </div>
 
-    <pre id="test">
     <script type="application/javascript">
       /*
-       * Test for Bug 633602 
-       * Check that when there is a nested HTML tag, lock is not allowed
-       * to the child element when parent is in lock
+       * Test for Bug 633602
+       * Check that when there is a nested HTML element, lock is not allowed
+       * to the child element when the parent is in lock.
        */
-      
+
       SimpleTest.waitForExplicitFinish();
 
       var pointer = navigator.mozPointer;
       var finish = false;
+      var parentLockLost = false;
       var parentDiv, childDiv;
 
       document.addEventListener("mozfullscreenchange", function() {
+        if (!document.mozFullScreen) {
+          return SimpleTest.finish();
+        }
+
         // Must call document.mozCancelFullScreen twice, since there are
         // two nested elements in fullscreen mode
         if (finish) {
-          finish = false;
           // Cancel fullscreen on parentDiv
           document.mozCancelFullScreen();
-          SimpleTest.finish();
-        } else if (document.mozFullScreenElement === parentDiv) {
-          pointer.lock(parentDiv, function () {
-            // Mouse should be locked to the parentDiv
-            ok(pointer.isLocked, "Mouse should be locked to parentDiv");
-            childDiv.mozRequestFullScreen();
-          });
-        } else if (document.mozFullScreenElement === childDiv) {
-          // Mouse wasn't locked to childDiv, it was locked to parentDiv
-          // If childDiv receives fullscreen, mouse should be unlocked
-          is(pointer.isLocked, false, "Mouse shouldn't be locked to childDiv");
-          finish = true;
-          // Cancel fullscreen on childDiv
-          document.mozCancelFullScreen();
+        } else {
+           if (document.mozFullScreenElement === parentDiv) {
+             pointer.lock(parentDiv, function () {
+               // Mouse should be locked to the parentDiv
+               ok(pointer.isLocked, "Mouse should be locked to parentDiv");
+               childDiv.mozRequestFullScreen();
+             });
+           } else if (document.mozFullScreenElement === childDiv) {
+             // Mouse wasn't locked to childDiv, it was locked to parentDiv
+             // If childDiv receives fullscreen, mouse should be unlocked
+             ok(parentLockLost, "Expected mozpointerlocklost event for parentDiv.");
+             is(pointer.isLocked, false, "Mouse shouldn't be locked to childDiv");
+             finish = true;
+             // Cancel fullscreen on childDiv
+             document.mozCancelFullScreen();
+           }
         }
       }, false);
 
@@ -66,11 +71,14 @@
         parentDiv = document.getElementById("parentDiv");
         childDiv = document.getElementById("childDiv");
 
+        parentDiv.addEventListener("mozpointerlocklost", function() {
+          parentLockLost = true;
+        }, false);
+
         SimpleTest.waitForFocus(function() {
           parentDiv.mozRequestFullScreen();
         });
       }
     </script>
-    </pre>
   </body>
 </html>
