@@ -3851,8 +3851,8 @@ nsEventStateManager::DispatchMouseEvent(nsGUIEvent* aEvent, PRUint32 aMessage,
   nsIFrame* targetFrame = nsnull;
   if (aTargetContent) {
     nsESMEventCB callback(aTargetContent);
-    nsEventDispatcher::Dispatch(aTargetContent, mPresContext, &event,
-                                nsnull, &status, &callback);
+    nsEventDispatcher::Dispatch(aTargetContent, mPresContext, &event, nsnull,
+                                &status, &callback);
 
     // Although the primary frame was checked in event callback, 
     // it may not be the same object after event dispatching and handling.

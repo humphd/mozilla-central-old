@@ -567,7 +567,7 @@ public:
   void SetPointerLock( nsIWidget* aWidget, nsIContent* aElement ) ;
   nsIntPoint GetMouseCoords();
   static void sClickHoldCallback ( nsITimer* aTimer, void* aESM ) ;
-  static void SetLastScreenOffset(nsIntPoint aScreenOffset) ;
+  static void SetLastScreenOffset( nsIntPoint aScreenOffset ) ;
 };
 
 /**
