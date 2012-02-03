@@ -79,17 +79,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       var moveIframe = function (e) {
         ok(pointer.isLocked, "Pointer should be locked even when pointer " +
-          "goes over a child iframe");
-        isnot(childMov.mozMovementX, e.mozMovementX, "MovementX of first " +
-          "move to childDiv should be different from movementX from " +
-          "move to child iframe");
-        isnot(childMov.mozMovementY, e.mozMovementY, "MovementY of first " +
-          "move to childDiv should be different from movementY from " +
-          "move to child iframe");
-        iframeMov = {
-          mozMovementX: e.mozMovementX,
-          mozMovementY: e.mozMovementY
-        };
+          "hovers over a child iframe");
         parent.removeEventListener("mousemove", moveIframe);
         parent.addEventListener("mousemove", secondMoveChild);
         synthesizeMouseAtCenter(childDiv, {type: "mousemove"}, window);
