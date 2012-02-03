@@ -62,11 +62,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var parent = document.getElementById("parent");
       var childDiv = document.getElementById("childDiv");
       var iframe = document.getElementById("iframe");
-      var childMov
-        , iframeMov;
+      var childMov, iframeMov;
 
       var pointer = navigator.mozPointer;
-      
+
       var firstMoveChild = function (e) {
         childMov = {
           mozMovementX: e.mozMovementX,
@@ -107,13 +106,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       document.addEventListener("mozfullscreenchange", function (e)  {
-        if (document.mozFullScreen && 
+        if (document.mozFullScreen &&
             document.mozFullScreenElement === parent) {
           pointer.lock(parent, successCallback, failureCallback);
         }
         else {
           SimpleTest.finish();
-        }     
+        }
       }, false);
 
       function start() {
