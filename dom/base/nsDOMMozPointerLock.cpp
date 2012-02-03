@@ -144,8 +144,8 @@ nsDOMMozPointerLock::Unlock()
   DispatchPointerLockLost(node);
   node->RemoveMutationObserver(this);
 
-  // Making the pointer reappear
-  nsCOMPtr<nsPIDOMWindow> domWindow( do_QueryInterface( mWindow ) );
+  // Unhide the pointer
+  nsCOMPtr<nsPIDOMWindow> domWindow = do_QueryInterface(mWindow);
   if (!domWindow) {
     NS_WARNING("Unlock(): No DOM found in nsCOMPtr<nsPIDOMWindow>");
     return NS_ERROR_UNEXPECTED;
@@ -171,7 +171,13 @@ nsDOMMozPointerLock::Unlock()
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
+  nsIFrame* rootFrame = shell->GetRootFrame();
+  if (!rootFrame) {
+    NS_WARNING("Unlock(): Unable to get root frame");
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
   if (!widget) {
     NS_WARNING("Unlock(): Unable to find widget in \
               shell->GetRootFrame()->GetNearestWidget();");
@@ -214,14 +220,14 @@ nsDOMMozPointerLock::ShouldLock(nsIDOMElement* aTarget)
     return false;
   }
 
-  nsCOMPtr<nsINode> targetNode(do_QueryInterface(aTarget));
+  nsCOMPtr<nsINode> targetNode = do_QueryInterface(aTarget);
   if (!targetNode) {
     return false;
   }
 
   // Check if the element is in a DOM tree and also this DOM.
   nsCOMPtr<nsIDocument> targetDoc = targetNode->GetCurrentDoc();
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
   if (!targetDoc || targetDoc != doc) {
     return false;
   }
@@ -293,7 +299,13 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
       return NS_ERROR_FAILURE;
     }
 
-    nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
+    nsIFrame* rootFrame = shell->GetRootFrame();
+    if (!rootFrame) {
+      NS_WARNING("Lock(): Unable to get root frame");
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
     if (!widget) {
       NS_WARNING("Lock(): Unable to find widget in \
                 shell->GetRootFrame()->GetNearestWidget();");

@@ -62,11 +62,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var parent = document.getElementById("parent");
       var childDiv = document.getElementById("childDiv");
       var iframe = document.getElementById("iframe");
-      var childMov
-        , iframeMov;
+      var childMov, iframeMov;
 
       var pointer = navigator.mozPointer;
-      
+
       var firstMoveChild = function (e) {
         childMov = {
           mozMovementX: e.mozMovementX,
@@ -79,17 +78,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       var moveIframe = function (e) {
         ok(pointer.isLocked, "Pointer should be locked even when pointer " +
-          "goes over a child iframe");
-        isnot(childMov.mozMovementX, e.mozMovementX, "MovementX of first " +
-          "move to childDiv should be different from movementX from " +
-          "move to child iframe");
-        isnot(childMov.mozMovementY, e.mozMovementY, "MovementY of first " +
-          "move to childDiv should be different from movementY from " +
-          "move to child iframe");
-        iframeMov = {
-          mozMovementX: e.mozMovementX,
-          mozMovementY: e.mozMovementY
-        };
+          "hovers over a child iframe");
         parent.removeEventListener("mousemove", moveIframe);
         parent.addEventListener("mousemove", secondMoveChild);
         synthesizeMouseAtCenter(childDiv, {type: "mousemove"}, window);
@@ -117,13 +106,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       document.addEventListener("mozfullscreenchange", function (e)  {
-        if (document.mozFullScreen && 
+        if (document.mozFullScreen &&
             document.mozFullScreenElement === parent) {
           pointer.lock(parent, successCallback, failureCallback);
         }
         else {
           SimpleTest.finish();
-        }     
+        }
       }, false);
 
       function start() {

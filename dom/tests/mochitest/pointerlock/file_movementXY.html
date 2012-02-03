@@ -13,7 +13,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   </head>
   <body onload="start();">
-    <a target="_blank" 
+    <a target="_blank"
       href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
       Mozilla Bug 633602
     </a>
@@ -22,7 +22,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       <script type="application/javascript">
         /*
          * Test for Bug 633602
-         * This test checks if mozMovementX and mozMovementY 
+         * This test checks if mozMovementX and mozMovementY
          * are present in a mouse event object.
          * It also checks the values for mozMovementXY.
          * They should be equal to the current screenXY minus
@@ -76,7 +76,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             div.addEventListener("mousemove", infiniteMouseMove, false);
 
             // Move the mouse a quarter of the screen from the center.
-            synthesizeMouse(div, divWidth + divWidth/2, 
+            synthesizeMouse(div, divWidth + divWidth/2,
               divHeight + divHeight/2, { type: "mousemove" }, window);
           }, function () {
             ok(pointer.isLocked, "Pointer should be allowed to lock");
@@ -118,8 +118,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             synthesizeMouse(div, divWidth, divHeight, {
               type: "mousemove"
             }, window);
-          } 
-          else {
+          } else {
             SimpleTest.finish();
           }
         }, false);
