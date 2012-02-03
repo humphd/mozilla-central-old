@@ -32,7 +32,7 @@
       var gKeyCode;
       var gKeySuppressed;
       var gKeyReceived = false;
-     
+
       var keyList = [
         { code: "VK_A", suppressed: true },
         { code: "VK_ESCAPE", suppressed: false},
@@ -80,19 +80,19 @@
                          false, false, false, false,
                          gKeyCode, 0);
         document.body.dispatchEvent(evt);
- 
+
         evt = document.createEvent("KeyEvents");
         evt.initKeyEvent("keypress", true, true, window,
                          false, false, false, false,
                          gKeyCode, 0);
         document.body.dispatchEvent(evt);
- 
+
         evt = document.createEvent("KeyEvents");
         evt.initKeyEvent("keyup", true, true, window,
                          false, false, false, false,
                          gKeyCode, 0);
         document.body.dispatchEvent(evt);
-   
+
         ok(gKeyReceived, "dispatchEvent should dispatch events synchronously");
         ok(pointer.isLocked,
            "Mouselock shouldn't be lost to script initiated events for " + gKeyName);
@@ -109,7 +109,7 @@
             gKeyCode = KeyEvent["DOM_" + gKeyName];
             gKeySuppressed = keyList[gKeyTestIndex].suppressed;
             gKeyTestIndex++;
-            ok(pointer.isLocked, "Mouse is locked befoe testing " + gKeyName); 
+            ok(pointer.isLocked, "Mouse is locked befoe testing " + gKeyName);
             testScriptInitiatedKeyEvents();
             testTrustedKeyEvents();
           }, 0);
@@ -117,7 +117,7 @@
       }
 
       document.addEventListener("mozfullscreenchange", function(e) {
-        if (document.mozFullScreen && 
+        if (document.mozFullScreen &&
             document.mozFullScreenElement === canvas) {
           pointer.lock(canvas, function() {
             // Success Callback
@@ -131,7 +131,7 @@
           });
         }
       }, false);
-      
+
       function start() {
         SimpleTest.waitForFocus(function() {
           pointer.lock(canvas, function() {

@@ -51,7 +51,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       document.addEventListener('mozfullscreenchange', mouseClicks, false);
 
       function mouseClicks() {
-        if (document.mozFullScreen && document.mozFullScreenElement === outer) {          
+        if (document.mozFullScreen && document.mozFullScreenElement === outer) {
           outer.addEventListener('mousemove', mouseTests, false);
           pointer.lock(outer, mouseActions);
         } else {
