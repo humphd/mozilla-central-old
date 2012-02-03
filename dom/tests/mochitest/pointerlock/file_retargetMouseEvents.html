@@ -29,9 +29,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
        */
 
       SimpleTest.waitForExplicitFinish();
-      var parent = document.getElementById("parent");
-      var child = document.getElementById("child");
 
+      var parent, child;
       var pointer = navigator.mozPointer;
 
       /*
@@ -40,65 +39,85 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         and if the pointer is locked all the mouse events should be
         retargetted to the locked element
       */
-      child.addEventListener("mousemove", function (e) {
+      var childMoveTest = function() {
         ok(false, "Child shouldn't receive mousemove event");
-      });
+      }
 
-      child.addEventListener("mousedown", function (e) {
+      var childDownTest = function() {
         ok(false, "Child shouldn't receive mousedown event");
-      });
+      };
 
-      child.addEventListener("mouseup", function (e) {
+      var childUpTest = function() {
         ok(false, "Child shouldn't receive mouseup event");
-      });
+      };
 
-      child.addEventListener("click", function (e) {
+      var childClickTest = function() {
         ok(false, "Child shouldn't receive click event");
-      });
+      };
 
-      child.addEventListener("DOMMouseScroll", function (e) {
+      var childScrollTest = function() {
+        // XXX: this is still not working...
         todo(false, "Child shouldn't receive scroll event");
-      });
+      };
 
       /*
         Event listeners for the parent element
       */
-      var scrollParent = function (e) {
+      var parentMoveTest = function() {
+        parent.removeEventListener("mousemove", parentMoveTest);
+        child.removeEventListener("mousemove", childMoveTest);
+        parent.addEventListener("DOMMouseScroll", parentScrollTest);
+        child.addEventListener("DOMMouseScroll", childScrollTest);
+        synthesizeMouseScroll(child, 5, 5, {'delta': 10, 'type': "DOMMouseScroll"});
+      };
+
+      var parentScrollTest = function (e) {
         ok(true, "Only the locked element should receive mousemove events");
-        parent.removeEventListener("DOMMouseScroll", scrollParent);
-        parent.addEventListener("mousedown", downParent);
+        parent.removeEventListener("DOMMouseScroll", parentScrollTest);
+        child.removeEventListener("DOMMouseScroll", childScrollTest);
+        parent.addEventListener("mousedown", parentDownTest);
+        child.addEventListener("mousedown", childDownTest);
         synthesizeMouseAtCenter(child, {type: "mousedown"}, window);
       };
 
-      var downParent = function (e) {
+      var parentDownTest = function (e) {
         ok(true, "Only the locked element should receive mousedown events");
-        parent.removeEventListener("mousedown", downParent);
-        parent.addEventListener("mouseup", upParent);
+        parent.removeEventListener("mousedown", parentDownTest);
+        child.removeEventListener("mousedown", childDownTest);
+        parent.addEventListener("mouseup", parentUpTest);
+        child.addEventListener("mouseup", childUpTest);
         synthesizeMouseAtCenter(child, {type: "mouseup"}, window);
       };
 
-      var upParent = function (e) {
+      var parentUpTest = function (e) {
         ok(true, "Only the locked element should receive mouseup events");
-        parent.removeEventListener("mouseup", upParent);
-        parent.addEventListener("click", clickParent);
+        parent.removeEventListener("mouseup", parentUpTest);
+        child.removeEventListener("mouseup", childUpTest);
+        parent.addEventListener("click", parentClickTest);
+        child.addEventListener("click", childClickTest);
         synthesizeMouseAtCenter(child, {type: "click"}, window);
       };
 
-      var clickParent = function (e) {
+      var parentClickTest = function (e) {
         ok(true, "Only the locked element should receive click events");
-        parent.removeEventListener("click", clickParent);
-        parent.addEventListener("mousemove", moveParent);
+        parent.removeEventListener("click", parentClickTest);
+        child.removeEventListener("click", childClickTest);
+        parent.addEventListener("mousemove", parentMoveTest);
+        child.addEventListener("mousemove", childMoveTest);
         synthesizeMouseAtCenter(child, {type: "mousemove"}, window);
       };
 
-      var moveParent = function (e) {
+      var parentMoveTest = function (e) {
         ok(true, "Only the locked element should receive scroll events");
-        parent.removeEventListener("mousemove", moveParent);
+        parent.removeEventListener("mousemove", parentMoveTest);
+        child.removeEventListener("mousemove", childMoveTest);
         document.mozCancelFullScreen();
       }
+
       var successCallback = function () {
-        parent.addEventListener("DOMMouseScroll", scrollParent);
-        synthesizeMouseScroll(child, 5, 5, {'delta': 10, 'type': "DOMMouseScroll"});
+        parent.addEventListener("mousemove", parentMoveTest);
+        child.addEventListener("mousemove", childMoveTest);
+        synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);
       };
 
       var failureCallback = function () {
@@ -107,17 +126,19 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       document.addEventListener("mozfullscreenchange", function (e)  {
-        if (document.mozFullScreen && 
+        if (document.mozFullScreen &&
             document.mozFullScreenElement === parent) {
           pointer.lock(parent, successCallback, failureCallback);
-        }
-        else {
+        } else {
           SimpleTest.finish();
-        }     
+        }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          parent = document.getElementById("parent");
+          child = document.getElementById("child");
+
           parent.mozRequestFullScreen();
         });
       }
