@@ -171,7 +171,13 @@ nsDOMMozPointerLock::Unlock()
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
+  nsIFrame* rootFrame = shell->GetRootFrame();
+  if (!rootFrame) {
+    NS_WARNING("Unlock(): Unable to get root frame");
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
   if (!widget) {
     NS_WARNING("Unlock(): Unable to find widget in \
               shell->GetRootFrame()->GetNearestWidget();");
@@ -293,7 +299,13 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
       return NS_ERROR_FAILURE;
     }
 
-    nsCOMPtr<nsIWidget> widget = shell->GetRootFrame()->GetNearestWidget();
+    nsIFrame* rootFrame = shell->GetRootFrame();
+    if (!rootFrame) {
+      NS_WARNING("Lock(): Unable to get root frame");
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
     if (!widget) {
       NS_WARNING("Lock(): Unable to find widget in \
                 shell->GetRootFrame()->GetNearestWidget();");
