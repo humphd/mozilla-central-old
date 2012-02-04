@@ -33,13 +33,46 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var parent, child;
       var pointer = navigator.mozPointer;
 
+      function PointerEventStats() {
+        this.mouseMove = false;
+        this.mouseDown = false;
+        this.mouseUp = false;
+        this.mouseClick = false;
+        this.mouseScroll = false;
+      }
+
+      var parentStats = new PointerEventStats();
+      var childStats = new PointerEventStats();
+
+      function setupEventHandlers(element, stats) {
+        element.addEventListener('mousemove', function() {
+          stats.mouseMove = true;
+        }, false);
+
+        element.addEventListener('mousedown', function() {
+          stats.mouseDown = true;
+        }, false);
+
+        element.addEventListener('mouseup', function() {
+          stats.mouseUp = true;
+        }, false);
+
+        element.addEventListener('click', function() {
+          stats.mouseClick = true;
+        }, false);
+
+        element.addEventListener('DOMMouseScroll', function() {
+          stats.mouseScroll = true;
+        }, false);
+      }
+
       /*
         The event listeners for the child element shouldn't be fired
         Mouse events will only happen when the pointer is locked
         and if the pointer is locked all the mouse events should be
         retargetted to the locked element
       */
-      var childMoveTest = function() {
+     /* var childMoveTest = function() {
         ok(false, "Child shouldn't receive mousemove event");
       }
 
@@ -58,12 +91,12 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var childScrollTest = function() {
         // XXX: this is still not working...
         todo(false, "Child shouldn't receive scroll event");
-      };
+      };*/
 
       /*
         Event listeners for the parent element
       */
-      var parentMoveTest = function() {
+      /*var parentMoveTest = function() {
         parent.removeEventListener("mousemove", parentMoveTest);
         child.removeEventListener("mousemove", childMoveTest);
         parent.addEventListener("DOMMouseScroll", parentScrollTest);
@@ -112,16 +145,23 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         parent.removeEventListener("mousemove", parentMoveTest);
         child.removeEventListener("mousemove", childMoveTest);
         document.mozCancelFullScreen();
-      }
+      }*/
 
       var successCallback = function () {
-        parent.addEventListener("mousemove", parentMoveTest);
+        /*parent.addEventListener("mousemove", parentMoveTest);
         child.addEventListener("mousemove", childMoveTest);
-        synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);
+        synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);*/
+        synthesizeMouseAtCenter(child, {type: "mousemove"}, window);
+        synthesizeMouseAtCenter(child, {type: "mousedown"}, window);
+        synthesizeMouseAtCenter(child, {type: "mouseup"}, window);
+//        synthesizeMouseAtCenter(child, {type: "click"}, window);
+//        synthesizeMouseScroll(child, 5, 5, {'delta': 10, 'type': "DOMMouseScroll"});
+        //synthesizeMouseScroll(child, {type: "DOMMouseScroll"}, window);
+        pointer.unlock();
       };
 
       var failureCallback = function () {
-        ok(false, "Failed to lock the pointer");
+        ok(pointer.isLocked, "Failed to lock the pointer");
         document.mozCancelFullScreen();
       };
 
@@ -135,10 +175,42 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }, false);
 
       function start() {
-        SimpleTest.waitForFocus(function() {
           parent = document.getElementById("parent");
           child = document.getElementById("child");
 
+          /*parent.addEventListener("mozpointerlocklost", function() {
+            document.mozCancelFullScreen();
+          }, false);*/
+          parent.addEventListener("mozpointerlocklost", function() {
+            is(childStats.mouseMove, false,
+               "child's mousemove should not be firing in Full Screen and Pointer Lock.");
+            is(childStats.mouseDown, false,
+               "child's mousedown should not be firing in Full Screen and Pointer Lock.");
+            is(childStats.mouseUp, false,
+               "child's mouseup should not be firing in Full Screen and Pointer Lock.");
+            is(childStats.mouseClick, false,
+               "child's mouseclick should not be firing in Full Screen and Pointer Lock.");
+            is(childStats.mouseScroll, false,
+               "child's mousescroll should not be firing in Full Screen and Pointer Lock.");
+
+            is(parentStats.mouseMove, true,
+               "parent's mousemove should not be firing in Full Screen and Pointer Lock.");
+            is(parentStats.mouseDown, true,
+               "parent's mousedown should not be firing in Full Screen and Pointer Lock.");
+            is(parentStats.mouseUp, true,
+               "parent's mouseup should not be firing in Full Screen and Pointer Lock.");
+            is(parentStats.mouseClick, true,
+               "parent's mouseclick should not be firing in Full Screen and Pointer Lock.");
+            is(parentStats.mouseScroll, true,
+              "parent's mousescroll should not be firing in Full Screen and Pointer Lock.");
+
+            document.mozCancelFullScreen();
+          }, false);
+
+          setupEventHandlers(parent, parentStats);
+          setupEventHandlers(child, childStats);
+
+        SimpleTest.waitForFocus(function() {
           parent.mozRequestFullScreen();
         });
       }
