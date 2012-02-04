@@ -30,49 +30,73 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       SimpleTest.waitForExplicitFinish();
 
+      function MouseEventStats() {
+        this.mouseMove = false;
+        this.mouseDown = false;
+        this.mouseUp = false;
+        this.mouseClick = false;
+        this.mouseScroll = false;
+      }
+      var parentStats = new MouseEventStats(),
+        childStats = new MouseEventStats();
+
       var parent, child;
       var pointer = navigator.mozPointer;
 
-      /*
-        The event listeners for the child element shouldn't be fired
-        Mouse events will only happen when the pointer is locked
-        and if the pointer is locked all the mouse events should be
-        retargetted to the locked element
-      */
+      /**
+       * The event listeners for the child element shouldn't be fired
+       * Mouse events will only happen when the pointer is locked
+       * and if the pointer is locked all the mouse events should be
+       * retargetted to the locked element
+       **/
       var childMoveTest = function() {
-        ok(false, "Child shouldn't receive mousemove event");
+        childStats.mouseMove = true;
       }
 
       var childDownTest = function() {
-        ok(false, "Child shouldn't receive mousedown event");
+        childStats.mouseDown = true;
       };
 
       var childUpTest = function() {
-        ok(false, "Child shouldn't receive mouseup event");
+        childStats.mouseUp = true;
       };
 
       var childClickTest = function() {
-        ok(false, "Child shouldn't receive click event");
+        childStats.mouseClick = true;
       };
 
       var childScrollTest = function() {
         // XXX: this is still not working...
-        todo(false, "Child shouldn't receive scroll event");
+        childStats.mouseScroll = true;
       };
 
-      /*
-        Event listeners for the parent element
-      */
-      var parentMoveTest = function() {
-        parent.removeEventListener("mousemove", parentMoveTest);
-        child.removeEventListener("mousemove", childMoveTest);
+      function checkChildStats() {
+        is(childStats.mouseMove, false, "Child shound not receive mousemove event.");
+        is(childStats.mouseDown, false, "Child should not receive mousedown event.");
+        is(childStats.mouseUp, false, "Child should not receive mouseup event.");
+        is(childStats.mouseClick, false, "Child should not receive click event.");
+        // XXX: scroll events aren't right yet...
+        todo_is(childStats.mouseScroll, false, "Child should not receive DOMMouseScroll event.");
+      }
+
+      function checkParentStats() {
+        ok(parentStats.mouseMove, "Parent should receive mousemove event.");
+        ok(parentStats.mouseDown, "Parent should receive mousedown event.");
+        ok(parentStats.mouseUp, "Parent should receive mouseup event.");
+        ok(parentStats.mouseClick, "Parent should receive click event.");
+        ok(parentStats.mouseScroll, "Parent should receive DOMMouseScroll event.");
+      }
+
+      //  Event listeners for the parent element
+      var startMouseTests = function() {
+        parent.removeEventListener("mousemove", startMouseTests);
         parent.addEventListener("DOMMouseScroll", parentScrollTest);
         child.addEventListener("DOMMouseScroll", childScrollTest);
         synthesizeMouseScroll(child, 5, 5, {'delta': 10, 'type': "DOMMouseScroll"});
       };
 
       var parentScrollTest = function (e) {
-        ok(true, "Only the locked element should receive mousemove events");
+        parentStats.mouseScroll = true;
         parent.removeEventListener("DOMMouseScroll", parentScrollTest);
         child.removeEventListener("DOMMouseScroll", childScrollTest);
         parent.addEventListener("mousedown", parentDownTest);
@@ -81,7 +105,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var parentDownTest = function (e) {
-        ok(true, "Only the locked element should receive mousedown events");
+        parentStats.mouseDown = true;
         parent.removeEventListener("mousedown", parentDownTest);
         child.removeEventListener("mousedown", childDownTest);
         parent.addEventListener("mouseup", parentUpTest);
@@ -90,7 +114,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var parentUpTest = function (e) {
-        ok(true, "Only the locked element should receive mouseup events");
+        parentStats.mouseUp = true;
         parent.removeEventListener("mouseup", parentUpTest);
         child.removeEventListener("mouseup", childUpTest);
         parent.addEventListener("click", parentClickTest);
@@ -99,7 +123,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var parentClickTest = function (e) {
-        ok(true, "Only the locked element should receive click events");
+        parentStats.mouseClick = true;
         parent.removeEventListener("click", parentClickTest);
         child.removeEventListener("click", childClickTest);
         parent.addEventListener("mousemove", parentMoveTest);
@@ -108,14 +132,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var parentMoveTest = function (e) {
-        ok(true, "Only the locked element should receive scroll events");
+        parentStats.mouseMove = true;
         parent.removeEventListener("mousemove", parentMoveTest);
         child.removeEventListener("mousemove", childMoveTest);
         document.mozCancelFullScreen();
       }
 
       var successCallback = function () {
-        parent.addEventListener("mousemove", parentMoveTest);
+        parent.addEventListener("mousemove", startMouseTests);
         child.addEventListener("mousemove", childMoveTest);
         synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);
       };
@@ -130,6 +154,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             document.mozFullScreenElement === parent) {
           pointer.lock(parent, successCallback, failureCallback);
         } else {
+          checkChildStats();
+          checkParentStats();
           SimpleTest.finish();
         }
       }, false);
