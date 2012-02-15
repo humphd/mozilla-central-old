@@ -56,27 +56,60 @@
 #include "nsContentUtils.h"
 #include "nsIContent.h"
 
+static void
+DispatchPointerLockChange(nsINode* aTarget)
+{
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(aTarget,
+                        NS_LITERAL_STRING("mozpointerlockchange"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+}
+
+static void
+DispatchPointerLockError(nsINode* aTarget)
+{
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(aTarget,
+                        NS_LITERAL_STRING("mozpointerlockerror"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+}
+
+static void
+DispatchPointerLockLost(nsINode* aTarget)
+{
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(aTarget,
+                        NS_LITERAL_STRING("mozpointerlocklost"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+}
+
 // nsRequestPointerLockEvent
 class nsRequestPointerLockEvent : public nsRunnable
 {
 public:
   nsRequestPointerLockEvent(bool aAllow,
-                            nsPointerLockRequest* aRequest)
-    : mRequest(aRequest),
+                            nsINode* aTarget)
+    : mTarget(aTarget),
       mAllow(aAllow)
   {}
 
   NS_IMETHOD Run() {
     if (mAllow) {
-      mRequest->SendSuccess();
+      DispatchPointerLockChange(mTarget);
     } else {
-      mRequest->SendFailure();
+      DispatchPointerLockError(mTarget);
     }
     return NS_OK;
   }
 
 private:
-  nsRefPtr<nsPointerLockRequest> mRequest;
+  nsCOMPtr<nsINode> mTarget;
   bool mAllow;
 };
 
@@ -100,16 +133,6 @@ NS_IMPL_CYCLE_COLLECTION_2(nsDOMMozPointerLock,
 
 nsCOMPtr<nsIDOMElement> nsDOMMozPointerLock::mPointerLockedElement =  nsnull;
 
-static void
-DispatchPointerLockLost(nsINode* aTarget)
-{
-  nsRefPtr<nsAsyncDOMEvent> e =
-    new nsAsyncDOMEvent(aTarget,
-                        NS_LITERAL_STRING("mozpointerlocklost"),
-                        true,
-                        false);
-  e->PostDOMEvent();
-}
 
 nsDOMMozPointerLock::nsDOMMozPointerLock() :
   mWindow(nsnull)
@@ -251,9 +274,7 @@ nsDOMMozPointerLock::ShouldLock(nsIDOMElement* aTarget)
 }
 
 NS_IMETHODIMP
-nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
-                          nsIMozPointerLockSuccessCallback* aSuccessCallback,
-                          nsIMozPointerLockFailureCallback* aFailureCallback)
+nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget)
 {
   NS_ENSURE_ARG_POINTER(aTarget);
 
@@ -263,13 +284,17 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
     return NS_ERROR_FAILURE;
   }
 
-  nsRefPtr<nsPointerLockRequest> request =
-    new nsPointerLockRequest(element, aSuccessCallback, aFailureCallback);
+  nsCOMPtr<nsINode> node = do_QueryInterface(aTarget);
+  if (!node) {
+    NS_WARNING("Lock(): unable to get nsINode for locked element.");
+    return NS_ERROR_UNEXPECTED;
+  }
+
   nsCOMPtr<nsIRunnable> ev;
 
   // If we're already locked to this target, re-call success callback
   if (mPointerLockedElement && mPointerLockedElement == aTarget){
-    ev = new nsRequestPointerLockEvent(true, request);
+    ev = new nsRequestPointerLockEvent(true, node);
   } else if (ShouldLock(aTarget)) {
     mPointerLockedElement = aTarget;
 
@@ -312,11 +337,6 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
       return NS_ERROR_FAILURE;
     }
 
-    nsCOMPtr<nsINode> node = do_QueryInterface(element);
-    if (!node) {
-      NS_WARNING("Lock(): unable to get nsINode for locked element.");
-      return NS_ERROR_UNEXPECTED;
-    }
     node->AddMutationObserver(this);
 
     // Hide the cursor and set pointer lock for future mouse events
@@ -325,9 +345,9 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
                    0.0f, 0.0f, widget, true);
     esm->SetPointerLock(widget, element);
 
-    ev = new nsRequestPointerLockEvent(true, request);
+    ev = new nsRequestPointerLockEvent(true, node);
   } else {
-    ev = new nsRequestPointerLockEvent(false, request);
+    ev = new nsRequestPointerLockEvent(false, node);
   }
 
   NS_DispatchToMainThread(ev);
@@ -404,41 +424,3 @@ nsDOMMozPointerLock::NodeWillBeDestroyed(const nsINode* aNode)
 {
 }
 
-// nsPointerLockRequest
-NS_IMPL_ISUPPORTS0(nsPointerLockRequest)
-
-nsPointerLockRequest::nsPointerLockRequest(
-  nsIContent* aContent,
-  nsIMozPointerLockSuccessCallback* aSuccessCallback,
-  nsIMozPointerLockFailureCallback* aFailureCallback)
-  : mContent(aContent),
-    mSuccessCallback(aSuccessCallback),
-    mFailureCallback(aFailureCallback)
-{
-}
-
-void
-nsPointerLockRequest::SendSuccess()
-{
-  if (!mSuccessCallback) {
-    return;
-  }
-
-  nsCxPusher pusher;
-  if (pusher.Push(mContent)) {
-    mSuccessCallback->HandleEvent();
-  }
-}
-
-void
-nsPointerLockRequest::SendFailure()
-{
-  if (!mFailureCallback) {
-    return;
-  }
-
-  nsCxPusher pusher;
-  if (pusher.Push(mContent)) {
-    mFailureCallback->HandleEvent();
-  }
-}
