@@ -225,6 +225,11 @@ nsWeakPtr nsDocument::sFullScreenDoc = nsnull;
 // which requested DOM full-screen mode.
 nsWeakPtr nsDocument::sFullScreenRootDoc = nsnull;
 
+// Reference to the pointerlock element
+nsRefPtr<Element> nsDocument::sPointerLockElement;
+// Reference to the document which requested DOM pointerlock
+nsRefPtr<nsDocument> nsDocument::sPointerLockDoc = nsnull;
+
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gDocumentLeakPRLog;
 static PRLogModuleInfo* gCspPRLog;
@@ -8566,34 +8571,18 @@ ResetFullScreen(nsIDocument* aDocument, void* aData) {
 void
 nsDocument::MaybeUnlockMouse(nsIDocument* aDocument)
 {
+  fprintf(stderr, "nsDocument::MaybeUnlockMouse\n");
   if (!aDocument) {
+  fprintf(stderr, "!aDocument\n");
     return;
   }
 
-  // When exiting fullscreen, if the pointer is also locked to the fullscreen element,
-  // we'll need to unlock it as we the document exits fullscreen.
-  nsCOMPtr<nsIDOMWindow> window = aDocument->GetWindow();
-  if (!window) {
+  if (!sPointerLockDoc) {
+    fprintf(stderr, "!sPointerLockDoc\n");
     return;
   }
 
-  nsCOMPtr<nsIDOMNavigator> navigator;
-  window->GetNavigator(getter_AddRefs(navigator));
-  if (!navigator) {
-    return;
-  }
-
-  nsCOMPtr<nsIDOMMozNavigatorPointerLock> navigatorPointerLock =
-    do_QueryInterface(navigator);
-
-  nsCOMPtr<nsIDOMMozPointerLock> pointer;
-  navigatorPointerLock->GetMozPointer(getter_AddRefs(pointer));
-  if (!pointer) {
-    return;
-  }
-
-  // Unlock will bail early if not really locked
-  pointer->Unlock();
+  sPointerLockDoc->UnLockPointer();
 }
 
 /* static */
@@ -9113,6 +9102,216 @@ nsDocument::IsFullScreenEnabled(bool aCallerIsChrome, bool aLogFailure)
 
   return true;
 }
+
+
+
+void 
+nsDocument::RequestPointerLock(Element* aElement) {
+
+  fprintf(stderr, "nsDocument::RequestPointerLock\n");
+
+  if (ShouldLockPointer(aElement)) {
+    fprintf(stderr, "ShouldLockPointer()\n");
+
+
+  if (!SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)) {
+    fprintf(stderr, "!SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)\n");
+    return;
+  }
+
+  sPointerLockElement = aElement;
+  sPointerLockDoc = this;
+
+  // Maybe create a method to dispatch all pointerlock related events and
+  // pass the event type as an argument 
+  fprintf(stderr, "Dispatching mozpointerlockchange event\n");
+    nsRefPtr<nsAsyncDOMEvent> e =
+      new nsAsyncDOMEvent(aElement,
+                          NS_LITERAL_STRING("mozpointerlockchange"),
+                          true,
+                          false);
+    e->PostDOMEvent();
+  }
+  else {
+    fprintf(stderr, "!ShouldLockPointer()\n");
+    // Same as firing mozpointerlockchange. Only event name changes
+    fprintf(stderr, "Dispatching mozpointerlockerror event\n");
+    nsRefPtr<nsAsyncDOMEvent> e =
+        new nsAsyncDOMEvent(aElement,
+                            NS_LITERAL_STRING("mozpointerlockerror"),
+                            true,
+                            false);
+    e->PostDOMEvent();
+  }
+
+}
+
+bool 
+nsDocument::ShouldLockPointer(Element* aElement) {
+  fprintf(stderr, "nsDocument::ShouldLockPointer\n");
+
+  // Check if fullscreen pointer lock pref is enabled
+  nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
+  bool pointerLockEnabled;
+  prefs->GetBoolPref(PREF_POINTER_LOCK_ENABLED, &pointerLockEnabled);
+  if (!pointerLockEnabled) {
+    fprintf(stderr, "!pointerLockEnabled\n");
+    return false;
+  }
+
+  NS_ASSERTION(aElement,
+    "Must pass non-null element to nsDocument::RequestPointerLock");
+
+  // if NS_ASSERTION is being called, is it necessary to check if the element
+  // is
+  // not null again the the if statement?
+  if (!aElement || aElement == sPointerLockElement) {
+    fprintf(stderr, "!aElement || aElement == sPointerLockElement\n");
+    return false;
+  }
+
+  if (aElement != GetFullScreenElement()) {
+    fprintf(stderr, "aElement != GetFullScreenElement()\n");
+    return false;
+  }
+  
+  if (!aElement->IsInDoc()) {
+    fprintf(stderr, "!aElement->IsInDoc\n");
+    return false;
+  }
+
+  // Is this check necessary?
+  if (!GetWindow()) {
+    fprintf(stderr, "!GetWindow()\n");
+    return false;
+  }
+
+  // Check if the element is display:none, etc.
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
+  FlushPendingNotifications(Flush_Layout);
+  if (!(content && content->GetPrimaryFrame())) {
+    NS_WARNING("ShouldLock(): Unable to get frame for element");
+    return false;
+  }
+
+  return true;
+}
+
+bool 
+nsDocument::SetPointerLock(Element* aElement, int aCursorStyle) {
+  fprintf(stderr, "nsDocument::SetPointerLock\n");
+
+
+  if (!GetWindowInternal()) {
+    fprintf(stderr, "!GetWindowInternal()\n");
+    return false;
+  }
+
+  nsIDocShell *docShell = GetWindowInternal()->GetDocShell();
+  if (!docShell) {
+    fprintf(stderr, "!docShell\n");
+    NS_WARNING("Lock(): No DocShell (window already closed?)");
+    return false;
+  }
+
+  nsRefPtr<nsPresContext> presContext;
+  docShell->GetPresContext(getter_AddRefs(presContext));
+  if (!presContext) {
+    fprintf(stderr, "!presContext\n");
+    NS_WARNING("Lock(): Unable to get presContext in \
+              domWindow->GetDocShell()->GetPresContext()");
+    return false;
+  }
+
+  nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
+  if (!shell) {
+    fprintf(stderr, "!shell\n");
+    NS_WARNING("Lock(): Unable to find presContext->PresShell()");
+    return false;
+  }
+
+  nsIFrame* rootFrame = shell->GetRootFrame();
+  if (!rootFrame) {
+    fprintf(stderr, "!rootFrame\n");
+    NS_WARNING("Lock(): Unable to get root frame");
+    return false;
+  }
+
+  nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
+  if (!widget) {
+    fprintf(stderr, "!widget\n");
+    NS_WARNING("Lock(): Unable to find widget in \
+              shell->GetRootFrame()->GetNearestWidget();");
+    return false;
+  }
+
+  // What if the style for the cursor was different before being locked?
+  // Hide the cursor and set pointer lock for future mouse events
+  nsRefPtr<nsEventStateManager> esm = presContext->EventStateManager();
+  esm->SetCursor(aCursorStyle, nsnull, false,
+                 0.0f, 0.0f, widget, true);
+  esm->SetPointerLock(widget, aElement);
+  
+  return true;
+}
+
+void 
+nsDocument::UnLockPointer() {
+  fprintf(stderr, "nsDocument::UnLockPointer\n");
+
+  if (!sPointerLockElement) {
+    fprintf(stderr, "!sPointerLockElement\n");
+    return;
+  }
+
+  if (!sPointerLockDoc->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
+      fprintf(stderr, "!SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)\n");
+    return;
+  }
+
+  // Maybe centralize all pointerlock related events in one method
+  fprintf(stderr, "Dispatching mozpointerlocklost event\n");
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(sPointerLockElement,
+                        NS_LITERAL_STRING("mozpointerlocklost"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+
+  sPointerLockElement = nsnull;  
+  sPointerLockDoc = nsnull;
+
+}
+
+void 
+nsIDocument::UnLockPointer() {
+  fprintf(stderr, "nsIDocument::UnLockPointer\n");
+  nsDocument::UnLockPointer();
+}
+
+NS_IMETHODIMP
+nsDocument::MozExitPointerLock() {
+  fprintf(stderr, "nsDocument::MozExitPointerLock\n");
+
+  UnLockPointer();
+  return NS_OK;
+}
+
+
+NS_IMETHODIMP
+nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement) {
+  fprintf(stderr, "nsDocument::GetMozPointerLockElement\n");
+
+  NS_ENSURE_ARG_POINTER(aPointerLockElement);
+  *aPointerLockElement = nsnull;
+  // Maybe extra validation?
+  if (sPointerLockElement) {
+    CallQueryInterface(sPointerLockElement, aPointerLockElement);
+  }
+
+  return NS_OK;
+}
+
 
 PRInt64
 nsDocument::SizeOf() const

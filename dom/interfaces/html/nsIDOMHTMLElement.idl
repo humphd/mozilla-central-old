@@ -108,4 +108,6 @@ interface nsIDOMHTMLElement : nsIDOMElement
    * @see <https://wiki.mozilla.org/index.php?title=Gecko:FullScreenAPI>
    */
   void mozRequestFullScreen();  
+
+  void mozRequestPointerLock();
 };

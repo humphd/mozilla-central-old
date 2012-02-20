@@ -396,6 +396,12 @@ interface nsIDOMDocument : nsIDOMNode
    */
   readonly attribute boolean mozFullScreenEnabled;
 
+
+  readonly attribute nsIDOMHTMLElement mozPointerLockElement;
+
+  void mozExitPointerLock(); 
+
+
   /**
    * Inline event handler for readystatechange events.
    */
