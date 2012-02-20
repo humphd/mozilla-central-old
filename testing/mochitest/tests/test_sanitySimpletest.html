@@ -17,7 +17,10 @@
 <script class="testbody" type="text/javascript">
 SimpleTest.info("Profile::SimpleTestLoadTime: " + (loadTime - start));
 var startTime = new Date();
-SimpleTest.waitForExplicitFinish();
+
+// Expect 12 tests to be run before finish()
+SimpleTest.waitForExplicitFinish(12);
+
 function starttest() {
   SimpleTest.waitForFocus(
     function() {
