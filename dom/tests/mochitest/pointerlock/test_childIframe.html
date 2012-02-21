@@ -116,12 +116,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         document.mozCancelFullScreen();
       };
 
-      parent.addEventListener("mozpointerlockchange", function () {
-        parent.addEventListener("mousemove", firstMoveChild);
-        synthesizeMouseAtCenter(childDiv, {type: "mousemove"}, window);
+      document.addEventListener("mozpointerlockchange", function () {
+        if (document.mozPointerLockElement) {
+          parent.addEventListener("mousemove", firstMoveChild);
+          synthesizeMouseAtCenter(childDiv, {type: "mousemove"}, window);
+        }
       }, false);
 
-      parent.addEventListener("mozpointerlockerror", function () {
+      document.addEventListener("mozpointerlockerror", function () {
         document.mozCancelFullScreen();
       }, false);
 
