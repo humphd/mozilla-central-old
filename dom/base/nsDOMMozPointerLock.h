@@ -45,33 +45,9 @@
 #define PREF_POINTER_LOCK_ENABLED "full-screen-api.pointer-lock.enabled"
 
 #include "nsIDOMMozPointerLock.h"
-#include "nsIMozPointerLockSuccessCallback.h"
-#include "nsIMozPointerLockFailureCallback.h"
-#include "nsWeakPtr.h"
-#include "nsINode.h"
-#include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
-#include "nsThreadUtils.h"
-#include "nsIContent.h"
 #include "nsIMutationObserver.h"
 #include "nsCycleCollectionParticipant.h"
-
-class nsPointerLockRequest : public nsISupports
-{
-public:
-  NS_DECL_ISUPPORTS
-
-  nsPointerLockRequest(nsIContent* aContent,
-                       nsIMozPointerLockSuccessCallback* aSuccessCallback,
-                       nsIMozPointerLockFailureCallback* aFailureCallback);
-  void SendSuccess();
-  void SendFailure();
-
-private:
-  nsCOMPtr<nsIContent>                       mContent;
-  nsCOMPtr<nsIMozPointerLockSuccessCallback> mSuccessCallback;
-  nsCOMPtr<nsIMozPointerLockFailureCallback> mFailureCallback;
-};
 
 class nsDOMMozPointerLock : public nsIDOMMozPointerLock,
                             public nsIMutationObserver

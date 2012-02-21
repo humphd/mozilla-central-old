@@ -225,6 +225,7 @@ SimpleTest.testPluginIsOOP = function () {
 
 SimpleTest._tests = [];
 SimpleTest._stopOnLoad = true;
+SimpleTest._expected = null;
 
 /**
  * Something like assert.
@@ -440,12 +441,16 @@ SimpleTest.showReport = function() {
 
 /**
  * Tells SimpleTest to don't finish the test when the document is loaded,
- * useful for asynchronous tests.
+ * useful for asynchronous tests.  An optional argument, expected, indicates
+ * the number of tests you expect to be run.  This is useful in cases where
+ * an asynchronous test might not run, and its absence go unnoticed since
+ * it didn't explicitly fail.
  *
  * When SimpleTest.waitForExplicitFinish is called,
  * explicit SimpleTest.finish() is required.
 **/
-SimpleTest.waitForExplicitFinish = function () {
+SimpleTest.waitForExplicitFinish = function (expected) {
+    SimpleTest._expected = typeof expected === "number" ? expected : null;
     SimpleTest._stopOnLoad = false;
 };
 
@@ -673,6 +678,13 @@ SimpleTest.executeSoon = function(aFunc) {
 SimpleTest.finish = function () {
     if (SimpleTest._expectingUncaughtException) {
         SimpleTest.ok(false, "expectUncaughtException was called but no uncaught exception was detected!");
+    }
+    if (SimpleTest._expected !== null) {
+        var testCount = SimpleTest._tests.length
+        if (SimpleTest._expected !== testCount) {
+            SimpleTest.ok(false, "Expected " + SimpleTest._expected + " tests, but " +
+                                 testCount + " were run.");
+        }
     }
     if (parentRunner) {
         /* We're running in an iframe, and the parent has a TestRunner */

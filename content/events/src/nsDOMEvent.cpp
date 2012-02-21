@@ -100,6 +100,8 @@ static const char* const sEventNames[] = {
   "MozBeforeResize",
   "mozfullscreenchange",
   "mozfullscreenerror",
+  "mozpointerlockchange",
+  "mozpointerlockerror",
   "MozSwipeGesture",
   "MozMagnifyGestureStart",
   "MozMagnifyGestureUpdate",

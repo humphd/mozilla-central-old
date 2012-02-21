@@ -57,8 +57,8 @@ _TEST_FILES	= \
     test_FullScreenHarness.html \
     mouselock_util.js \
     file_defaultUnlock.html \
-    file_DOMtree.html \
-    file_pointerLockLost.html \
+    test_DOMtree.html \
+    test_pointerLockLost.html \
     file_constantXY.html \
     file_movementXY.html \
     file_userPref.html \
@@ -71,7 +71,7 @@ _TEST_FILES	= \
     iframe_differentDOM.html \
     file_retargetMouseEvents.html \
     file_pointerLockCSSDisplay.html \
-    file_childIframe.html \
+    test_childIframe.html \
     file_cursorPosEvents.html \
     $(NULL)
 
