@@ -4557,6 +4557,13 @@ nsEventStateManager::SetFullScreenState(Element* aElement, bool aIsFullScreen)
 }
 
 /* static */
+void
+nsEventStateManager::SetPointerLockState(Element* aElement, bool aIsPointerLock)
+{
+  DoStateChange(aElement, NS_EVENT_STATE_POINTER_LOCK, aIsPointerLock);
+}
+
+/* static */
 inline void
 nsEventStateManager::DoStateChange(Element* aElement, nsEventStates aState,
                                    bool aAddState)

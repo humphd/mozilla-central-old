@@ -226,6 +226,9 @@ public:
   // Sets the full-screen event state on aElement to aIsFullScreen.
   static void SetFullScreenState(mozilla::dom::Element* aElement, bool aIsFullScreen);
 
+  // Sets the pointer-lock event state on aElement to aIsPointerLock.
+  static void SetPointerLockState(mozilla::dom::Element* aElement, bool aIsPointerLock);
+
   static bool IsRemoteTarget(nsIContent* aTarget);
 
 protected:

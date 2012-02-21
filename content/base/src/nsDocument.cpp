@@ -9107,7 +9107,6 @@ nsDocument::IsFullScreenEnabled(bool aCallerIsChrome, bool aLogFailure)
 static void
 DispatchPointerLockChange(nsIDocument* aTarget) 
 {
-  fprintf(stderr, "static DispatchPointerLockChange\n");
   nsRefPtr<nsAsyncDOMEvent> e =
     new nsAsyncDOMEvent(aTarget,
                         NS_LITERAL_STRING("mozpointerlockchange"),
@@ -9117,73 +9116,64 @@ DispatchPointerLockChange(nsIDocument* aTarget)
 }
 
 static void
-LogPointerLockDenied(const char* aMessage, nsIDocument* aDoc) 
+DispatchPointerLockError(nsIDocument* aTarget) 
 {
-  fprintf(stderr, "static LogPointerLockDenied\n");
   nsRefPtr<nsAsyncDOMEvent> e =
-    new nsAsyncDOMEvent(aDoc,
+    new nsAsyncDOMEvent(aTarget,
                         NS_LITERAL_STRING("mozpointerlockerror"),
                         true,
                         false);
   e->PostDOMEvent();
-
-  nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
-                                  "DOM", aDoc,
-                                  nsContentUtils::eDOM_PROPERTIES,
-                                  aMessage);
 }
 
+
 void 
-nsDocument::RequestPointerLock(Element* aElement) {
-
-  fprintf(stderr, "nsDocument::RequestPointerLock\n");
-
+nsDocument::RequestPointerLock(Element* aElement) 
+{
   NS_ASSERTION(aElement,
     "Must pass non-null element to nsDocument::RequestPointerLock");
   if (!aElement) {
-    fprintf(stderr, "!aElement\n");
-    LogPointerLockDenied("PointeLockDeniedNullElement", this);
+    NS_WARNING("RequestPointerLock(): No Element");
     return;
   }
 
   if (aElement == sPointerLockElement) {
-    fprintf(stderr, "aElement == sPointerLockElement\n");
     DispatchPointerLockChange(this);
     return;
   }
-
-  if (ShouldLockPointer(aElement) &&
-      SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)) {
-    sPointerLockElement = aElement;
-    sPointerLockDoc = this;
-    DispatchPointerLockChange(this);
+  
+  if (!ShouldLockPointer(aElement) ||
+      !SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)) {
+      DispatchPointerLockError(this);
+      return;
   }
+
+  nsEventStateManager::SetPointerLockState(aElement, true);
+  sPointerLockElement = aElement;
+  sPointerLockDoc = this;
+  DispatchPointerLockChange(this);
 
 }
 
 bool 
-nsDocument::ShouldLockPointer(Element* aElement) {
-  fprintf(stderr, "nsDocument::ShouldLockPointer\n");
-
-  // Check if fullscreen pointer lock pref is enabled
+nsDocument::ShouldLockPointer(Element* aElement) 
+{
+  // Check if pointer lock pref is enabled
   nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
   bool pointerLockEnabled;
   prefs->GetBoolPref(PREF_POINTER_LOCK_ENABLED, &pointerLockEnabled);
   if (!pointerLockEnabled) {
-    fprintf(stderr, "!pointerLockEnabled\n");
-    LogPointerLockDenied("PointeLockDeniedPrefNotEnabled", this);
+    NS_WARNING("ShouldLockPointer(): Pointer Lock pref not enabled");
     return false;
   }
 
   if (aElement != GetFullScreenElement()) {
-    fprintf(stderr, "aElement != GetFullScreenElement()\n");
-    LogPointerLockDenied("PointerLockDeniedNotInFullScreen", this);
+    NS_WARNING("ShouldLockPointer(): Element not in fullscreen");
     return false;
   }
   
   if (!aElement->IsInDoc()) {
-    fprintf(stderr, "!aElement->IsInDoc\n");
-    LogPointerLockDenied("PointerLockDeniedNotInDocument", this);
+    NS_WARNING("ShouldLockPointer(): Element without Document");
     return false;
   }
 
@@ -9191,8 +9181,7 @@ nsDocument::ShouldLockPointer(Element* aElement) {
   nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
   FlushPendingNotifications(Flush_Layout);
   if (!(content && content->GetPrimaryFrame())) {
-    fprintf(stderr, "!(content && content->GetPrimaryFrame())\n");
-    LogPointerLockDenied("PointerLockDeniedElementWithouthFrame", this);
+    NS_WARNING("ShouldLockPointer(): Element without Frame");
     return false;
   }
 
@@ -9200,53 +9189,46 @@ nsDocument::ShouldLockPointer(Element* aElement) {
 }
 
 bool 
-nsDocument::SetPointerLock(Element* aElement, int aCursorStyle) {
-  fprintf(stderr, "nsDocument::SetPointerLock\n");
-
-
+nsDocument::SetPointerLock(Element* aElement, int aCursorStyle) 
+{
   if (!GetWindow()) {
-    fprintf(stderr, "!GetWindow()\n");
-    LogPointerLockDenied("PointeLockDeniedLostWindow", this);
+    NS_WARNING("SetPointerLock(): No Window");
     return false;
   }
 
   nsIDocShell *docShell = GetWindowInternal()->GetDocShell();
   if (!docShell) {
-    fprintf(stderr, "!docShell\n");
-    LogPointerLockDenied("PointeLockDeniedNoDocShell", this);
+    NS_WARNING("SetPointerLock(): No DocShell (window already closed?)");
     return false;
   }
 
   nsRefPtr<nsPresContext> presContext;
   docShell->GetPresContext(getter_AddRefs(presContext));
   if (!presContext) {
-    fprintf(stderr, "!presContext\n");
-    LogPointerLockDenied("PointeLockDeniedNoPresContext", this);
+    NS_WARNING("SetPointerLock(): Unable to get presContext in \
+                domWindow->GetDocShell()->GetPresContext()");
     return false;
   }
 
   nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
   if (!shell) {
-    fprintf(stderr, "!shell\n");
-    LogPointerLockDenied("PointeLockDeniedNoPresShell", this);
+    NS_WARNING("SetPointerLock(): Unable to find presContext->PresShell()");
     return false;
   }
 
   nsIFrame* rootFrame = shell->GetRootFrame();
   if (!rootFrame) {
-    fprintf(stderr, "!rootFrame\n");
-    LogPointerLockDenied("PointeLockDeniedNoRootFrame", this);
+    NS_WARNING("SetPointerLock(): Unable to get root frame");
     return false;
   }
 
   nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
   if (!widget) {
-    fprintf(stderr, "!widget\n");
-    LogPointerLockDenied("PointeLockDeniedNoWidget", this);
+    NS_WARNING("SetPointerLock(): Unable to find widget in \
+                shell->GetRootFrame()->GetNearestWidget();");
     return false;
   }
 
-  // What if the style for the cursor was different before being locked?
   // Hide the cursor and set pointer lock for future mouse events
   nsRefPtr<nsEventStateManager> esm = presContext->EventStateManager();
   esm->SetCursor(aCursorStyle, nsnull, false,
@@ -9257,48 +9239,42 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle) {
 }
 
 void 
-nsDocument::UnLockPointer() {
-  fprintf(stderr, "nsDocument::UnLockPointer\n");
-
+nsDocument::UnLockPointer() 
+{
   if (!sPointerLockElement) {
-    fprintf(stderr, "!sPointerLockElement\n");
     return;
   }
 
   if (!sPointerLockDoc->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
-      fprintf(stderr, "!SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)\n");
     return;
   }
 
-  DispatchPointerLockChange(sPointerLockDoc);
-
+  nsEventStateManager::SetPointerLockState(sPointerLockElement, false);
   sPointerLockElement = nsnull;  
   sPointerLockDoc = nsnull;
+  DispatchPointerLockChange(sPointerLockDoc);
 
 }
 
 void 
-nsIDocument::UnLockPointer() {
-  fprintf(stderr, "nsIDocument::UnLockPointer\n");
+nsIDocument::UnLockPointer() 
+{
   nsDocument::UnLockPointer();
 }
 
 NS_IMETHODIMP
-nsDocument::MozExitPointerLock() {
-  fprintf(stderr, "nsDocument::MozExitPointerLock\n");
-
+nsDocument::MozExitPointerLock() 
+{
   UnLockPointer();
   return NS_OK;
 }
 
 
 NS_IMETHODIMP
-nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement) {
-  fprintf(stderr, "nsDocument::GetMozPointerLockElement\n");
-
+nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement) 
+{
   NS_ENSURE_ARG_POINTER(aPointerLockElement);
   *aPointerLockElement = nsnull;
-  // Maybe extra validation?
   if (sPointerLockElement) {
     CallQueryInterface(sPointerLockElement, aPointerLockElement);
   }
