@@ -9243,10 +9243,10 @@ nsDocument::UnLockPointer()
     return;
   }
 
+  DispatchPointerLockChange(sPointerLockDoc);
   nsEventStateManager::SetPointerLockState(sPointerLockElement, false);
   sPointerLockElement = nsnull;  
   sPointerLockDoc = nsnull;
-  DispatchPointerLockChange(sPointerLockDoc);
 }
 
 void 
