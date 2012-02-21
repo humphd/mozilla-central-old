@@ -3248,8 +3248,6 @@ nsresult nsGenericHTMLElement::MozRequestFullScreen()
 
 nsresult nsGenericHTMLElement::MozRequestPointerLock()
 {
-  fprintf(stderr, "nsGenericHTMLElement::MozRequestPointerLock\n");
-
   OwnerDoc()->RequestPointerLock(this);
 
   return NS_OK;

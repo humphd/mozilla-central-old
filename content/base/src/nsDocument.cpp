@@ -227,7 +227,7 @@ nsWeakPtr nsDocument::sFullScreenRootDoc = nsnull;
 
 // Reference to the pointerlock element
 nsRefPtr<Element> nsDocument::sPointerLockElement;
-// Reference to the document which requested DOM pointerlock
+// Reference to the document which requested pointerlock
 nsRefPtr<nsDocument> nsDocument::sPointerLockDoc = nsnull;
 
 #ifdef PR_LOGGING
@@ -8569,16 +8569,13 @@ ResetFullScreen(nsIDocument* aDocument, void* aData) {
 
 /* static */
 void
-nsDocument::MaybeUnlockMouse(nsIDocument* aDocument)
+nsDocument::MaybeUnlockPointer(nsIDocument* aDocument)
 {
-  fprintf(stderr, "nsDocument::MaybeUnlockMouse\n");
   if (!aDocument) {
-  fprintf(stderr, "!aDocument\n");
     return;
   }
 
   if (!sPointerLockDoc) {
-    fprintf(stderr, "!sPointerLockDoc\n");
     return;
   }
 
@@ -8608,7 +8605,7 @@ nsDocument::ExitFullScreen()
   // We may also need to unlock the mouse pointer, if it's locked.
   nsCOMPtr<nsIDocument> fullScreenDoc(do_QueryReferent(sFullScreenDoc));
   if (fullScreenDoc) {
-    MaybeUnlockMouse(fullScreenDoc);
+    MaybeUnlockPointer(fullScreenDoc);
   }
 
   // Walk the tree of full-screen documents, and reset their full-screen state.
@@ -8647,7 +8644,7 @@ nsDocument::RestorePreviousFullScreenState()
   while (doc != this) {
     NS_ASSERTION(doc->IsFullScreenDoc(), "Should be full-screen doc");
     static_cast<nsDocument*>(doc)->ClearFullScreenStack();
-    MaybeUnlockMouse(doc);
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     doc = doc->GetParentDocument();
   }
@@ -8656,7 +8653,7 @@ nsDocument::RestorePreviousFullScreenState()
   NS_ASSERTION(doc == this, "Must have reached this doc.");
   while (doc != nsnull) {
     static_cast<nsDocument*>(doc)->FullScreenStackPop();
-    MaybeUnlockMouse(doc);
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     if (static_cast<nsDocument*>(doc)->mFullScreenStack.IsEmpty()) {
       // Full-screen stack in document is empty. Go back up to the parent
@@ -8938,7 +8935,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
   // If a document is already in fullscreen, then unlock the mouse pointer
   // before setting a new document to fullscreen
   if (fullScreenDoc) {
-    MaybeUnlockMouse(fullScreenDoc);
+    MaybeUnlockPointer(fullScreenDoc);
   }
 
   // Set the full-screen element. This sets the full-screen style on the
@@ -9103,7 +9100,6 @@ nsDocument::IsFullScreenEnabled(bool aCallerIsChrome, bool aLogFailure)
   return true;
 }
 
-
 static void
 DispatchPointerLockChange(nsIDocument* aTarget) 
 {
@@ -9125,7 +9121,6 @@ DispatchPointerLockError(nsIDocument* aTarget)
                         false);
   e->PostDOMEvent();
 }
-
 
 void 
 nsDocument::RequestPointerLock(Element* aElement) 
@@ -9152,7 +9147,6 @@ nsDocument::RequestPointerLock(Element* aElement)
   sPointerLockElement = aElement;
   sPointerLockDoc = this;
   DispatchPointerLockChange(this);
-
 }
 
 bool 
@@ -9253,7 +9247,6 @@ nsDocument::UnLockPointer()
   sPointerLockElement = nsnull;  
   sPointerLockDoc = nsnull;
   DispatchPointerLockChange(sPointerLockDoc);
-
 }
 
 void 
@@ -9269,7 +9262,6 @@ nsDocument::MozExitPointerLock()
   return NS_OK;
 }
 
-
 NS_IMETHODIMP
 nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement) 
 {
@@ -9281,8 +9273,6 @@ nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement)
 
   return NS_OK;
 }
-
-
 
 PRInt64
 nsDocument::SizeOf() const
