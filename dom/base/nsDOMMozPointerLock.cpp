@@ -86,7 +86,6 @@ DOMCI_DATA(MozPointerLock, nsDOMMozPointerLock)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsDOMMozPointerLock)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMMozPointerLock)
   NS_INTERFACE_MAP_ENTRY(nsIDOMMozPointerLock)
-  NS_INTERFACE_MAP_ENTRY(nsIMutationObserver)
   NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(nsDOMMozPointerLock)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(MozPointerLock)
 NS_INTERFACE_MAP_END
@@ -336,72 +335,13 @@ nsDOMMozPointerLock::Lock(nsIDOMElement* aTarget,
 }
 
 /**
- * nsIMutationObserver
+ * nsIMutationObserver Override
  **/
-void
-nsDOMMozPointerLock::AttributeChanged(nsIDocument* aDocument,
-                                      mozilla::dom::Element* aElement,
-                                      PRInt32 aNameSpaceID,
-                                      nsIAtom* aAttribute, PRInt32 aModType)
-{
-}
-
-void
-nsDOMMozPointerLock::ContentAppended(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aChild,
-                                     PRInt32 aIndexInContainer)
-{
-}
-
-void
-nsDOMMozPointerLock::ContentInserted(nsIDocument* aDocument,
-                                     nsIContent* aContainer,
-                                     nsIContent* aChild,
-                                     PRInt32 aIndexInContainer)
-{
-}
-
-void
-nsDOMMozPointerLock::ContentRemoved(nsIDocument* aDocument,
-                                    nsIContent* aContainer,
-                                    nsIContent* aChild,
-                                    PRInt32 aIndexInContainer,
-                                    nsIContent* aPreviousSibling)
-{
-}
-
-void
-nsDOMMozPointerLock::CharacterDataWillChange(nsIDocument* aDocument,
-                                             nsIContent* aContent,
-                                             CharacterDataChangeInfo* aInfo)
-{
-}
-
-void
-nsDOMMozPointerLock::CharacterDataChanged(nsIDocument* aDocument,
-                                          nsIContent* aContent,
-                                          CharacterDataChangeInfo* aInfo)
-{
-}
-
-void
-nsDOMMozPointerLock::AttributeWillChange(nsIDocument* aDocument,
-                                         mozilla::dom::Element* aElement,
-                                         PRInt32 aNameSpaceID,
-                                         nsIAtom* aAttribute, PRInt32 aModType)
-{
-}
 
 void
 nsDOMMozPointerLock::ParentChainChanged(nsIContent* aContent)
 {
   Unlock();
-}
-
-void
-nsDOMMozPointerLock::NodeWillBeDestroyed(const nsINode* aNode)
-{
 }
 
 // nsPointerLockRequest

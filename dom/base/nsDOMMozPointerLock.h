@@ -53,7 +53,7 @@
 #include "nsCOMPtr.h"
 #include "nsThreadUtils.h"
 #include "nsIContent.h"
-#include "nsIMutationObserver.h"
+#include "nsStubMutationObserver.h"
 #include "nsCycleCollectionParticipant.h"
 
 class nsPointerLockRequest : public nsISupports
@@ -74,14 +74,14 @@ private:
 };
 
 class nsDOMMozPointerLock : public nsIDOMMozPointerLock,
-                            public nsIMutationObserver
+                            public nsStubMutationObserver
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsDOMMozPointerLock,
                                            nsIDOMMozPointerLock)
   NS_DECL_NSIDOMMOZPOINTERLOCK
-  NS_DECL_NSIMUTATIONOBSERVER
+  NS_DECL_NSIMUTATIONOBSERVER_PARENTCHAINCHANGED
 
   nsDOMMozPointerLock();
   nsresult Init(nsIDOMWindow*);
