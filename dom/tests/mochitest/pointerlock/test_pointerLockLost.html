@@ -31,29 +31,24 @@
         SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
                                  false);
 
-        SimpleTest.waitForExplicitFinish(2);
-        var div = document.getElementById("div")
-          , mozPointerLockLostEvent = false;
+        SimpleTest.waitForExplicitFinish(1);
+        var div = document.getElementById("div");
 
-        function checkStats () {
-          ok(mozPointerLockLostEvent.bubbles, 
-            "Manual unlock request - The mouselocklost event " +
-            "should have it's bubbles attribute set to true");
-
-          is((mozPointerLockLostEvent.target || 
-              mozPointerLockLostEvent.srcElement).id, "div", "target is div");
-        }
-                  
-        div.addEventListener("mozpointerlockchange", function () {
-          document.mozExitPointerLock();  
+        document.addEventListener("mozpointerlockchange", function (e) {
+          if (document.mozPointerLockElement === div) {
+            document.mozExitPointerLock();  
+          }
+          else {
+            ok(e.bubbles, 
+              "mozExitPointerLock() - The pointerlockchange event " +
+              "should have it's bubbles attribute set to true");
+          
+            document.mozCancelFullScreen();
+            SimpleTest.finish();
+          }
         }, false);
 
-        div.addEventListener("mozpointerlocklost", function(e) {
-          mozPointerLockLostEvent = e;
-
-          checkStats();
-          document.mozCancelFullScreen();
-          SimpleTest.finish();
+        document.addEventListener("mozpointerlocklost", function(e) {
         }, false);
 
         document.addEventListener("mozfullscreenchange", function() {

@@ -57,7 +57,7 @@ _TEST_FILES	= \
     test_FullScreenHarness.html \
     mouselock_util.js \
     file_defaultUnlock.html \
-    file_DOMtree.html \
+    test_DOMtree.html \
     test_pointerLockLost.html \
     file_constantXY.html \
     file_movementXY.html \
