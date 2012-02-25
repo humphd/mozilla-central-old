@@ -61,12 +61,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
                                  false);
 
-      SimpleTest.waitForExplicitFinish(3);
+      SimpleTest.waitForExplicitFinish();
 
-      var parent = document.getElementById("parent");
-      var childDiv = document.getElementById("childDiv");
-      var iframe = document.getElementById("iframe");
-
+      var parent = document.getElementById("parent")
+        , childDiv = document.getElementById("childDiv")
+        , iframe = document.getElementById("iframe");
 
       function MozMovementStats() {
         this.mozMovementX = false;
@@ -77,8 +76,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         , secondMove = new MozMovementStats()
         , hoverIframe = false;
 
-
-      function checkMozMovementStats () {
+      function runTests () {
         ok(hoverIframe, "Pointer should be locked even when pointer " +
           "hovers over a child iframe");
         is(firstMove.mozMovementX, secondMove.mozMovementX, "MovementX of first " +
@@ -88,7 +86,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
           "move to childDiv should be equal to movementY of second move " +
           "to child div");
       }
-
 
       var firstMoveChild = function (e) {
         firstMove.mozMovementX = e.mozMovementX;
@@ -113,11 +110,12 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         secondMove.mozMovementX = e.mozMovementX;
         secondMove.mozMovementY = e.mozMovementY;
         parent.removeEventListener("mousemove", secondMoveChild);
+
         document.mozCancelFullScreen();
       };
 
       document.addEventListener("mozpointerlockchange", function () {
-        if (document.mozPointerLockElement) {
+        if (document.mozPointerLockElement === parent) {
           parent.addEventListener("mousemove", firstMoveChild);
           synthesizeMouseAtCenter(childDiv, {type: "mousemove"}, window);
         }
@@ -128,12 +126,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }, false);
 
       document.addEventListener("mozfullscreenchange", function (e)  {
-        if (document.mozFullScreen &&
-            document.mozFullScreenElement === parent) {
+        if (document.mozFullScreenElement === parent) {
           parent.mozRequestPointerLock();
         }
         else {
-          checkMozMovementStats();
+          runTests();
           SimpleTest.finish();
         }
       }, false);

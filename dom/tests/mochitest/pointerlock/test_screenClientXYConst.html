@@ -1,0 +1,117 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+-->
+<head>
+  <title>Bug 633602 - constantXY.html</title>
+  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+  </script>
+  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body onload="start();">
+  <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+    Mozilla Bug 633602
+  </a>
+  <div id="div"></div>
+  <script type="application/javascript">
+      /*
+       * Test for Bug 633602
+       * Confirm that screenX/Y and clientX/Y are constants when the pointer
+       * is locked.
+       */
+
+      SpecialPowers.setBoolPref("full-screen-api.enabled", true);
+      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
+                                 false);
+
+      SimpleTest.waitForExplicitFinish();
+
+      function MouseEventCoords () {
+        this.clientX = false;
+        this.clientY = false;
+        this.screenX = false;
+        this.screenY = false;
+      }
+
+      var div = document.getElementById("div")
+        , divRect
+        , unLockedCoords = new MouseEventCoords()
+        , lockedCoords = new MouseEventCoords()
+        , isUnlocked = false
+        , isLocked = false;
+
+      function runTests () {
+        ok(isUnlocked, "Pointer should be unlocked");
+        ok(isLocked, "Pointer should be locked");
+
+        // Confirm that pointer coords are constant while locked
+        is(unLockedCoords.clientX, lockedCoords.clientX,
+           "clientX should be equal to where the mouse was originaly locked");
+        is(unLockedCoords.clientY, lockedCoords.clientY,
+           "clientY should be equal to where the mouse was originaly locked");
+        is(unLockedCoords.screenX, lockedCoords.screenX,
+           "screenX should be equal to where the mouse was originaly locked");
+        is(unLockedCoords.screenY, lockedCoords.screenY,
+           "screenY should be equal to where the mouse was originaly locked");
+      }
+
+      var moveUnlocked = function (e) {
+        console.log("moveUnlocked");
+        isUnlocked = document.mozPointerLockElement ? false : true;
+
+        unLockedCoords.screenX = e.screenX;
+        unLockedCoords.screenY = e.screenY;
+        unLockedCoords.clientX = e.clientX;
+        unLockedCoords.clientY = e.clientY;
+
+        div.removeEventListener("mousemove", moveUnlocked, false);
+        div.mozRequestPointerLock();
+      };
+
+      var moveLocked = function (e) {
+        console.log("moveLocked");
+        isLocked = document.mozPointerLockElement ? true : false;
+
+        lockedCoords.screenX = e.screenX;
+        lockedCoords.screenY = e.screenY;
+        lockedCoords.clientX = e.clientX;
+        lockedCoords.clientY = e.clientY;
+
+        div.removeEventListener("mousemove", moveLocked, false);
+        document.mozCancelFullScreen();
+      };
+
+      document.addEventListener("mozpointerlockchange", function (e) {
+        console.log("mozpointerlockchange");
+        if (document.mozPointerLockElement === div) {
+          div.addEventListener("mousemove", moveLocked, false);
+
+          divRect = div.getBoundingClientRect();
+          synthesizeMouse(div, (divRect.width / 4) * 3, (divRect.height / 4) * 3, { 
+            type: "mousemove" 
+          }, window);
+        }
+      }, false);
+
+      document.addEventListener("mozfullscreenchange", function() {
+        console.log("mozfullscreenchange");
+        if (document.mozFullScreenElement === div) {
+          div.addEventListener("mousemove", moveUnlocked, false);
+          synthesizeMouseAtCenter(div, { type: "mousemove" }, window);
+        }
+        else {
+          runTests();
+          SimpleTest.finish();
+        }
+      }, false);
+
+      function start() {
+        SimpleTest.waitForFocus(function() {
+          div.mozRequestFullScreen();
+        });
+      }
+  </script>
+</body>
+</html>

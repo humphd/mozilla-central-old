@@ -1,0 +1,67 @@
+<!DOCTYPE HTML>
+<html>
+  <!--
+  https://bugzilla.mozilla.org/show_bug.cgi?id=633602
+  -->
+  <head>
+    <title>Bug 633602 - file_pointerLockCSSDisplay.html</title>
+    <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
+    </script>
+    <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
+    </script>
+    <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+    <style>
+    </style>
+  </head>
+  <body onload="start();">
+    <a target="_blank"
+       href="https://bugzilla.mozilla.org/show_bug.cgi?id=633602">
+      Mozilla Bug 633602
+    </a>
+    <div id="div" style="display: none"></div>
+    <pre id="test">
+      <script type="text/javascript">
+        /*
+         * Test for Bug 633602
+         * Pointer should not be locked to an element with css
+         * property display is set to none
+         */
+
+        SpecialPowers.setBoolPref("full-screen-api.enabled", true);
+        SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
+                                 false);
+
+        SimpleTest.waitForExplicitFinish();
+  
+        var div = document.getElementById("div")
+          , notLocked = false;
+
+        function runTests () {
+          ok(notLocked, "Pointer should not be locked if element has css property " +
+            "display set to none");
+        }
+
+        document.addEventListener("mozpointerlockerror", function (e) {
+          notLocked = true;
+          document.mozCancelFullScreen();
+        }, false);
+
+        document.addEventListener("mozfullscreenchange", function (e) {
+          if (document.mozFullScreenElement === div) {
+            div.mozRequestPointerLock();   
+          } 
+          else {
+            runTests();
+            SimpleTest.finish();
+          }
+        }, false);
+
+        function start() {
+          SimpleTest.waitForFocus(function() {
+            div.mozRequestFullScreen();
+          });
+        }
+      </script>
+    </pre>
+  </body>
+</html>

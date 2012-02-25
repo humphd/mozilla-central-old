@@ -9,7 +9,6 @@
     </script>
     <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
-    <script type="text/javascript" src="mouselock_util.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   </head>
   <body onload="start();">
@@ -26,36 +25,34 @@
       <script type="application/javascript">
         /*
          * Test for Bug 633602
-         * Checks if an element can be locked even withouth focus
-         * It gives the focus to an input element and then tries to lock
-         * the pointer to a div
-         * The lock should be successful
+         * Element doesn't need to have focus to request
+         * pointer lock
         */
+
+        SpecialPowers.setBoolPref("full-screen-api.enabled", true);
+        SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
+                                 false);
+
         SimpleTest.waitForExplicitFinish();
 
-        var pointer = navigator.mozPointer;
-        var div = document.getElementById("div");
-        var input = document.getElementById("input");
+        var div = document.getElementById("div")
+          , input = document.getElementById("input")
+          , divPointerLock = false;
+
+        function runTests () {
+          ok(divPointerLock, "Pointer should be locked even if " +
+            "the element being locked is not focused");
+        }
 
         input.addEventListener("focus", function() {
-          /*
-           * Lock the mouse if the focused element is not the element
-           * being locked
-           */
-          pointer.lock(div, function() {
-            /*
-             * Even when the element being locked is not in focus
-             * the mouse should be locked
-             */
-            ok(pointer.isLocked, "Mouse should be locked even if " +
-              "the element being locked is not focused");
-            input.blur();
-            input.removeEventListener("focus", function() {}, false);
+          div.mozRequestPointerLock();
+        }, false);
+
+        document.addEventListener("mozpointerlockchange", function (e) {
+          if (document.mozPointerLockElement === div) {
+            divPointerLock = true;
             document.mozCancelFullScreen();
-          }, function() {
-            is(pointer.isLocked, false, "Mouse failed to lock when" +
-              "the element is not focused");
-          });
+          }
         }, false);
 
         document.addEventListener("mozfullscreenchange", function() {
@@ -63,6 +60,7 @@
             input.focus();
           }
           else {
+            runTests();
             SimpleTest.finish();
           }
         }, false);

@@ -8,7 +8,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
   </script>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
-  <script type="text/javascript" src="mouselock_util.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body onload="start();">
@@ -16,8 +15,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
     Mozilla Bug 633602
   </a>
 
-  <div id="parent" style="width: 100%; height: 600px; background-color: blue;">
-    <div id="child" style="width: 100%; height: 100%; background-color: red">
+  <div id="parent">
+    <div id="child" style="width: 100%; height: 100%;">
     </div>
   </div>
 
@@ -28,6 +27,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
        * Retarget mouse events to the locked element
        */
 
+      SpecialPowers.setBoolPref("full-screen-api.enabled", true);
+      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
+                                 false);
+
       SimpleTest.waitForExplicitFinish();
 
       function MouseEventStats() {
@@ -37,11 +40,27 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         this.mouseClick = false;
         this.mouseScroll = false;
       }
-      var parentStats = new MouseEventStats(),
-        childStats = new MouseEventStats();
 
-      var parent, child;
-      var pointer = navigator.mozPointer;
+      var parent = document.getElementById("parent")
+        , child = document.getElementById("child")
+        , parentStats = new MouseEventStats()
+        , childStats = new MouseEventStats();
+
+      function runTests () {
+        is(childStats.mouseMove, false, "Child shound not receive mousemove event.");
+        is(childStats.mouseDown, false, "Child should not receive mousedown event.");
+        is(childStats.mouseUp, false, "Child should not receive mouseup event.");
+        is(childStats.mouseClick, false, "Child should not receive click event.");
+        // XXX: scroll events aren't right yet...
+        todo_is(childStats.mouseScroll, false, "Child should not receive DOMMouseScroll event.");
+
+        ok(parentStats.mouseMove, "Parent should receive mousemove event.");
+        ok(parentStats.mouseDown, "Parent should receive mousedown event.");
+        ok(parentStats.mouseUp, "Parent should receive mouseup event.");
+        ok(parentStats.mouseClick, "Parent should receive click event.");
+        ok(parentStats.mouseScroll, "Parent should receive DOMMouseScroll event.");
+      }
+
 
       /**
        * The event listeners for the child element shouldn't be fired
@@ -69,23 +88,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         // XXX: this is still not working...
         childStats.mouseScroll = true;
       };
-
-      function checkChildStats() {
-        is(childStats.mouseMove, false, "Child shound not receive mousemove event.");
-        is(childStats.mouseDown, false, "Child should not receive mousedown event.");
-        is(childStats.mouseUp, false, "Child should not receive mouseup event.");
-        is(childStats.mouseClick, false, "Child should not receive click event.");
-        // XXX: scroll events aren't right yet...
-        todo_is(childStats.mouseScroll, false, "Child should not receive DOMMouseScroll event.");
-      }
-
-      function checkParentStats() {
-        ok(parentStats.mouseMove, "Parent should receive mousemove event.");
-        ok(parentStats.mouseDown, "Parent should receive mousedown event.");
-        ok(parentStats.mouseUp, "Parent should receive mouseup event.");
-        ok(parentStats.mouseClick, "Parent should receive click event.");
-        ok(parentStats.mouseScroll, "Parent should receive DOMMouseScroll event.");
-      }
 
       //  Event listeners for the parent element
       var startMouseTests = function() {
@@ -138,33 +140,26 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         document.mozCancelFullScreen();
       }
 
-      var successCallback = function () {
-        parent.addEventListener("mousemove", startMouseTests);
-        child.addEventListener("mousemove", childMoveTest);
-        synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);
-      };
-
-      var failureCallback = function () {
-        ok(false, "Failed to lock the pointer");
-        document.mozCancelFullScreen();
-      };
+      document.addEventListener("mozpointerlockchange", function (e) {
+        if (document.mozPointerLockElement === parent) {
+          parent.addEventListener("mousemove", startMouseTests);
+          child.addEventListener("mousemove", childMoveTest);
+          synthesizeMouseAtCenter(parent, {type: "mousemove"}, window);  
+        }
+      }, false);
 
       document.addEventListener("mozfullscreenchange", function (e)  {
-        if (document.mozFullScreen &&
-            document.mozFullScreenElement === parent) {
-          pointer.lock(parent, successCallback, failureCallback);
-        } else {
-          checkChildStats();
-          checkParentStats();
+        if (document.mozFullScreenElement === parent) {
+          parent.mozRequestPointerLock();
+        } 
+        else {
+          runTests();
           SimpleTest.finish();
         }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
-          parent = document.getElementById("parent");
-          child = document.getElementById("child");
-
           parent.mozRequestFullScreen();
         });
       }

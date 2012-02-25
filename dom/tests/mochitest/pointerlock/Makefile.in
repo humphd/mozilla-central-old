@@ -53,26 +53,22 @@ include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 
 _TEST_FILES	= \
-    test_MozPointerLock.html \
-    test_FullScreenHarness.html \
-    mouselock_util.js \
-    file_defaultUnlock.html \
-    test_DOMtree.html \
-    test_pointerLockLost.html \
-    file_constantXY.html \
-    file_movementXY.html \
-    file_userPref.html \
-    file_targetOutOfFocus.html \
-    file_fullscreen.html \
-    file_nestedFullScreen.html \
-    file_doubleLockCallBack.html \
-    file_exitMouseLockOnLoseFocus.html \
-    file_differentDOM.html \
-    iframe_differentDOM.html \
-    file_retargetMouseEvents.html \
-    file_pointerLockCSSDisplay.html \
+    test_escapeKey.html \
+    test_withoutDOM.html \
+    test_removedFromDOM.html \
+    test_pointerLockPref.html \
+    test_nestedFullScreen.html \
+    test_doubleLock.html \
+    test_looseFocusWindow.html \
     test_childIframe.html \
-    file_cursorPosEvents.html \
+    test_movementXY.html \
+    test_infiniteMovement.html \
+    test_retargetMouseEvents.html \
+    test_targetOutOfFocus.html \
+    test_screenClientXYConst.html \
+    test_cssDisplayProperty.html \
+    test_suppressSomeMouseEvents.html \
+    iframe_differentDOM.html \
     $(NULL)
 
 libs::	$(_TEST_FILES)
