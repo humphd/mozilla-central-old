@@ -132,28 +132,7 @@ NS_INTERFACE_MAP_END_INHERITING(nsDOMEvent)
 bool
 nsDOMUIEvent::IsPointerLocked()
 {
-  if (!mView) {
-    return false;
-  }
-
-  nsCOMPtr<nsIDOMNavigator> navigator;
-  mView->GetNavigator(getter_AddRefs(navigator));
-  if (!navigator) {
-    return false;
-  }
-
-  nsCOMPtr<nsIDOMMozNavigatorPointerLock> navigatorPointerLock =
-    do_QueryInterface(navigator);
-
-  nsCOMPtr<nsIDOMMozPointerLock> pointer;
-  navigatorPointerLock->GetMozPointer(getter_AddRefs(pointer));
-  if (!pointer) {
-    return false;
-  }
-
-  bool isLocked;
-  pointer->GetIsLocked(&isLocked);
-  return isLocked;
+  return  nsEventStateManager::sPointerLock;
 }
 
 nsIntPoint

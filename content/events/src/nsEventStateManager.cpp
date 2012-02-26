@@ -163,6 +163,7 @@ nsIDocument* nsEventStateManager::sMouseOverDocument = nsnull;
 nsWeakFrame nsEventStateManager::sLastDragOverFrame = nsnull;
 nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
+bool nsEventStateManager::sPointerLock = false;
 nsCOMPtr<nsIContent> nsEventStateManager::sPointerLockedElement = nsnull;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
@@ -4101,6 +4102,7 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   // Remember which element is locked so we don't dispatch events for
   // elements that aren't locked. aElement will be nsnull when unlocking.
   sPointerLockedElement = aElement;
+  sPointerLock = sPointerLockedElement ? true : false;
 
   if (!aWidget) {
     return;
@@ -4116,7 +4118,7 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
     nsIPresShell::SetCapturingContent(aElement, CAPTURE_POINTERLOCK);
   } else {
     // Unlocking, so return pointer to the original position
-    aWidget->SynthesizeNativeMouseMove(mPreLockPoint);
+    aWidget->SynthesizeNativeMouseMove(nsDOMUIEvent::GetLastScreenPoint());
 
     // Don't retarget events to this element any more.
     nsIPresShell::SetCapturingContent(nsnull, CAPTURE_POINTERLOCK);

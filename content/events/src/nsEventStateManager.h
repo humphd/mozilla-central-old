@@ -231,6 +231,8 @@ public:
 
   static bool IsRemoteTarget(nsIContent* aTarget);
 
+  static bool sPointerLock;
+
 protected:
   friend class MouseEnterLeaveDispatcher;
 
