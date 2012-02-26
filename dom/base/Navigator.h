@@ -48,7 +48,6 @@
 #include "nsIDOMNavigatorDesktopNotification.h"
 #include "nsIDOMClientInformation.h"
 #include "nsIDOMNavigatorBattery.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
 #include "nsIDOMNavigatorSms.h"
 #include "nsIDOMNavigatorNetwork.h"
 #include "nsAutoPtr.h"
@@ -59,7 +58,6 @@ class nsMimeTypeArray;
 class nsGeolocation;
 class nsDesktopNotificationCenter;
 class nsPIDOMWindow;
-class nsDOMMozPointerLock;
 class nsIDOMMozConnection;
 
 #ifdef MOZ_B2G_RIL
@@ -96,7 +94,6 @@ class Navigator : public nsIDOMNavigator
                 , public nsIDOMNavigatorDesktopNotification
                 , public nsIDOMMozNavigatorBattery
                 , public nsIDOMMozNavigatorSms
-                , public nsIDOMMozNavigatorPointerLock
 #ifdef MOZ_B2G_RIL
                 , public nsIDOMNavigatorTelephony
 #endif
@@ -113,7 +110,6 @@ public:
   NS_DECL_NSIDOMNAVIGATORDESKTOPNOTIFICATION
   NS_DECL_NSIDOMMOZNAVIGATORBATTERY
   NS_DECL_NSIDOMMOZNAVIGATORSMS
-  NS_DECL_NSIDOMMOZNAVIGATORPOINTERLOCK
 #ifdef MOZ_B2G_RIL
   NS_DECL_NSIDOMNAVIGATORTELEPHONY
 #endif
@@ -151,7 +147,6 @@ private:
 #endif
   nsRefPtr<network::Connection> mConnection;
   nsWeakPtr mWindow;
-  nsRefPtr<nsDOMMozPointerLock> mPointer;
 };
 
 } // namespace dom

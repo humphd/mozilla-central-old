@@ -69,8 +69,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
 #include "BatteryManager.h"
-#include "nsIDOMMozPointerLock.h"
-#include "nsDOMMozPointerLock.h"
 #include "PowerManager.h"
 #include "SmsManager.h"
 #include "nsISmsService.h"
@@ -131,7 +129,6 @@ NS_INTERFACE_MAP_BEGIN(Navigator)
   NS_INTERFACE_MAP_ENTRY(nsIDOMMozNavigatorBattery)
   NS_INTERFACE_MAP_ENTRY(nsIDOMNavigatorDesktopNotification)
   NS_INTERFACE_MAP_ENTRY(nsIDOMMozNavigatorSms)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMMozNavigatorPointerLock)
 #ifdef MOZ_B2G_RIL
   NS_INTERFACE_MAP_ENTRY(nsIDOMNavigatorTelephony)
 #endif
@@ -953,32 +950,6 @@ Navigator::GetMozPower(nsIDOMMozPowerManager** aPower)
   }
 
   NS_ADDREF(*aPower = mPowerManager);
-
-  return NS_OK;
-}
-
-//*****************************************************************************
-//    Navigator::nsIDOMMozNavigatorPointerLock
-//*****************************************************************************
-
-NS_IMETHODIMP
-Navigator::GetMozPointer(nsIDOMMozPointerLock** aPointer)
-{
-  nsCOMPtr<nsIDOMWindow> domWin(do_QueryReferent(mWindow));
-  if (!domWin) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (!mPointer) {
-    mPointer = new nsDOMMozPointerLock();
-  }
-
-  if (NS_FAILED(mPointer->Init(domWin))) {
-    mPointer = nsnull;
-    return NS_ERROR_FAILURE;
-  }
-
-  NS_ADDREF(*aPointer = mPointer);
 
   return NS_OK;
 }

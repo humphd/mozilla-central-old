@@ -469,7 +469,6 @@
 #include "nsIDOMDesktopNotification.h"
 #include "nsIDOMNavigatorDesktopNotification.h"
 #include "nsIDOMNavigatorGeolocation.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
 #include "Navigator.h"
 
 #include "nsPluginArray.h"
@@ -516,7 +515,6 @@ using mozilla::dom::indexedDB::IDBWrapperCache;
 
 #include "nsIDOMBatteryManager.h"
 #include "BatteryManager.h"
-#include "nsIDOMMozPointerLock.h"
 #include "nsIDOMPowerManager.h"
 #include "nsIDOMSmsManager.h"
 #include "nsIDOMSmsMessage.h"
@@ -1445,9 +1443,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(MozBatteryManager, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-
-  NS_DEFINE_CLASSINFO_DATA(MozPointerLock, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(MozPowerManager, nsDOMGenericSH,
@@ -2423,16 +2418,11 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_CONDITIONAL_ENTRY(nsIDOMMozNavigatorBattery,
                                         battery::BatteryManager::HasSupport())
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozNavigatorSms)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozNavigatorPointerLock)
 #ifdef MOZ_B2G_RIL
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMNavigatorTelephony)
 #endif
     DOM_CLASSINFO_MAP_CONDITIONAL_ENTRY(nsIDOMMozNavigatorNetwork,
                                         network::IsAPIEnabled())
-  DOM_CLASSINFO_MAP_END
-
-  DOM_CLASSINFO_MAP_BEGIN(MozPointerLock, nsIDOMMozPointerLock)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozPointerLock)
   DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(Plugin, nsIDOMPlugin)

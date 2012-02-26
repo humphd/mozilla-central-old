@@ -52,9 +52,6 @@
 #include "nsLayoutUtils.h"
 #include "nsIScrollableFrame.h"
 #include "DictionaryHelpers.h"
-#include "nsIDOMMozPointerLock.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
-#include "nsIDOMNavigator.h"
 
 nsIntPoint nsDOMUIEvent::sLastScreenPoint = nsIntPoint(0,0);
 nsIntPoint nsDOMUIEvent::sLastClientPoint = nsIntPoint(0,0);

@@ -429,7 +429,6 @@ DOMCI_CLASS(GeoPositionAddress)
 DOMCI_CLASS(GeoPositionError)
 
 DOMCI_CLASS(MozBatteryManager)
-DOMCI_CLASS(MozPointerLock)
 
 DOMCI_CLASS(MozPowerManager)
 

@@ -136,7 +136,6 @@ CPPSRCS =			\
 	nsDOMMemoryReporter.cpp \
 	DOMError.cpp \
 	Navigator.cpp \
-	nsDOMMozPointerLock.cpp \
 	$(NULL)
 
 include $(topsrcdir)/dom/dom-config.mk

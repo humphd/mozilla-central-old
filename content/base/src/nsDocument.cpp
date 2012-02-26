@@ -209,10 +209,6 @@
 #include "imgILoader.h"
 #include "nsWrapperCacheInlines.h"
 
-#include "nsDOMMozPointerLock.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
-#include "Navigator.h"
-
 using namespace mozilla;
 using namespace mozilla::dom;
 
@@ -9155,7 +9151,7 @@ nsDocument::ShouldLockPointer(Element* aElement)
   // Check if pointer lock pref is enabled
   nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
   bool pointerLockEnabled;
-  prefs->GetBoolPref(PREF_POINTER_LOCK_ENABLED, &pointerLockEnabled);
+  prefs->GetBoolPref("full-screen-api.pointer-lock.enabled", &pointerLockEnabled);
   if (!pointerLockEnabled) {
     NS_WARNING("ShouldLockPointer(): Pointer Lock pref not enabled");
     return false;

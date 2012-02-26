@@ -920,7 +920,6 @@ protected:
   nsRefPtr<nsBarProp>           mStatusbar;
   nsRefPtr<nsBarProp>           mScrollbars;
   nsCOMPtr<nsIWeakReference>    mWindowUtils;
-  nsIntPoint                    mLastScreenPos;
   nsString                      mStatus;
   nsString                      mDefaultStatus;
   // index 0->language_id 1, so index MAX-1 == language_id MAX

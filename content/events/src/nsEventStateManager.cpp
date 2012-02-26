@@ -100,8 +100,6 @@
 #include "nsIDOMUIEvent.h"
 #include "nsDOMDragEvent.h"
 #include "nsIDOMNSEditableElement.h"
-#include "nsIDOMMozPointerLock.h"
-#include "nsIDOMNavigator.h"
 
 #include "nsCaret.h"
 
