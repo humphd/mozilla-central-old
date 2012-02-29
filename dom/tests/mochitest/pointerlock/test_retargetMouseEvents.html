@@ -51,8 +51,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         is(childStats.mouseDown, false, "Child should not receive mousedown event.");
         is(childStats.mouseUp, false, "Child should not receive mouseup event.");
         is(childStats.mouseClick, false, "Child should not receive click event.");
-        // XXX: scroll events aren't right yet...
-        todo_is(childStats.mouseScroll, false, "Child should not receive DOMMouseScroll event.");
+        is(childStats.mouseScroll, false, "Child should not receive DOMMouseScroll event.");
 
         ok(parentStats.mouseMove, "Parent should receive mousemove event.");
         ok(parentStats.mouseDown, "Parent should receive mousedown event.");
