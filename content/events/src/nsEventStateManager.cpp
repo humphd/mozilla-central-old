@@ -137,6 +137,8 @@
 #include "mozilla/LookAndFeel.h"
 #include "sampler.h"
 
+#include "nsIDOMClientRect.h"
+
 #ifdef XP_MACOSX
 #import <ApplicationServices/ApplicationServices.h>
 #endif
@@ -4137,13 +4139,24 @@ nsEventStateManager::GetMouseCoords()
   nsIFrame* frame = sPointerLockedElement->GetPrimaryFrame();
   NS_ASSERTION(frame, "sPointerLockedElement->GetPrimaryFrame() was null");
   if (!frame) {
+    nsIDocument::UnLockPointer();
     return nsIntPoint(0,0);
   }
 
   nsIntRect screenRect = frame->GetScreenRect();
 
-  return nsIntPoint((screenRect.width/2) + screenRect.x,
-                    (screenRect.height/2) + screenRect.y);
+  nsCOMPtr<nsIDOMHTMLElement> lockedElement = do_QueryInterface(sPointerLockedElement);
+  nsCOMPtr<nsIDOMClientRect> elementRect;
+  lockedElement->GetBoundingClientRect(getter_AddRefs(elementRect));
+
+  float left, top, width, height;
+  elementRect->GetLeft(&left); 
+  elementRect->GetTop(&top); 
+  elementRect->GetWidth(&width); 
+  elementRect->GetHeight(&height); 
+
+  return nsIntPoint((width/2 + left) + screenRect.x,
+                    (height/2 + top) + screenRect.y);
 }
 
 void
