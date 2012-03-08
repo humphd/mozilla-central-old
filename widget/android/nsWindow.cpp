@@ -730,6 +730,12 @@ nsWindow::DispatchEvent(nsGUIEvent *aEvent)
         case NS_TEXT_TEXT:
             mIMEComposingText = static_cast<nsTextEvent*>(aEvent)->theText;
             break;
+        case NS_KEY_PRESS:
+            // Sometimes the text changes after a key press do not generate notifications (see Bug 723810)
+            // Call the corresponding methods explicitly to send those changes back to Java
+            OnIMETextChange(0, 0, 0);
+            OnIMESelectionChange();
+            break;
         }
         return status;
     }
@@ -966,8 +972,8 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
                 if (points.Length() > 0) {
                     pt = points[0];
                 }
-                pt.x = clamped(pt.x, 0, gAndroidBounds.width - 1);
-                pt.y = clamped(pt.y, 0, gAndroidBounds.height - 1);
+                pt.x = clamped(pt.x, 0, NS_MAX(gAndroidBounds.width - 1, 0));
+                pt.y = clamped(pt.y, 0, NS_MAX(gAndroidBounds.height - 1, 0));
                 nsWindow *target = win->FindWindowForPoint(pt);
 #if 0
                 ALOG("MOTION_EVENT %f,%f -> %p (visible: %d children: %d)", pt.x, pt.y, (void*)target,
@@ -1208,18 +1214,15 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
         metadataProvider->GetDrawMetadata(metadata);
     }
 
+    nsIntRect dirtyRect = ae->Rect().Intersect(nsIntRect(0, 0, gAndroidBounds.width, gAndroidBounds.height));
+
     AndroidGeckoSoftwareLayerClient &client =
         AndroidBridge::Bridge()->GetSoftwareLayerClient();
     if (!client.BeginDrawing(gAndroidBounds.width, gAndroidBounds.height,
                              gAndroidTileSize.width, gAndroidTileSize.height,
-                             metadata, HasDirectTexture())) {
+                             dirtyRect, metadata, HasDirectTexture())) {
         return;
     }
-
-    nsIntPoint renderOffset;
-    client.GetRenderOffset(renderOffset);
-
-    nsIntRect dirtyRect = ae->Rect().Intersect(nsIntRect(0, 0, gAndroidBounds.width, gAndroidBounds.height));
 
     unsigned char *bits = NULL;
     if (HasDirectTexture()) {
@@ -1241,26 +1244,24 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
 
         int offset = 0;
 
-        // It is assumed that the buffer has been over-allocated so that not
-        // only is the tile-size constant, but that a render-offset of anything
-        // up to (but not including) the tile size could be accommodated.
-        for (int y = 0; y < gAndroidBounds.height + gAndroidTileSize.height; y += tileHeight) {
-            for (int x = 0; x < gAndroidBounds.width + gAndroidTileSize.width; x += tileWidth) {
+        for (int y = 0; y < gAndroidBounds.height; y += tileHeight) {
+            for (int x = 0; x < gAndroidBounds.width; x += tileWidth) {
+                int width = NS_MIN(tileWidth, gAndroidBounds.width - x);
+                int height = NS_MIN(tileHeight, gAndroidBounds.height - y);
 
                 nsRefPtr<gfxImageSurface> targetSurface =
                     new gfxImageSurface(bits + offset,
-                                        gfxIntSize(tileWidth, tileHeight),
-                                        tileWidth * 2,
+                                        gfxIntSize(width, height),
+                                        width * 2,
                                         gfxASurface::ImageFormatRGB16_565);
 
-                offset += tileWidth * tileHeight * 2;
+                offset += width * height * 2;
 
                 if (targetSurface->CairoStatus()) {
                     ALOG("### Failed to create a valid surface from the bitmap");
                     break;
                 } else {
-                    targetSurface->SetDeviceOffset(gfxPoint(renderOffset.x - x,
-                                                            renderOffset.y - y));
+                    targetSurface->SetDeviceOffset(gfxPoint(-x, -y));
                     DrawTo(targetSurface, dirtyRect);
                 }
             }
@@ -1582,9 +1583,8 @@ nsWindow::DispatchMultitouchEvent(nsTouchEvent &event, AndroidGeckoEvent *ae)
     bool preventPanning = (status == nsEventStatus_eConsumeNoDefault);
     if (preventPanning || action == AndroidMotionEvent::ACTION_MOVE) {
         AndroidBridge::Bridge()->SetPreventPanning(preventPanning);
-        return true;
     }
-    return false;
+    return preventPanning;
 }
 
 void

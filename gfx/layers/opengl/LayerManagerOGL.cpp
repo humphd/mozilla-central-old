@@ -54,6 +54,8 @@
 #include "LayerManagerOGLShaders.h"
 
 #include "gfxContext.h"
+#include "gfxUtils.h"
+#include "gfxPlatform.h"
 #include "nsIWidget.h"
 
 #include "GLContext.h"
@@ -171,9 +173,9 @@ LayerManagerOGL::CreateContext()
 }
 
 bool
-LayerManagerOGL::Initialize(nsRefPtr<GLContext> aContext)
+LayerManagerOGL::Initialize(nsRefPtr<GLContext> aContext, bool force)
 {
-  ScopedGfxFeatureReporter reporter("GL Layers");
+  ScopedGfxFeatureReporter reporter("GL Layers", force);
 
   // Do not allow double intiailization
   NS_ABORT_IF_FALSE(mGLContext == nsnull, "Don't reiniailize layer managers");
@@ -365,7 +367,20 @@ LayerManagerOGL::Initialize(nsRefPtr<GLContext> aContext)
     console->LogStringMessage(msg.get());
   }
 
-  Preferences::AddBoolVarCache(&sDrawFPS, "layers.acceleration.draw-fps");
+  if (NS_IsMainThread()) {
+    Preferences::AddBoolVarCache(&sDrawFPS, "layers.acceleration.draw-fps");
+  } else {
+    // We have to dispatch an event to the main thread to read the pref.
+    class ReadDrawFPSPref : public nsRunnable {
+    public:
+      NS_IMETHOD Run()
+      {
+        Preferences::AddBoolVarCache(&sDrawFPS, "layers.acceleration.draw-fps");
+        return NS_OK;
+      }
+    };
+    NS_DispatchToMainThread(new ReadDrawFPSPref());
+  }
 
   reporter.SetSuccessful();
   return true;
@@ -779,8 +794,20 @@ LayerManagerOGL::Render()
 
   mWidget->DrawWindowOverlay(this, rect);
 
+#ifdef MOZ_DUMP_PAINTING
+  if (gfxUtils::sDumpPainting) {
+    nsIntRect rect;
+    mWidget->GetBounds(rect);
+    nsRefPtr<gfxASurface> surf = gfxPlatform::GetPlatform()->CreateOffscreenSurface(rect.Size(), gfxASurface::CONTENT_COLOR_ALPHA);
+    nsRefPtr<gfxContext> ctx = new gfxContext(surf);
+    CopyToTarget(ctx);
+
+    WriteSnapshotToDumpFile(this, surf);
+  }
+#endif
+
   if (mTarget) {
-    CopyToTarget();
+    CopyToTarget(mTarget);
     mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
     return;
   }
@@ -986,7 +1013,7 @@ LayerManagerOGL::SetupBackBuffer(int aWidth, int aHeight)
 }
 
 void
-LayerManagerOGL::CopyToTarget()
+LayerManagerOGL::CopyToTarget(gfxContext *aTarget)
 {
   nsIntRect rect;
   mWidget->GetBounds(rect);
@@ -1050,11 +1077,11 @@ LayerManagerOGL::CopyToTarget()
     }
   }
 
-  mTarget->SetOperator(gfxContext::OPERATOR_SOURCE);
-  mTarget->Scale(1.0, -1.0);
-  mTarget->Translate(-gfxPoint(0.0, height));
-  mTarget->SetSource(imageSurface);
-  mTarget->Paint();
+  aTarget->SetOperator(gfxContext::OPERATOR_SOURCE);
+  aTarget->Scale(1.0, -1.0);
+  aTarget->Translate(-gfxPoint(0.0, height));
+  aTarget->SetSource(imageSurface);
+  aTarget->Paint();
 }
 
 LayerManagerOGL::ProgramType LayerManagerOGL::sLayerProgramTypes[] = {

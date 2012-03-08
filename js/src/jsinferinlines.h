@@ -639,8 +639,7 @@ TypeScript::Monitor(JSContext *cx, const js::Value &rval)
 }
 
 /* static */ inline void
-TypeScript::MonitorAssign(JSContext *cx, JSScript *script, jsbytecode *pc,
-                          JSObject *obj, jsid id, const js::Value &rval)
+TypeScript::MonitorAssign(JSContext *cx, JSObject *obj, jsid id)
 {
     if (cx->typeInferenceEnabled() && !obj->hasSingletonType()) {
         /*
@@ -741,7 +740,7 @@ void
 TypeScript::trace(JSTracer *trc)
 {
     if (hasScope() && global)
-        gc::MarkObject(trc, global, "script_global");
+        gc::MarkObject(trc, &global, "script_global");
 
     /* Note: nesting does not keep anything alive. */
 }
@@ -1159,6 +1158,9 @@ inline TypeObject::TypeObject(JSObject *proto, bool function, bool unknown)
 {
     PodZero(this);
 
+    /* Inner objects may not appear on prototype chains. */
+    JS_ASSERT_IF(proto, !proto->getClass()->ext.outerObject);
+
     this->proto = proto;
 
     if (function)
@@ -1310,8 +1312,11 @@ TypeObject::writeBarrierPre(TypeObject *type)
         return;
 
     JSCompartment *comp = type->compartment();
-    if (comp->needsBarrier())
-        MarkTypeObjectUnbarriered(comp->barrierTracer(), type, "write barrier");
+    if (comp->needsBarrier()) {
+        TypeObject *tmp = type;
+        MarkTypeObjectUnbarriered(comp->barrierTracer(), &tmp, "write barrier");
+        JS_ASSERT(tmp == type);
+    }
 #endif
 }
 
@@ -1325,8 +1330,11 @@ TypeObject::readBarrier(TypeObject *type)
 {
 #ifdef JSGC_INCREMENTAL
     JSCompartment *comp = type->compartment();
-    if (comp->needsBarrier())
-        MarkTypeObjectUnbarriered(comp->barrierTracer(), type, "read barrier");
+    if (comp->needsBarrier()) {
+        TypeObject *tmp = type;
+        MarkTypeObjectUnbarriered(comp->barrierTracer(), &tmp, "read barrier");
+        JS_ASSERT(tmp == type);
+    }
 #endif
 }
 
@@ -1339,8 +1347,8 @@ TypeNewScript::writeBarrierPre(TypeNewScript *newScript)
 
     JSCompartment *comp = newScript->fun->compartment();
     if (comp->needsBarrier()) {
-        MarkObjectUnbarriered(comp->barrierTracer(), newScript->fun, "write barrier");
-        MarkShapeUnbarriered(comp->barrierTracer(), newScript->shape, "write barrier");
+        MarkObject(comp->barrierTracer(), &newScript->fun, "write barrier");
+        MarkShape(comp->barrierTracer(), &newScript->shape, "write barrier");
     }
 #endif
 }

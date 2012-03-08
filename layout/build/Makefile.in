@@ -93,6 +93,7 @@ SHARED_LIBRARY_LIBS = \
 	$(DEPTH)/view/src/$(LIB_PREFIX)gkview_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/base/$(LIB_PREFIX)jsdombase_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/battery/$(LIB_PREFIX)dom_battery_s.$(LIB_SUFFIX) \
+	$(DEPTH)/dom/contacts/$(LIB_PREFIX)jsdomcontacts_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/power/$(LIB_PREFIX)dom_power_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/network/src/$(LIB_PREFIX)dom_network_s.$(LIB_SUFFIX) \
 	$(DEPTH)/dom/sms/src/$(LIB_PREFIX)dom_sms_s.$(LIB_SUFFIX) \
@@ -147,6 +148,10 @@ LOCAL_INCLUDES	+= \
 	-I$(topsrcdir)/dom/system \
 	$(NULL)
 endif
+
+ifdef MOZ_B2G_BT #{
+SHARED_LIBRARY_LIBS	+= $(DEPTH)/dom/bluetooth/$(LIB_PREFIX)dombluetooth_s.$(LIB_SUFFIX)
+endif #}
 
 ifdef MOZ_B2G_RIL #{
 SHARED_LIBRARY_LIBS	+= $(DEPTH)/dom/system/b2g/$(LIB_PREFIX)domsystemb2g_s.$(LIB_SUFFIX)
@@ -254,6 +259,7 @@ LOCAL_INCLUDES	+= -I$(srcdir)/../base \
 		   -I$(topsrcdir)/dom/src/storage \
 		   -I$(topsrcdir)/dom/src/offline \
 		   -I$(topsrcdir)/dom/src/geolocation \
+		   -I$(topsrcdir)/dom/contacts \
 		   -I$(topsrcdir)/dom/telephony \
 		   -I. \
 		   -I$(topsrcdir)/editor/libeditor/base \
@@ -272,5 +278,8 @@ ifdef MOZ_B2G_RIL #{
 LOCAL_INCLUDES	+= -I$(topsrcdir)/dom/system/b2g
 endif #}
 
+ifdef MOZ_B2G_BT #{
+LOCAL_INCLUDES	+= -I$(topsrcdir)/dom/bluetooth
+endif #}
 
 DEFINES += -D_IMPL_NS_LAYOUT

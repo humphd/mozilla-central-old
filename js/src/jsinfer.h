@@ -668,7 +668,7 @@ struct TypeNewScript
      * Shape to use for newly constructed objects. Reflects all definite
      * properties the object will have.
      */
-    HeapPtr<const Shape> shape;
+    HeapPtrShape  shape;
 
     /*
      * Order in which properties become initialized. We need this in case a
@@ -1117,8 +1117,7 @@ class TypeScript
     static inline void Monitor(JSContext *cx, const js::Value &rval);
 
     /* Monitor an assignment at a SETELEM on a non-integer identifier. */
-    static inline void MonitorAssign(JSContext *cx, JSScript *script, jsbytecode *pc,
-                                     JSObject *obj, jsid id, const js::Value &val);
+    static inline void MonitorAssign(JSContext *cx, JSObject *obj, jsid id);
 
     /* Add a type for a variable in a script. */
     static inline void SetThis(JSContext *cx, JSScript *script, Type type);

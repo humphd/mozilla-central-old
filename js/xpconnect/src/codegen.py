@@ -137,13 +137,13 @@ argumentUnboxingTemplates = {
         "        return JS_FALSE;\n",
 
     'float':
-        "    jsdouble ${name}_dbl;\n"
+        "    double ${name}_dbl;\n"
         "    if (!JS_ValueToNumber(cx, ${argVal}, &${name}_dbl))\n"
         "        return JS_FALSE;\n"
         "    float ${name} = (float) ${name}_dbl;\n",
 
     'double':
-        "    jsdouble ${name};\n"
+        "    double ${name};\n"
         "    if (!JS_ValueToNumber(cx, ${argVal}, &${name}))\n"
         "        return JS_FALSE;\n",
 
@@ -478,7 +478,7 @@ def writeStub(f, customMethodCalls, member, stubName, writeThisUnwrapping, write
             signature += "%s(JSContext *cx, JSObject *obj, jsid id,%s jsval *vp)\n"
     else:
         # JSFastNative.
-        signature += "%s(JSContext *cx, uintN argc,%s jsval *vp)\n"
+        signature += "%s(JSContext *cx, unsigned argc,%s jsval *vp)\n"
 
     customMethodCall = customMethodCalls.get(stubName, None)
 

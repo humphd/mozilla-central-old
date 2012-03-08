@@ -618,12 +618,12 @@ IDBObjectStore::AppendIndexUpdateInfo(PRInt64 aIndexID,
   if (aMultiEntry && !JSVAL_IS_PRIMITIVE(key) &&
       JS_IsArrayObject(aCx, JSVAL_TO_OBJECT(key))) {
     JSObject* array = JSVAL_TO_OBJECT(key);
-    jsuint arrayLength;
+    uint32_t arrayLength;
     if (!JS_GetArrayLength(aCx, array, &arrayLength)) {
       return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
     }
 
-    for (jsuint arrayIndex = 0; arrayIndex < arrayLength; arrayIndex++) {
+    for (uint32_t arrayIndex = 0; arrayIndex < arrayLength; arrayIndex++) {
       jsval arrayItem;
       if (!JS_GetElement(aCx, array, arrayIndex, &arrayItem)) {
         return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
@@ -900,7 +900,7 @@ SwapBytes(PRUint32 u)
 #endif
 }
 
-static inline jsdouble
+static inline double
 SwapBytes(PRUint64 u)
 {
 #ifdef IS_BIG_ENDIAN
@@ -913,7 +913,7 @@ SwapBytes(PRUint64 u)
          ((u & 0x00ff000000000000LLU) >> 40) |
          ((u & 0xff00000000000000LLU) >> 56);
 #else
-  return jsdouble(u);
+  return double(u);
 #endif
 }
 
@@ -1038,7 +1038,7 @@ IDBObjectStore::StructuredCloneWriteCallback(JSContext* aCx,
   StructuredCloneWriteInfo* cloneWriteInfo =
     reinterpret_cast<StructuredCloneWriteInfo*>(aClosure);
 
-  if (JS_GET_CLASS(aCx, aObj) == &gDummyPropClass) {
+  if (JS_GetClass(aObj) == &gDummyPropClass) {
     NS_ASSERTION(cloneWriteInfo->mOffsetToKeyProp == 0,
                  "We should not have been here before!");
     cloneWriteInfo->mOffsetToKeyProp = js_GetSCOffset(aWriter);
@@ -1532,7 +1532,7 @@ IDBObjectStore::GetAll(const jsval& aKey,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  if (aOptionalArgCount < 2) {
+  if (aOptionalArgCount < 2 || aLimit == 0) {
     aLimit = PR_UINT32_MAX;
   }
 
@@ -1700,7 +1700,7 @@ IDBObjectStore::CreateIndex(const nsAString& aName,
 
     JSObject* obj = JSVAL_TO_OBJECT(aKeyPath);
 
-    jsuint length;
+    uint32_t length;
     if (!JS_GetArrayLength(aCx, obj, &length)) {
       return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
     }
@@ -1711,7 +1711,7 @@ IDBObjectStore::CreateIndex(const nsAString& aName,
 
     keyPathArray.SetCapacity(length);
 
-    for (jsuint index = 0; index < length; index++) {
+    for (uint32_t index = 0; index < length; index++) {
       jsval val;
       JSString* jsstr;
       nsDependentJSString str;
@@ -2019,7 +2019,7 @@ AddHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
 
       // This is a duplicate of the js engine's byte munging here
       union {
-        jsdouble d;
+        double d;
         PRUint64 u;
       } pun;
     
@@ -2851,5 +2851,5 @@ nsresult
 CountHelper::GetSuccessResult(JSContext* aCx,
                               jsval* aVal)
 {
-  return JS_NewNumberValue(aCx, static_cast<jsdouble>(mCount), aVal);
+  return JS_NewNumberValue(aCx, static_cast<double>(mCount), aVal);
 }

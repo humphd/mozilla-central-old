@@ -380,6 +380,10 @@ class Compiler : public BaseCompiler
         uint32_t source;
         uint32_t target;
 
+#ifdef JS_CPU_X64
+        Label sourceTrampoline;
+#endif
+
         Jump fastJump;
         MaybeJump slowJump;
     };
@@ -394,13 +398,13 @@ class Compiler : public BaseCompiler
     JSScript *outerScript;
     unsigned chunkIndex;
     bool isConstructing;
-    ChunkDescriptor &outerChunk;
+    ChunkDescriptor outerChunk;
 
     /* SSA information for the outer script and all frames we will be inlining. */
     analyze::CrossScriptSSA ssa;
 
     GlobalObject *globalObj;
-    const HeapValue *globalSlots;  /* Original slots pointer. */
+    const HeapSlot *globalSlots;  /* Original slots pointer. */
 
     Assembler masm;
     FrameState frame;
@@ -484,7 +488,7 @@ private:
     bool hasGlobalReallocation;
     bool oomInVector;       // True if we have OOM'd appending to a vector. 
     bool overflowICSpace;   // True if we added a constant pool in a reserved space.
-    uint32_t gcNumber;
+    uint64_t gcNumber;
     enum { NoApplyTricks, LazyArgsObj } applyTricks;
     PCLengthEntry *pcLengths;
 
@@ -519,6 +523,10 @@ private:
 
     JITScript *outerJIT() {
         return outerScript->getJIT(isConstructing);
+    }
+
+    ChunkDescriptor &outerChunkRef() {
+        return outerJIT()->chunkDescriptor(chunkIndex);
     }
 
     bool bytecodeInChunk(jsbytecode *pc) {
@@ -602,7 +610,6 @@ private:
 
     /* Non-emitting helpers. */
     void pushSyncedEntry(uint32_t pushed);
-    uint32_t fullAtomIndex(jsbytecode *pc);
     bool jumpInScript(Jump j, jsbytecode *pc);
     bool compareTwoValues(JSContext *cx, JSOp op, const Value &lhs, const Value &rhs);
     bool canUseApplyTricks();
@@ -610,7 +617,7 @@ private:
     /* Emitting helpers. */
     bool constantFoldBranch(jsbytecode *target, bool taken);
     bool emitStubCmpOp(BoolStub stub, jsbytecode *target, JSOp fused);
-    bool iter(uintN flags);
+    bool iter(unsigned flags);
     void iterNext(ptrdiff_t offset);
     bool iterMore(jsbytecode *target);
     void iterEnd();

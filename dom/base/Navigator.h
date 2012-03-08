@@ -48,7 +48,6 @@
 #include "nsIDOMNavigatorDesktopNotification.h"
 #include "nsIDOMClientInformation.h"
 #include "nsIDOMNavigatorBattery.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
 #include "nsIDOMNavigatorSms.h"
 #include "nsIDOMNavigatorNetwork.h"
 #include "nsAutoPtr.h"
@@ -59,7 +58,6 @@ class nsMimeTypeArray;
 class nsGeolocation;
 class nsDesktopNotificationCenter;
 class nsPIDOMWindow;
-class nsDOMMozPointerLock;
 class nsIDOMMozConnection;
 
 #ifdef MOZ_B2G_RIL
@@ -67,6 +65,11 @@ class nsIDOMMozConnection;
 class nsIDOMTelephony;
 #endif
 
+#ifdef MOZ_B2G_BT
+#include "nsIDOMNavigatorBluetooth.h"
+#endif
+
+class nsIDOMAdapter;
 //*****************************************************************************
 // Navigator: Script "navigator" object
 //*****************************************************************************
@@ -96,11 +99,13 @@ class Navigator : public nsIDOMNavigator
                 , public nsIDOMNavigatorDesktopNotification
                 , public nsIDOMMozNavigatorBattery
                 , public nsIDOMMozNavigatorSms
-                , public nsIDOMMozNavigatorPointerLock
 #ifdef MOZ_B2G_RIL
                 , public nsIDOMNavigatorTelephony
 #endif
                 , public nsIDOMMozNavigatorNetwork
+#ifdef MOZ_B2G_BT
+                , public nsIDOMNavigatorBluetooth
+#endif
 {
 public:
   Navigator(nsPIDOMWindow *aInnerWindow);
@@ -113,11 +118,14 @@ public:
   NS_DECL_NSIDOMNAVIGATORDESKTOPNOTIFICATION
   NS_DECL_NSIDOMMOZNAVIGATORBATTERY
   NS_DECL_NSIDOMMOZNAVIGATORSMS
-  NS_DECL_NSIDOMMOZNAVIGATORPOINTERLOCK
 #ifdef MOZ_B2G_RIL
   NS_DECL_NSIDOMNAVIGATORTELEPHONY
 #endif
   NS_DECL_NSIDOMMOZNAVIGATORNETWORK
+
+#ifdef MOZ_B2G_BT
+  NS_DECL_NSIDOMNAVIGATORBLUETOOTH
+#endif
 
   static void Init();
 
@@ -128,7 +136,7 @@ public:
 
   static bool HasDesktopNotificationSupport();
 
-  PRInt64 SizeOf() const;
+  size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const;
 
   /**
    * For use during document.write where our inner window changes.
@@ -150,8 +158,10 @@ private:
   nsCOMPtr<nsIDOMTelephony> mTelephony;
 #endif
   nsRefPtr<network::Connection> mConnection;
+#ifdef MOZ_B2G_BT
+  nsCOMPtr<nsIDOMBluetoothAdapter> mBluetooth;
+#endif
   nsWeakPtr mWindow;
-  nsRefPtr<nsDOMMozPointerLock> mPointer;
 };
 
 } // namespace dom

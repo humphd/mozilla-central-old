@@ -51,6 +51,11 @@
 #include "nsThreadUtils.h"
 #include "nsIThreadManager.h"
 #include "mozilla/dom/sms/PSms.h"
+#include "gfxImageSurface.h"
+#include "gfxContext.h"
+#include "nsPresContext.h"
+#include "nsIDocShell.h"
+#include "nsPIDOMWindow.h"
 
 #ifdef DEBUG
 #define ALOG_BRIDGE(args...) ALOG(args)
@@ -103,10 +108,17 @@ AndroidBridge::Init(JNIEnv *jEnv,
     jNotifyIME = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "notifyIME", "(II)V");
     jNotifyIMEEnabled = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "notifyIMEEnabled", "(ILjava/lang/String;Ljava/lang/String;Z)V");
     jNotifyIMEChange = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "notifyIMEChange", "(Ljava/lang/String;III)V");
+    jNotifyScreenShot = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "notifyScreenShot", "(Ljava/nio/ByteBuffer;III)V");
     jAcknowledgeEventSync = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "acknowledgeEventSync", "()V");
 
     jEnableDeviceMotion = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableDeviceMotion", "(Z)V");
     jEnableLocation = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableLocation", "(Z)V");
+    jEnableSensor =
+        (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass,
+                                            "enableSensor", "(I)V");
+    jDisableSensor =
+        (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass,
+                                            "disableSensor", "(I)V");
     jReturnIMEQueryResult = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "returnIMEQueryResult", "(Ljava/lang/String;II)V");
     jScheduleRestart = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "scheduleRestart", "()V");
     jNotifyXreExit = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "onXreExit", "()V");
@@ -313,6 +325,20 @@ AndroidBridge::EnableLocation(bool aEnable)
         return;
     
     env->CallStaticVoidMethod(mGeckoAppShellClass, jEnableLocation, aEnable);
+}
+
+void
+AndroidBridge::EnableSensor(int aSensorType) {
+    ALOG_BRIDGE("AndroidBridge::EnableSensor");
+    mJNIEnv->CallStaticVoidMethod(mGeckoAppShellClass, jEnableSensor,
+                                  aSensorType);
+}
+
+void
+AndroidBridge::DisableSensor(int aSensorType) {
+    ALOG_BRIDGE("AndroidBridge::DisableSensor");
+    mJNIEnv->CallStaticVoidMethod(mGeckoAppShellClass, jDisableSensor,
+                                  aSensorType);
 }
 
 void
@@ -1938,4 +1964,67 @@ AndroidBridge::HideSurface(jobject surface)
                                             "(Landroid/view/Surface;)V");
   env->CallStaticVoidMethod(cls, method, surface);
 #endif
+}
+
+
+/* attribute nsIAndroidBrowserApp browserApp; */
+NS_IMETHODIMP nsAndroidBridge::GetBrowserApp(nsIAndroidBrowserApp * *aBrowserApp)
+{
+    if (nsAppShell::gAppShell)
+        nsAppShell::gAppShell->GetBrowserApp(aBrowserApp);
+    return NS_OK;
+}
+NS_IMETHODIMP nsAndroidBridge::SetBrowserApp(nsIAndroidBrowserApp *aBrowserApp)
+{
+    if (nsAppShell::gAppShell)
+        nsAppShell::gAppShell->SetBrowserApp(aBrowserApp);
+    return NS_OK;
+}
+
+extern "C"
+__attribute__ ((visibility("default")))
+jobject JNICALL
+Java_org_mozilla_gecko_GeckoAppShell_allocateDirectBuffer(JNIEnv *jenv, jclass, jlong size);
+
+
+nsresult AndroidBridge::TakeScreenshot(nsIDOMWindow *window, PRInt32 srcX, PRInt32 srcY, PRInt32 srcW, PRInt32 srcH, PRInt32 dstW, PRInt32 dstH, PRInt32 tabId)
+{
+    nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(window);
+    if (!win)
+        return NS_ERROR_FAILURE;
+    nsRefPtr<nsPresContext> presContext;
+    nsIDocShell* docshell = win->GetDocShell();
+    if (docshell) {
+        docshell->GetPresContext(getter_AddRefs(presContext));
+    }
+    if (!presContext)
+        return NS_ERROR_FAILURE;
+    nscolor bgColor = NS_RGB(255, 255, 255);
+    nsIPresShell* presShell = presContext->PresShell();
+    PRUint32 renderDocFlags = (nsIPresShell::RENDER_IGNORE_VIEWPORT_SCROLLING |
+                               nsIPresShell::RENDER_DOCUMENT_RELATIVE);
+    nsRect r(nsPresContext::CSSPixelsToAppUnits(srcX),
+             nsPresContext::CSSPixelsToAppUnits(srcY),
+             nsPresContext::CSSPixelsToAppUnits(srcW),
+             nsPresContext::CSSPixelsToAppUnits(srcH));
+
+    JNIEnv* jenv = AndroidBridge::GetJNIEnv();
+    if (!jenv)
+        return NS_OK;
+
+    PRUint32 stride = dstW * 2;
+    PRUint32 bufferSize = dstH * stride;
+
+    jobject buffer = Java_org_mozilla_gecko_GeckoAppShell_allocateDirectBuffer(jenv, NULL, bufferSize);
+    if (!buffer)
+        return NS_OK;
+
+    void* data = jenv->GetDirectBufferAddress(buffer);
+    nsRefPtr<gfxImageSurface> surf = new gfxImageSurface(static_cast<unsigned char*>(data), nsIntSize(dstW, dstH), stride, gfxASurface::ImageFormatRGB16_565);
+    nsRefPtr<gfxContext> context = new gfxContext(surf);
+    nsresult rv = presShell->RenderDocument(r, renderDocFlags, bgColor, context);
+    NS_ENSURE_SUCCESS(rv, rv);
+    AndroidBridge::AutoLocalJNIFrame jniFrame(jenv, 1);
+    jenv->CallStaticVoidMethod(AndroidBridge::Bridge()->mGeckoAppShellClass, AndroidBridge::Bridge()->jNotifyScreenShot, buffer, tabId, dstW, dstH);
+    return NS_OK;
 }

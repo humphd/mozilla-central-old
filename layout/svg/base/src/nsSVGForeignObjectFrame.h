@@ -46,6 +46,7 @@
 #include "nsIPresShell.h"
 #include "mozilla/Attributes.h"
 
+class nsRenderingContext;
 class nsSVGOuterSVGFrame;
 
 typedef nsContainerFrame nsSVGForeignObjectFrameBase;
@@ -121,15 +122,15 @@ public:
 #endif
 
   // nsISVGChildFrame interface:
-  NS_IMETHOD PaintSVG(nsSVGRenderState *aContext,
+  NS_IMETHOD PaintSVG(nsRenderingContext *aContext,
                       const nsIntRect *aDirtyRect);
   NS_IMETHOD_(nsIFrame*) GetFrameForPoint(const nsPoint &aPoint);
   NS_IMETHOD_(nsRect) GetCoveredRegion();
   NS_IMETHOD UpdateCoveredRegion();
   NS_IMETHOD InitialUpdate();
   virtual void NotifySVGChanged(PRUint32 aFlags);
-  NS_IMETHOD NotifyRedrawSuspended();
-  NS_IMETHOD NotifyRedrawUnsuspended();
+  virtual void NotifyRedrawSuspended();
+  virtual void NotifyRedrawUnsuspended();
   virtual gfxRect GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
                                       PRUint32 aFlags);
   NS_IMETHOD_(bool) IsDisplayContainer() { return true; }
@@ -165,6 +166,8 @@ protected:
 
   // Areas dirtied by changes to sub-documents embedded by our decendents
   nsRegion mSubDocDirtyRegion;
+
+  nsRect mCoveredRegion;
 
   bool mInReflow;
 };

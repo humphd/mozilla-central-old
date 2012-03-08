@@ -1247,8 +1247,12 @@ public:
    */
   bool Preserves3D() const;
 
+  bool HasPerspective() const;
+
   // Calculate the overflow size of all child frames, taking preserve-3d into account
   void ComputePreserve3DChildrenOverflow(nsOverflowAreas& aOverflowAreas, const nsRect& aBounds);
+
+  void RecomputePerspectiveChildrenOverflow(const nsIFrame* aStartFrame, const nsRect* aBounds);
 
   /**
    * Event handling of GUI events.
@@ -2429,7 +2433,7 @@ public:
    *         style context.  Null is permitted, and means that this frame's
    *         style context should be the root of the style context tree.
    */
-  virtual nsIFrame* GetParentStyleContextFrame() = 0;
+  virtual nsIFrame* GetParentStyleContextFrame() const = 0;
 
   /**
    * Determines whether a frame is visible for painting;
@@ -2534,12 +2538,17 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::EmbeddingLevelProperty()))
   virtual bool SupportsVisibilityHidden() { return true; }
 
   /**
-   * Returns true if the frame is absolutely positioned and has a clip
-   * rect set via the 'clip' property. If true, then we also set aRect
-   * to the computed clip rect coordinates relative to this frame's origin.
-   * aRect must not be null!
+   * Returns true if the frame has a valid clip rect set via the 'clip'
+   * property, and the 'clip' property applies to this frame. The 'clip'
+   * property applies to HTML frames if they are absolutely positioned. The
+   * 'clip' property applies to SVG frames regardless of the value of the
+   * 'position' property.
+   *
+   * If this method returns true, then we also set aRect to the computed clip
+   * rect, with coordinates relative to this frame's origin. aRect must not be
+   * null!
    */
-  bool GetAbsPosClipRect(const nsStyleDisplay* aDisp, nsRect* aRect,
+  bool GetClipPropClipRect(const nsStyleDisplay* aDisp, nsRect* aRect,
                            const nsSize& aSize) const;
 
   /**

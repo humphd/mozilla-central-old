@@ -140,7 +140,7 @@ public:
     bool     IsPersistent() { return IsKeepAlive(); }
     bool     IsReused();
     void     SetIsReusedAfter(PRUint32 afterMilliseconds);
-    void     SetIdleTimeout(PRUint16 val) {mIdleTimeout = val;}
+    void     SetIdleTimeout(PRIntervalTime val) {mIdleTimeout = val;}
     nsresult PushBack(const char *data, PRUint32 length);
     nsresult ResumeSend();
     nsresult ResumeRecv();
@@ -158,6 +158,9 @@ public:
 
     bool UsingSpdy() { return mUsingSpdy; }
 
+    // When the connection is active this is called every 15 seconds
+    void  ReadTimeoutTick(PRIntervalTime now);
+
 private:
     // called to cause the underlying socket to start speaking SSL
     nsresult ProxyStartSSL();
@@ -168,6 +171,7 @@ private:
 
     nsresult SetupProxyConnect();
 
+    PRIntervalTime IdleTime();
     bool     IsAlive();
     bool     SupportsPipelining(nsHttpResponseHead *);
     
@@ -179,6 +183,9 @@ private:
     // Inform the connection manager of any SPDY Alternate-Protocol
     // redirections
     void     HandleAlternateProtocol(nsHttpResponseHead *);
+
+    // Start the Spdy transaction handler when NPN indicates spdy/2
+    void     StartSpdy();
 
     // Directly Add a transaction to an active connection for SPDY
     nsresult AddTransaction(nsAHttpTransaction *, PRInt32);
@@ -204,8 +211,8 @@ private:
     nsRefPtr<nsHttpConnectionInfo> mConnInfo;
 
     PRUint32                        mLastReadTime;
-    PRUint16                        mMaxHangTime;    // max download time before dropping keep-alive status
-    PRUint16                        mIdleTimeout;    // value of keep-alive: timeout=
+    PRIntervalTime                  mMaxHangTime;    // max download time before dropping keep-alive status
+    PRIntervalTime                  mIdleTimeout;    // value of keep-alive: timeout=
     PRIntervalTime                  mConsiderReusedAfterInterval;
     PRIntervalTime                  mConsiderReusedAfterEpoch;
     PRInt64                         mCurrentBytesRead;   // data read per activation

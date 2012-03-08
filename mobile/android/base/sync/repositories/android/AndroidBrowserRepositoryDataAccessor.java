@@ -38,6 +38,8 @@
 
 package org.mozilla.gecko.sync.repositories.android;
 
+import org.mozilla.gecko.db.BrowserContract;
+import org.mozilla.gecko.sync.Logger;
 import org.mozilla.gecko.sync.repositories.NullCursorException;
 import org.mozilla.gecko.sync.repositories.domain.Record;
 
@@ -45,13 +47,12 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
-import android.util.Log;
 
 public abstract class AndroidBrowserRepositoryDataAccessor {
 
   private static final String[] GUID_COLUMNS = new String[] { BrowserContract.SyncColumns.GUID };
   protected Context context;
-  protected String LOG_TAG = "AndroidBrowserRepositoryDataAccessor";
+  protected static String LOG_TAG = "BrowserDataAccessor";
   private final RepoUtils.QueryHelper queryHelper;
 
   public AndroidBrowserRepositoryDataAccessor(Context context) {
@@ -63,14 +64,27 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
   protected abstract ContentValues getContentValues(Record record);
   protected abstract Uri getUri();
 
+  public void dumpDB() {
+    Cursor cur = null;
+    try {
+      cur = queryHelper.safeQuery(".dumpDB", null, null, null, null);
+      RepoUtils.dumpCursor(cur);
+    } catch (NullCursorException e) {
+    } finally {
+      if (cur != null) {
+        cur.close();
+      }
+    }
+  }
+
   public String dateModifiedWhere(long timestamp) {
     return BrowserContract.SyncColumns.DATE_MODIFIED + " >= " + Long.toString(timestamp);
   }
 
   public void wipe() {
-    Log.i(LOG_TAG, "wiping: " + getUri());
-    String where = BrowserContract.SyncColumns.GUID + " NOT IN ('mobile')";
-    context.getContentResolver().delete(getUri(), where, null);
+    Uri uri = getUri();
+    Logger.info(LOG_TAG, "wiping: " + uri);
+    context.getContentResolver().delete(uri, null, null);
   }
   
   public void purgeDeleted() throws NullCursorException {
@@ -98,7 +112,17 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
     if (deleted == 1) {
       return;
     }
-    Log.w(LOG_TAG, "Unexpectedly deleted " + deleted + " rows for guid " + guid);
+    Logger.warn(LOG_TAG, "Unexpectedly deleted " + deleted + " rows for guid " + guid);
+  }
+
+  public void update(String guid, Record newRecord) {
+    String where  = BrowserContract.SyncColumns.GUID + " = ?";
+    String[] args = new String[] { guid };
+    ContentValues cv = getContentValues(newRecord);
+    int updated = context.getContentResolver().update(getUri(), cv, where, args);
+    if (updated != 1) {
+      Logger.warn(LOG_TAG, "Unexpectedly updated " + updated + " rows for guid " + guid);
+    }
   }
 
   public Uri insert(Record record) {
@@ -127,9 +151,9 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
    */
   public Cursor getGUIDsSince(long timestamp) throws NullCursorException {
     return queryHelper.safeQuery(".getGUIDsSince",
-        GUID_COLUMNS,
-        dateModifiedWhere(timestamp),
-        null, null);
+                                 GUID_COLUMNS,
+                                 dateModifiedWhere(timestamp),
+                                 null, null);
   }
 
   /**
@@ -142,9 +166,9 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
    */
   public Cursor fetchSince(long timestamp) throws NullCursorException {
     return queryHelper.safeQuery(".fetchSince",
-        getAllColumns(),
-        dateModifiedWhere(timestamp),
-        null, null);
+                                 getAllColumns(),
+                                 dateModifiedWhere(timestamp),
+                                 null, null);
   }
 
   /**
@@ -182,7 +206,7 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
     if (deleted == 1) {
       return;
     }
-    Log.w(LOG_TAG, "Unexpectedly deleted " + deleted + " rows for guid " + record.guid);
+    Logger.warn(LOG_TAG, "Unexpectedly deleted " + deleted + " rows for guid " + record.guid);
   }
 
   public void updateByGuid(String guid, ContentValues cv) {
@@ -193,6 +217,6 @@ public abstract class AndroidBrowserRepositoryDataAccessor {
     if (updated == 1) {
       return;
     }
-    Log.w(LOG_TAG, "Unexpectedly updated " + updated + " rows for guid " + guid);
+    Logger.warn(LOG_TAG, "Unexpectedly updated " + updated + " rows for guid " + guid);
   }
 }

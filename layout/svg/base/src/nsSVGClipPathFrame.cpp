@@ -56,7 +56,7 @@ NS_NewSVGClipPathFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
 NS_IMPL_FRAMEARENA_HELPERS(nsSVGClipPathFrame)
 
 nsresult
-nsSVGClipPathFrame::ClipPaint(nsSVGRenderState* aContext,
+nsSVGClipPathFrame::ClipPaint(nsRenderingContext* aContext,
                               nsIFrame* aParent,
                               const gfxMatrix &aMatrix)
 {
@@ -78,12 +78,11 @@ nsSVGClipPathFrame::ClipPaint(nsSVGRenderState* aContext,
 
   bool isTrivial = IsTrivial();
 
-  nsAutoSVGRenderMode mode(aContext,
-                           isTrivial ? nsSVGRenderState::CLIP
-                                     : nsSVGRenderState::CLIP_MASK);
+  SVGAutoRenderState mode(aContext,
+                          isTrivial ? SVGAutoRenderState::CLIP
+                                    : SVGAutoRenderState::CLIP_MASK);
 
-
-  gfxContext *gfx = aContext->GetGfxContext();
+  gfxContext *gfx = aContext->ThebesContext();
 
   nsSVGClipPathFrame *clipPathFrame =
     nsSVGEffects::GetEffectProperties(this).GetClipPathFrame(nsnull);
@@ -327,8 +326,8 @@ nsSVGClipPathFrame::GetCanvasTM()
   nsSVGClipPathElement *content = static_cast<nsSVGClipPathElement*>(mContent);
 
   gfxMatrix tm =
-    content->PrependLocalTransformTo(mClipParentMatrix ?
-                                     *mClipParentMatrix : gfxMatrix());
+    content->PrependLocalTransformsTo(mClipParentMatrix ?
+                                      *mClipParentMatrix : gfxMatrix());
 
   return nsSVGUtils::AdjustMatrixForUnits(tm,
                                           &content->mEnumAttributes[nsSVGClipPathElement::CLIPPATHUNITS],

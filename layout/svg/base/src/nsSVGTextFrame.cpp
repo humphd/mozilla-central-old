@@ -209,24 +209,17 @@ nsSVGTextFrame::NotifySVGChanged(PRUint32 aFlags)
   }
 }
 
-NS_IMETHODIMP
-nsSVGTextFrame::NotifyRedrawSuspended()
-{
-  mMetricsState = suspended;
-
-  return nsSVGTextFrameBase::NotifyRedrawSuspended();
-}
-
-NS_IMETHODIMP
+void
 nsSVGTextFrame::NotifyRedrawUnsuspended()
 {
-  mMetricsState = unsuspended;
+  RemoveStateBits(NS_STATE_SVG_REDRAW_SUSPENDED);
+
   UpdateGlyphPositioning(false);
-  return nsSVGTextFrameBase::NotifyRedrawUnsuspended();
+  nsSVGTextFrameBase::NotifyRedrawUnsuspended();
 }
 
 NS_IMETHODIMP
-nsSVGTextFrame::PaintSVG(nsSVGRenderState* aContext,
+nsSVGTextFrame::PaintSVG(nsRenderingContext* aContext,
                          const nsIntRect *aDirtyRect)
 {
   UpdateGlyphPositioning(true);
@@ -281,7 +274,7 @@ nsSVGTextFrame::GetCanvasTM()
     nsSVGContainerFrame *parent = static_cast<nsSVGContainerFrame*>(mParent);
     nsSVGGraphicElement *content = static_cast<nsSVGGraphicElement*>(mContent);
 
-    gfxMatrix tm = content->PrependLocalTransformTo(parent->GetCanvasTM());
+    gfxMatrix tm = content->PrependLocalTransformsTo(parent->GetCanvasTM());
 
     mCanvasTM = new gfxMatrix(tm);
   }
@@ -332,13 +325,19 @@ nsSVGTextFrame::SetWhitespaceHandling(nsSVGGlyphFrame *aFrame)
     aFrame = aFrame->GetNextGlyphFrame();
   }
 
-  lastNonWhitespaceFrame->SetTrimTrailingWhitespace(true);
+  // We're at the last non-whitespace frame so trim off the end
+  // and make sure we set one of the trim bits so that any
+  // further whitespace is compressed to nothing
+  while (aFrame) {
+    aFrame->SetTrimTrailingWhitespace(true);
+    aFrame = aFrame->GetNextGlyphFrame();
+  }
 }
 
 void
 nsSVGTextFrame::UpdateGlyphPositioning(bool aForceGlobalTransform)
 {
-  if (mMetricsState == suspended || !mPositioningDirty)
+  if ((GetStateBits() & NS_STATE_SVG_REDRAW_SUSPENDED) || !mPositioningDirty)
     return;
 
   mPositioningDirty = false;

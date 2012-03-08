@@ -241,7 +241,7 @@ var WifiManager = (function() {
   }
 
   function setScanModeCommand(setActive, callback) {
-    sScanModeActive = setActive;
+    scanModeActive = setActive;
     doSetScanModeCommand(setActive, callback);
   }
 
@@ -434,20 +434,27 @@ var WifiManager = (function() {
     });
   }
 
+  var dhcpInfo = null;
   function runDhcp(ifname, callback) {
     controlMessage({ cmd: "dhcp_do_request", ifname: ifname }, function(data) {
+      if (!data.status)
+        dhcpInfo = data;
       callback(data.status ? null : data);
     });
   }
 
   function stopDhcp(ifname, callback) {
     controlMessage({ cmd: "dhcp_stop", ifname: ifname }, function(data) {
+      if (!data.status)
+        dhcpInfo = null;
       callback(!data.status);
     });
   }
 
   function releaseDhcpLease(ifname, callback) {
     controlMessage({ cmd: "dhcp_release_lease", ifname: ifname }, function(data) {
+      if (!data.status)
+        dhcpInfo = null;
       callback(!data.status);
     });
   }
@@ -468,6 +475,8 @@ var WifiManager = (function() {
 
   function runDhcpRenew(ifname, callback) {
     controlMessage({ cmd: "dhcp_do_request", ifname: ifname }, function(data) {
+      if (!data.status)
+        dhcpInfo = data;
       callback(data.status ? null : data);
     });
   }
@@ -483,7 +492,19 @@ var WifiManager = (function() {
     }
   }
 
-  function parseStatus(status) {
+  function notifyStateChange(fields) {
+    fields.prevState = manager.state;
+    manager.state = fields.state;
+
+    // If we got disconnected, kill the DHCP client in preparation for
+    // reconnection.
+    if (fields.state === "DISCONNECTED" && dhcpInfo)
+      stopDhcp(manager.ifname, function() {});
+
+    notify("statechange", fields);
+  }
+
+  function parseStatus(status, reconnected) {
     if (status === null) {
       debug("Unable to get wpa supplicant's status");
       return;
@@ -493,8 +514,9 @@ var WifiManager = (function() {
     for (let i = 0; i < lines.length; ++i) {
       let [key, value] = lines[i].split("=");
       if (key === "wpa_state") {
+        notifyStateChange({ state: value });
         if (value === "COMPLETED")
-          onconnected();
+          onconnected(reconnected);
       }
     }
   }
@@ -506,11 +528,7 @@ var WifiManager = (function() {
     if (ok === 0) {
       // Tell the event worker to start waiting for events.
       retryTimer = null;
-      waitForEvent();
-      notify("supplicantconnection");
-
-      // Load up the supplicant state.
-      statusCommand(parseStatus);
+      didConnectSupplicant(false, function(){});
       return;
     }
     if (connectTries++ < 3) {
@@ -529,10 +547,14 @@ var WifiManager = (function() {
   }
 
   manager.start = function() {
-    connectToSupplicant(connectCallback);
+    // If we reconnected to an already-running supplicant, then manager.state
+    // will have already been updated to the supplicant's state. Otherwise, we
+    // started the supplicant ourselves and need to connect.
+    if (manager.state === "UNINITIALIZED")
+      connectToSupplicant(connectCallback);
   }
 
-  function onconnected() {
+  function dhcpAfterConnect() {
     runDhcp(manager.ifname, function (data) {
       if (!data) {
         debug("DHCP failed to run");
@@ -563,9 +585,33 @@ var WifiManager = (function() {
     });
   }
 
+  function onconnected(reconnected) {
+    if (!reconnected) {
+      dhcpAfterConnect();
+      return;
+    }
+
+    // We're in the process of reconnecting to a pre-existing wpa_supplicant.
+    // Check to see if there was already a DHCP process:
+    getProperty("init.svc.dhcpcd_" + manager.ifname, "stopped", function(value) {
+      if (value === "running") {
+        return;
+      }
+
+      // Some phones use a different property name for the dhcpcd daemon.
+      getProperty("init.svc.dhcpcd", "stopped", function(value) {
+        if (value === "running") {
+          return;
+        }
+
+        dhcpAfterConnect();
+      });
+    });
+  }
+
   var supplicantStatesMap = ["DISCONNECTED", "INACTIVE", "SCANNING", "ASSOCIATING",
-                             "FOUR_WAY_HANDSHAKE", "GROUP_HANDSHAKE", "COMPLETED",
-                             "DORMANT", "UNINITIALIZED"];
+                             "ASSOCIATED", "FOUR_WAY_HANDSHAKE", "GROUP_HANDSHAKE",
+                             "COMPLETED", "DORMANT", "UNINITIALIZED"];
   var driverEventMap = { STOPPED: "driverstopped", STARTED: "driverstarted", HANGED: "driverhung" };
 
   // handle events sent to us by the event worker
@@ -580,11 +626,12 @@ var WifiManager = (function() {
       return true;
     }
 
-    var eventData = event.substr(0, event.indexOf(" ") + 1);
+    var space = event.indexOf(" ");
+    var eventData = event.substr(0, space + 1);
     if (eventData.indexOf("CTRL-EVENT-STATE-CHANGE") === 0) {
       // Parse the event data
       var fields = {};
-      var tokens = eventData.split(" ");
+      var tokens = event.substr(space + 1).split(" ");
       for (var n = 0; n < tokens.length; ++n) {
         var kv = tokens[n].split("=");
         if (kv.length === 2)
@@ -593,7 +640,7 @@ var WifiManager = (function() {
       if (!("state" in fields))
         return true;
       fields.state = supplicantStatesMap[fields.state];
-      notify("statechange", fields);
+      notifyStateChange(fields);
       return true;
     }
     if (eventData.indexOf("CTRL-EVENT-DRIVER-STATE") === 0) {
@@ -618,19 +665,19 @@ var WifiManager = (function() {
       return false;
     }
     if (eventData.indexOf("CTRL-EVENT-DISCONNECTED") === 0) {
-      notify("statechange", { state: "DISCONNECTED" });
+      notifyStateChange({ state: "DISCONNECTED" });
       return true;
     }
     if (eventData.indexOf("CTRL-EVENT-CONNECTED") === 0) {
       // Format: CTRL-EVENT-CONNECTED - Connection to 00:1e:58:ec:d5:6d completed (reauth) [id=1 id_str=]
       var bssid = eventData.split(" ")[4];
       var id = eventData.substr(eventData.indexOf("id=")).split(" ")[0];
-      notify("statechange", { state: "CONNECTED", BSSID: bssid, id: id });
-      onconnected();
+      notifyStateChange({ state: "CONNECTED", BSSID: bssid, id: id });
+      onconnected(false);
       return true;
     }
     if (eventData.indexOf("CTRL-EVENT-SCAN-RESULTS") === 0) {
-      debug("Notifying of scn results available");
+      debug("Notifying of scan results available");
       notify("scanresultsavailable");
       return true;
     }
@@ -638,8 +685,83 @@ var WifiManager = (function() {
     return true;
   }
 
+  const SUPP_PROP = "init.svc.wpa_supplicant";
+  function killSupplicant(callback) {
+    // It is interesting to note that this function does exactly what
+    // wifi_stop_supplicant does. Unforunately, on the Galaxy S2, Samsung
+    // changed that function in a way that means that it doesn't recognize
+    // wpa_supplicant as already running. Therefore, we have to roll our own
+    // version here.
+    var count = 0;
+    var timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    function tick() {
+      getProperty(SUPP_PROP, "stopped", function (result) {
+        if (result === null) {
+          callback();
+          return;
+        }
+        if (result === "stopped" || ++count >= 5) {
+          // Either we succeeded or ran out of time.
+          timer = null;
+          callback();
+          return;
+        }
+
+        // Else it's still running, continue waiting.
+        timer.initWithCallback(tick, 1000, Ci.nsITimer.TYPE_ONE_SHOT);
+      });
+    }
+
+    setProperty("ctl.stop", "wpa_supplicant", tick);
+  }
+
+  function didConnectSupplicant(reconnected, callback) {
+    waitForEvent();
+    notify("supplicantconnection");
+
+    // Load up the supplicant state.
+    statusCommand(function(status) {
+      parseStatus(status, reconnected);
+      callback();
+    });
+  }
+
+  function prepareForStartup(callback) {
+    // First, check to see if there's a wpa_supplicant running that we can
+    // connect to.
+    getProperty(SUPP_PROP, "stopped", function (value) {
+      debug(SUPP_PROP + " was " + value);
+      if (value !== "running") {
+        stopDhcp(manager.ifname, function() { callback(false) });
+        return;
+      }
+
+      debug(SUPP_PROP + " was running, trying to connect");
+      // It's running, try to reconnect to it.
+      connectToSupplicant(function (retval) {
+        if (retval === 0) {
+          // Successfully reconnected! Don't do anything else.
+          debug("Successfully connected!");
+
+          // It is important that we call parseStatus (in
+          // didConnectSupplicant) before calling the callback here.
+          // Otherwise, WifiManager.start will reconnect to it.
+          didConnectSupplicant(true, function() { callback(true) });
+          return;
+        }
+
+        debug("Didn't connect, trying other method.");
+        stopDhcp(manager.ifname, function() {
+          // Ignore any errors.
+          killSupplicant(function() { callback(false); });
+        });
+      });
+    });
+  }
+
   // Initial state
   var airplaneMode = false;
+  manager.state = "UNINITIALIZED";
 
   // Public interface of the wifi service
   manager.setWifiEnabled = function(enable, callback) {
@@ -649,24 +771,33 @@ var WifiManager = (function() {
     if (enable && airplaneMode)
       return false;
     if (enable) {
-      loadDriver(function (status) {
-        if (status < 0) {
-          callback(status);
+      // Kill any existing connections if necessary.
+      getProperty("wifi.interface", "tiwlan0", function (ifname) {
+        if (!ifname) {
+          callback(-1);
           return;
         }
-        startSupplicant(function (status) {
-          if (status < 0) {
-            callback(status);
+        manager.ifname = ifname;
+
+        prepareForStartup(function(already_connected) {
+          if (already_connected) {
+            callback(0);
             return;
           }
-          getProperty("wifi.interface", "tiwlan0", function (ifname) {
-            if (!ifname) {
-              callback(-1);
+
+          loadDriver(function (status) {
+            if (status < 0) {
+              callback(status);
               return;
             }
-            manager.ifname = ifname;
-            enableInterface(ifname, function (ok) {
-              callback(ok ? 0 : -1);
+            startSupplicant(function (status) {
+              if (status < 0) {
+                callback(status);
+                return;
+              }
+              enableInterface(ifname, function (ok) {
+                callback(ok ? 0 : -1);
+              });
             });
           });
         });
@@ -689,12 +820,12 @@ var WifiManager = (function() {
   manager.reassociate = reassociateCommand;
 
   var networkConfigurationFields = ["ssid", "bssid", "psk", "wep_key0", "wep_key1", "wep_key2", "wep_key3",
-                                    "wep_tx_keyidx", "priority", "key_mgmt", "scan_ssid"];
+                                    "wep_tx_keyidx", "priority", "key_mgmt", "scan_ssid", "disabled"];
 
   manager.getNetworkConfiguration = function(config, callback) {
     var netId = config.netId;
     var done = 0;
-    for (var n = 0; n < networkConfigurationFields; ++n) {
+    for (var n = 0; n < networkConfigurationFields.length; ++n) {
       var fieldName = networkConfigurationFields[n];
       getNetworkVariableCommand(netId, fieldName, function(value) {
         config[fieldName] = value;
@@ -790,8 +921,21 @@ var WifiManager = (function() {
   }
   manager.getMacAddress = getMacAddressCommand;
   manager.getScanResults = scanResultsCommand;
+  manager.setScanMode = function(mode, callback) {
+    setScanModeCommand(mode === "active", callback);
+  }
+  manager.scan = scanCommand;
   return manager;
 })();
+
+function WifiNetwork(ssid, bssid, flags, signal) {
+  this.ssid = ssid;
+  this.bssid = bssid;
+  this.flags = flags;
+  this.signal = Number(signal);
+}
+
+WifiNetwork.prototype.QueryInterface = XPCOMUtils.generateQI([Ci.nsIWifiNetwork]);
 
 function nsWifiWorker() {
   WifiManager.onsupplicantconnection = function() {
@@ -799,24 +943,73 @@ function nsWifiWorker() {
     WifiManager.getMacAddress(function (mac) {
       debug("Got mac: " + mac);
     });
+    connectToMozilla();
   }
   WifiManager.onsupplicantlost = function() {
     debug("Couldn't connect to supplicant");
   }
 
-  var networks = Object.create(null);
+  var self = this;
+
+  this.networks = Object.create(null);
+  WifiManager.onstatechange = function() {
+    debug("State change: " + this.prevState + " -> " + this.state);
+  }
+
+  function connectToMozilla() {
+    // We're not trying to connect so try to find an open Mozilla network.
+    // TODO Don't do this for pre-existing networks.
+    // TODO Remove me in favor of UI and a way to select a network.
+
+    debug("Haven't connected to a network, trying a default (for now)");
+    var configs = [
+      { "ssid": '"mozilla demo"', "key_mgmt": "NONE", "scan_ssid": 1, "disabled": 0 },
+      { "ssid": '"Mozilla"', "key_mgmt": "NONE", "disabled": 0 },
+      { "ssid": '"Mozilla Guest"', "key_mgmt": "NONE", "scan_ssid": 1, "disabled": 0 },
+    ];
+
+    var i = 0;
+    function addThem() {
+      WifiManager.addNetwork(configs[i++], function(ok) {
+        if (!ok) {
+          debug("Unable to add the network!");
+          return;
+        }
+
+        if (i < configs.length) {
+          addThem();
+          return;
+        }
+
+        // Some drivers might not automatically start scanning. In that case,
+        // we need to give them a hint.
+        WifiManager.scan(false, function(){});
+      });
+    }
+    addThem();
+  }
+
   WifiManager.onscanresultsavailable = function() {
     debug("Scan results are available! Asking for them.");
     WifiManager.getScanResults(function(r) {
+      // Now that we have scan results, there's no more need to continue
+      // scanning. Ignore any errors from this command.
+      WifiManager.setScanMode("inactive", function() {});
       let lines = r.split("\n");
       // NB: Skip the header line.
       for (let i = 1; i < lines.length; ++i) {
         // bssid / frequency / signal level / flags / ssid
-        var match = /([\S]+)\s+([\S]+)\s+([\S]+)\s+(\[[\S]+\])?\s+(.*)/.exec(lines[i])
-        if (match)
-          networks[match[5]] = match[1];
-        else
+        var match = /([\S]+)\s+([\S]+)\s+([\S]+)\s+(\[[\S]+\])?\s+(.*)/.exec(lines[i]);
+
+        // TODO Choose bssid based on strength?
+        if (match && match[5])
+          self.networks[match[5]] = new WifiNetwork(match[5], match[1], match[4], match[3]);
+        else if (!match)
           debug("Match didn't find anything for: " + lines[i]);
+      }
+
+      if (self.wantScanResults) {
+        self.wantScanResults();
       }
     });
   }
@@ -841,6 +1034,18 @@ nsWifiWorker.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIWorkerHolder,
                                          Ci.nsIWifi]),
+
+  // Internal methods.
+  waitForScan: function(callback) {
+    if (this.wantScanResults) {
+      var older = this.wantScanResults;
+      this.wantScanResults = function() { callback(); older(); };
+    } else {
+      this.wantScanResults = callback;
+    }
+  },
+
+  // nsIWifi
 
   setWifiEnabled: function(enable) {
     WifiManager.setWifiEnabled(enable, function (ok) {

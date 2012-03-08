@@ -50,8 +50,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "mozilla/Hal.h"
 #include "nscore.h"
 #include "mozilla/FileUtils.h"
+#include "mozilla/HalSensor.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Services.h"
 #include "nsAppShell.h"
@@ -59,6 +61,8 @@
 #include "nsGkAtoms.h"
 #include "nsGUIEvent.h"
 #include "nsIObserverService.h"
+#include "nsIScreen.h"
+#include "nsScreenManagerGonk.h"
 #include "nsWindow.h"
 
 #include "android/log.h"
@@ -78,6 +82,7 @@
 
 using namespace mozilla;
 using namespace android;
+using namespace hal;
 
 bool gDrawRequest = false;
 static nsAppShell *gAppShell = NULL;
@@ -236,14 +241,6 @@ sendKeyEvent(PRUint32 keyCode, bool down, uint64_t timeMs)
 }
 
 static void
-sendSpecialKeyEvent(nsIAtom *command, uint64_t timeMs)
-{
-    nsCommandEvent event(true, nsGkAtoms::onAppCommand, command, NULL);
-    event.time = timeMs;
-    nsWindow::DispatchInputEvent(event);
-}
-
-static void
 maybeSendKeyEvent(int keyCode, bool pressed, uint64_t timeMs)
 {
     switch (keyCode) {
@@ -251,12 +248,10 @@ maybeSendKeyEvent(int keyCode, bool pressed, uint64_t timeMs)
         sendKeyEvent(NS_VK_ESCAPE, pressed, timeMs);
         break;
     case KEY_MENU:
-        if (!pressed)
-            sendSpecialKeyEvent(nsGkAtoms::Menu, timeMs);
+         sendKeyEvent(NS_VK_CONTEXT_MENU, pressed, timeMs);
         break;
     case KEY_SEARCH:
-        if (pressed)
-            sendSpecialKeyEvent(nsGkAtoms::Search, timeMs);
+        sendKeyEvent(NS_VK_F5, pressed, timeMs);
         break;
     case KEY_HOME:
         sendKeyEvent(NS_VK_HOME, pressed, timeMs);
@@ -265,12 +260,10 @@ maybeSendKeyEvent(int keyCode, bool pressed, uint64_t timeMs)
         sendKeyEvent(NS_VK_SLEEP, pressed, timeMs);
         break;
     case KEY_VOLUMEUP:
-        if (pressed)
-            sendSpecialKeyEvent(nsGkAtoms::VolumeUp, timeMs);
+        sendKeyEvent(NS_VK_PAGE_UP, pressed, timeMs);
         break;
     case KEY_VOLUMEDOWN:
-        if (pressed)
-            sendSpecialKeyEvent(nsGkAtoms::VolumeDown, timeMs);
+        sendKeyEvent(NS_VK_PAGE_DOWN, pressed, timeMs);
         break;
     default:
         VERBOSE_LOG("Got unknown key event code. type 0x%04x code 0x%04x value %d",
@@ -347,6 +340,19 @@ GeckoInputReaderPolicy::getDisplayInfo(int32_t displayId,
                                        int32_t* height,
                                        int32_t* orientation)
 {
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_0_DEG ==
+                      InputReaderPolicyInterface::ROTATION_0,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_90_DEG ==
+                      InputReaderPolicyInterface::ROTATION_90,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_180_DEG ==
+                      InputReaderPolicyInterface::ROTATION_180,
+                      "Orientation enums not matched!");
+    MOZ_STATIC_ASSERT(nsIScreen::ROTATION_270_DEG ==
+                      InputReaderPolicyInterface::ROTATION_270,
+                      "Orientation enums not matched!");
+
     // 0 is the default displayId. We only support one display
     if (displayId)
         return false;
@@ -356,7 +362,7 @@ GeckoInputReaderPolicy::getDisplayInfo(int32_t displayId,
     if (height)
         *height = gScreenBounds.height;
     if (orientation)
-        *orientation = ROTATION_0;
+        *orientation = nsScreenGonk::GetRotation();
     return true;
 }
 
@@ -587,7 +593,13 @@ GeckoInputDispatcher::notifyMotion(nsecs_t eventTime,
     }
     {
         MutexAutoLock lock(mQueueLock);
-        mEventQueue.push(data);
+        if (!mEventQueue.empty() &&
+             mEventQueue.back().type == UserInputData::MOTION_DATA &&
+            (mEventQueue.back().action & AMOTION_EVENT_ACTION_MASK) ==
+             AMOTION_EVENT_ACTION_MOVE)
+            mEventQueue.back() = data;
+        else
+            mEventQueue.push(data);
     }
     gAppShell->NotifyNativeEvent();
 }
@@ -639,15 +651,81 @@ GeckoInputDispatcher::unregisterInputChannel(const sp<InputChannel>& inputChanne
     return OK;
 }
 
+class ScreenRotateEvent : public nsRunnable {
+public:
+  ScreenRotateEvent(nsIScreen* aScreen, PRUint32 aRotation)
+    : mScreen(aScreen),
+      mRotation(aRotation) {
+  }
+  NS_IMETHOD Run() {
+    return mScreen->SetRotation(mRotation);
+  }
+
+private:
+  nsCOMPtr<nsIScreen> mScreen;
+  PRUint32 mRotation;
+};
+
+class OrientationSensorObserver : public ISensorObserver {
+public:
+  OrientationSensorObserver ()
+    : mLastUpdate(0) {
+  }
+  void Notify(const SensorData& aSensorData) {
+    nsCOMPtr<nsIScreenManager> screenMgr =
+        do_GetService("@mozilla.org/gfx/screenmanager;1");
+    nsCOMPtr<nsIScreen> screen;
+    screenMgr->GetPrimaryScreen(getter_AddRefs(screen));
+
+    MOZ_ASSERT(aSensorData.sensor() == SensorType::SENSOR_ORIENTATION);
+    InfallibleTArray<float> values = aSensorData.values();
+    // float azimuth = values[0]; // unused
+    float pitch = values[1];
+    float roll = values[2];
+    PRUint32 rotation;
+    if (roll > 45)
+      rotation = nsIScreen::ROTATION_90_DEG;
+    else if (roll < -45)
+      rotation = nsIScreen::ROTATION_270_DEG;
+    else if (pitch < -45)
+      rotation = nsIScreen::ROTATION_0_DEG;
+    else if (pitch > 45)
+      rotation = nsIScreen::ROTATION_180_DEG;
+    else
+      return;  // don't rotate if undecidable
+
+    PRUint32 currRotation;
+    nsresult res;
+    res = screen->GetRotation(&currRotation);
+    if (NS_FAILED(res) || rotation == currRotation)
+      return;
+
+    PRTime now = PR_Now();
+    MOZ_ASSERT(now > mLastUpdate);
+    if (now - mLastUpdate < sMinUpdateInterval)
+      return;
+
+    mLastUpdate = now;
+    NS_DispatchToMainThread(new ScreenRotateEvent(screen, rotation));
+
+  }
+private:
+  PRTime mLastUpdate;
+  static const PRTime sMinUpdateInterval = 500 * 1000; // 500 ms
+};
+
 nsAppShell::nsAppShell()
     : mNativeCallbackRequest(false)
     , mHandlers()
+    , mObserver(new OrientationSensorObserver())
 {
     gAppShell = this;
+    RegisterSensorObserver(SENSOR_ORIENTATION, mObserver);
 }
 
 nsAppShell::~nsAppShell()
 {
+    UnregisterSensorObserver(SENSOR_ORIENTATION, mObserver);
     status_t result = mReaderThread->requestExitAndWait();
     if (result)
         LOG("Could not stop reader thread - %d", result);

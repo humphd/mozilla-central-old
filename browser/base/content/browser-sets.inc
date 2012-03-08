@@ -25,6 +25,7 @@
 #   Shawn Wilsher <me@shawnwilsher.com>
 #   Ehsan Akhgari <ehsan.akhgari@gmail.com>
 #   Rob Campbell <rcampbell@mozilla.com>
+#   Paul Rouget <paul@mozilla.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -127,6 +128,7 @@
     <command id="Tools:Downloads" oncommand="BrowserDownloadsUI();"/>
     <command id="Tools:WebConsole" oncommand="HUDConsoleUI.toggleHUD();"/>
     <command id="Tools:Inspect" oncommand="InspectorUI.toggleInspectorUI();" disabled="true"/>
+    <command id="Tools:Debugger" oncommand="DebuggerUI.toggleDebugger();" disabled="true"/>
     <command id="Tools:Scratchpad" oncommand="Scratchpad.openScratchpad();" disabled="true"/>
     <command id="Tools:StyleEditor" oncommand="StyleEditor.openChrome();" disabled="true"/>
     <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
@@ -152,6 +154,14 @@
              oncommand="InspectorUI.toggleSidebar();"/>
     <command id="Inspector:Tilt"
              oncommand="Tilt.initialize();"/>
+    <command id="Inspector:HTMLPanel"
+             oncommand="InspectorUI.toggleHTMLPanel();"/>
+    <command id="Inspector:CopyInner"
+             oncommand="InspectorUI.copyInnerHTML();"/>
+    <command id="Inspector:CopyOuter"
+             oncommand="InspectorUI.copyOuterHTML();"/>
+    <command id="Inspector:DeleteNode"
+             oncommand="InspectorUI.deleteNode();"/>
   </commandset>
 
   <broadcasterset id="mainBroadcasterSet">
@@ -166,7 +176,7 @@
                  type="checkbox" group="sidebar"
                  sidebarurl="chrome://browser/content/history/history-panel.xul"
                  oncommand="toggleSidebar('viewHistorySidebar');"/>
-                 
+
     <broadcaster id="viewWebPanelsSidebar" autoCheck="false"
                  type="checkbox" group="sidebar" sidebarurl="chrome://browser/content/web-panels.xul"
                  oncommand="toggleSidebar('viewWebPanelsSidebar');"/>
@@ -246,6 +256,13 @@
     <key id="key_openAddons" key="&addons.commandkey;" command="Tools:Addons" modifiers="accel,shift"/>
     <key id="key_errorConsole" key="&errorConsoleCmd.commandkey;" oncommand="toJavaScriptConsole();" modifiers="accel,shift" disabled="true"/>
     <key id="key_webConsole" key="&webConsoleCmd.commandkey;" oncommand="HUDConsoleUI.toggleHUD();"
+#ifdef XP_MACOSX
+        modifiers="accel,alt"
+#else
+        modifiers="accel,shift"
+#endif
+    />
+    <key id="key_debugger" key="&debuggerMenu.commandkey;" command="Tools:Debugger"
 #ifdef XP_MACOSX
         modifiers="accel,alt"
 #else

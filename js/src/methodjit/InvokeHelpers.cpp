@@ -48,7 +48,6 @@
 #include "jsbool.h"
 #include "assembler/assembler/MacroAssemblerCodeRef.h"
 #include "assembler/assembler/CodeLocation.h"
-#include "jsiter.h"
 #include "jstypes.h"
 #include "methodjit/StubCalls.h"
 #include "methodjit/MonoIC.h"
@@ -151,14 +150,11 @@ top:
                    * adjustment and regs.sp[1] after, to save and restore the
                    * pending exception.
                    */
-                  Value v = cx->getPendingException();
                   JS_ASSERT(JSOp(*pc) == JSOP_ENDITER);
-                  cx->clearPendingException();
-                  bool ok = !!js_CloseIterator(cx, &cx->regs().sp[-1].toObject());
+                  bool ok = UnwindIteratorForException(cx, &cx->regs().sp[-1].toObject());
                   cx->regs().sp -= 1;
                   if (!ok)
                       goto top;
-                  cx->setPendingException(v);
                 }
             }
         }
@@ -249,8 +245,7 @@ stubs::FixupArity(VMFrame &f, uint32_t nactual)
     /*
      * Grossssss! *move* the stack frame. If this ends up being perf-critical,
      * we can figure out how to spot-optimize it. Be careful to touch only the
-     * members that have been initialized by initJitFrameCallerHalf and the
-     * early prologue.
+     * members that have been initialized by the caller and early prologue.
      */
     InitialFrameFlags initial = oldfp->initialFlags();
     JSFunction *fun           = oldfp->fun();
@@ -535,13 +530,13 @@ js_InternalThrow(VMFrame &f)
     for (;;) {
         if (cx->isExceptionPending()) {
             // Call the throw hook if necessary
-            JSThrowHook handler = cx->debugHooks->throwHook;
+            JSThrowHook handler = cx->runtime->debugHooks.throwHook;
             if (handler || !cx->compartment->getDebuggees().empty()) {
                 Value rval;
                 JSTrapStatus st = Debugger::onExceptionUnwind(cx, &rval);
                 if (st == JSTRAP_CONTINUE && handler) {
                     st = handler(cx, cx->fp()->script(), cx->regs().pc, &rval,
-                                 cx->debugHooks->throwHookData);
+                                 cx->runtime->debugHooks.throwHookData);
                 }
 
                 switch (st) {
@@ -571,17 +566,23 @@ js_InternalThrow(VMFrame &f)
         if (pc)
             break;
 
-        // The JIT guarantees that ScriptEpilogue() has always been run
-        // upon exiting to its caller. This is important for consistency,
-        // where execution modes make similar guarantees about prologues
-        // and epilogues. RunTracer(), Interpret(), and Invoke() all
-        // rely on this property.
+        // The JIT guarantees that ScriptDebugEpilogue() and ScriptEpilogue()
+        // have always been run upon exiting to its caller. This is important
+        // for consistency, where execution modes make similar guarantees about
+        // prologues and epilogues. Interpret(), and Invoke() all rely on this
+        // property.
         JS_ASSERT(!f.fp()->finishedInInterpreter());
         UnwindScope(cx, 0);
         f.regs.sp = f.fp()->base();
 
-        if (cx->compartment->debugMode())
-            js::ScriptDebugEpilogue(cx, f.fp(), false);
+        if (cx->compartment->debugMode()) {
+            // This can turn a throw or error into a healthy return. Note that
+            // we will run ScriptDebugEpilogue again (from AnyFrameEpilogue);
+            // ScriptDebugEpilogue is prepared for this eventuality.
+            if (js::ScriptDebugEpilogue(cx, f.fp(), false))
+                return cx->jaegerCompartment()->forceReturnFromExternC();
+        }
+                
 
         ScriptEpilogue(f.cx, f.fp(), false);
 
@@ -736,6 +737,10 @@ FinishVarIncOp(VMFrame &f, RejoinState rejoin, Value ov, Value nv, Value *vp)
     JSContext *cx = f.cx;
 
     JSOp op = JSOp(*f.pc());
+    JS_ASSERT(op == JSOP_LOCALINC || op == JSOP_INCLOCAL ||
+              op == JSOP_LOCALDEC || op == JSOP_DECLOCAL ||
+              op == JSOP_ARGINC || op == JSOP_INCARG ||
+              op == JSOP_ARGDEC || op == JSOP_DECARG);
     const JSCodeSpec *cs = &js_CodeSpec[op];
 
     unsigned i = GET_SLOTNO(f.pc());
@@ -801,7 +806,7 @@ js_InternalInterpret(void *returnData, void *returnType, void *returnReg, js::VM
 
 #ifdef JS_METHODJIT_SPEW
     JaegerSpew(JSpew_Recompile, "interpreter rejoin (file \"%s\") (line \"%d\") (op %s) (opline \"%d\")\n",
-               script->filename, script->lineno, OpcodeNames[op], js_PCToLineNumber(cx, script, pc));
+               script->filename, script->lineno, OpcodeNames[op], PCToLineNumber(script, pc));
 #endif
 
     uint32_t nextDepth = UINT32_MAX;

@@ -111,6 +111,7 @@ function StyleEditor(aDocument, aStyleSheet)
 
   this._styleSheet = aStyleSheet;
   this._styleSheetIndex = -1; // unknown for now, will be set after load
+  this._styleSheetFilePath = null; // original file path for the style sheet
 
   this._loaded = false;
 
@@ -145,7 +146,7 @@ StyleEditor.prototype = {
    */
   get styleSheet()
   {
-    assert(this._styleSheet, "StyleSheet must be loaded first.")
+    assert(this._styleSheet, "StyleSheet must be loaded first.");
     return this._styleSheet;
   },
 
@@ -221,7 +222,7 @@ StyleEditor.prototype = {
 
     let sourceEditor = new SourceEditor();
     let config = {
-      placeholderText: this._state.text, //! this is initialText (bug 680371)
+      initialText: this._state.text,
       showLineNumbers: true,
       mode: SourceEditor.MODES.CSS,
       readOnly: this._state.readOnly,
@@ -571,6 +572,7 @@ StyleEditor.prototype = {
    * @param mixed aFile
    *        Optional nsIFile or string representing the filename to save in the
    *        background, no UI will be displayed.
+   *        If not specified, the original style sheet URI is used.
    *        To implement 'Save' instead of 'Save as', you can pass savedFile here.
    * @param function(nsIFile aFile) aCallback
    *        Optional callback called when the operation has finished.
@@ -580,7 +582,8 @@ StyleEditor.prototype = {
    */
   saveToFile: function SE_saveToFile(aFile, aCallback)
   {
-    aFile = this._showFilePicker(aFile, true);
+    aFile = this._showFilePicker(aFile || this._styleSheetFilePath, true);
+
     if (!aFile) {
       if (aCallback) {
         aCallback(null);
@@ -730,6 +733,14 @@ StyleEditor.prototype = {
   {
     if (typeof(aFile) == "string") {
       try {
+        if (Services.io.extractScheme(aFile) == "file") {
+          let uri = Services.io.newURI(aFile, null, null);
+          let file = uri.QueryInterface(Ci.nsIFileURL).file;
+          return file;
+        }
+      } catch (ex) {
+      }
+      try {
         let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
         file.initWithPath(aFile);
         return file;
@@ -772,6 +783,7 @@ StyleEditor.prototype = {
     let scheme = Services.io.extractScheme(this.styleSheet.href);
     switch (scheme) {
       case "file":
+        this._styleSheetFilePath = this.styleSheet.href;
       case "chrome":
       case "resource":
         this._loadSourceFromFile(this.styleSheet.href);
@@ -909,9 +921,11 @@ StyleEditor.prototype = {
       aArgs.unshift(this);
     }
 
+    // copy the list of listeners to allow adding/removing listeners in handlers
+    let listeners = this._actionListeners.concat();
     // trigger all listeners that have this action handler
-    for (let i = 0; i < this._actionListeners.length; ++i) {
-      let listener = this._actionListeners[i];
+    for (let i = 0; i < listeners.length; ++i) {
+      let listener = listeners[i];
       let actionHandler = listener["on" + aName];
       if (actionHandler) {
         actionHandler.apply(listener, aArgs);

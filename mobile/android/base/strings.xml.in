@@ -45,6 +45,7 @@
   <string name="history_older_section">&history_older_section;</string>
 
   <string name="share">&share;</string>
+  <string name="share_title">&share_title;</string>
   <string name="save_as_pdf">&save_as_pdf;</string>
 
   <string name="settings">&settings;</string>
@@ -79,6 +80,7 @@
   <string name="reload">&reload;</string>
   <string name="forward">&forward;</string>
   <string name="new_tab">&new_tab;</string>
+  <string name="new_tab_opened">&new_tab_opened;</string>
   <string name="addons">&addons;</string>
   <string name="downloads">&downloads;</string>
   <string name="char_encoding">&char_encoding;</string>

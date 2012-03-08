@@ -45,6 +45,7 @@ include $(DEPTH)/config/autoconf.mk
 MODULE           = android
 LIBRARY_NAME     = android
 FORCE_STATIC_LIB = 1
+STL_FLAGS=
 
 DEFINES += \
   -DANDROID_PACKAGE_NAME='"$(ANDROID_PACKAGE_NAME)"' \
@@ -55,6 +56,9 @@ CPPSRCS = \
   APKOpen.cpp \
   SQLiteBridge.cpp \
   $(NULL)
+
+LOCAL_INCLUDES += -I$(DEPTH)/build
+LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
 
 LOCAL_INCLUDES += -I$(srcdir)/../linker
 LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/components/startup

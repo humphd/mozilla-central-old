@@ -106,17 +106,11 @@ static bool
 XPCOMObjectToJsval(JSContext *cx, JSObject *scope, xpcObjectHelper &helper,
                    bool allowNativeWrapper, jsval *rval)
 {
-    // XXX The OBJ_IS_NOT_GLOBAL here is not really right. In
-    // fact, this code is depending on the fact that the
-    // global object will not have been collected, and
-    // therefore this NativeInterface2JSObject will not end up
-    // creating a new XPCNativeScriptableShared.
-
     XPCLazyCallContext lccx(JS_CALLER, cx, scope);
 
     nsresult rv;
     if (!XPCConvert::NativeInterface2JSObject(lccx, rval, NULL, helper, NULL, NULL,
-                                              allowNativeWrapper, OBJ_IS_NOT_GLOBAL, &rv)) {
+                                              allowNativeWrapper, &rv)) {
         // I can't tell if NativeInterface2JSObject throws JS exceptions
         // or not.  This is a sloppy stab at the right semantics; the
         // method really ought to be fixed to behave consistently.
@@ -414,7 +408,7 @@ interface_hasInstance(JSContext *cx, JSObject *obj, const JS::Value *vp, JSBool 
             } else {
                 JSObject *protoObj = JSVAL_TO_OBJECT(prototype);
                 JSObject *proto = other;
-                while ((proto = JS_GetPrototype(cx, proto))) {
+                while ((proto = JS_GetPrototype(proto))) {
                     if (proto == protoObj) {
                         *bp = true;
                         return true;
@@ -429,20 +423,6 @@ interface_hasInstance(JSContext *cx, JSObject *obj, const JS::Value *vp, JSBool 
 
     *bp = false;
     return true;
-}
-
-template<class LC>
-JSObject *
-ListBase<LC>::getPrototype(JSContext *cx, XPCWrappedNativeScope *scope, bool *enabled)
-{
-    if (!scope->NewDOMBindingsEnabled()) {
-        *enabled = false;
-        return NULL;
-    }
-
-    *enabled = true;
-
-    return getPrototype(cx, scope);
 }
 
 enum {
@@ -491,8 +471,10 @@ ListBase<LC>::getPrototype(JSContext *cx, XPCWrappedNativeScope *scope)
 
     JSObject *interfacePrototype;
     if (cache.IsInitialized()) {
-        if (cache.Get(sInterfaceClass.name, &interfacePrototype))
+        if (cache.Get(sInterfaceClass.name, &interfacePrototype)) {
+            xpc_UnmarkGrayObject(interfacePrototype);
             return interfacePrototype;
+        }
     } else if (!cache.Init()) {
         return NULL;
     }
@@ -509,7 +491,7 @@ ListBase<LC>::getPrototype(JSContext *cx, XPCWrappedNativeScope *scope)
     for (size_t n = 0; n < sProtoPropertiesCount; ++n) {
         JS_ASSERT(sProtoProperties[n].getter);
         jsid id = sProtoProperties[n].id;
-        uintN attrs = JSPROP_ENUMERATE | JSPROP_SHARED;
+        unsigned attrs = JSPROP_ENUMERATE | JSPROP_SHARED;
         if (!sProtoProperties[n].setter)
             attrs |= JSPROP_READONLY;
         if (!JS_DefinePropertyById(cx, interfacePrototype, id, JSVAL_VOID,
@@ -601,7 +583,7 @@ IdToInt32(JSContext *cx, jsid id)
     JSAutoRequest ar(cx);
 
     jsval idval;
-    jsdouble array_index;
+    double array_index;
     int32_t i;
     if (!::JS_IdToValue(cx, id, &idval) ||
         !::JS_ValueToNumber(cx, idval, &array_index) ||
@@ -621,12 +603,13 @@ GetArrayIndexFromId(JSContext *cx, jsid id)
         return -1;
     if (NS_LIKELY(JSID_IS_ATOM(id))) {
         JSAtom *atom = JSID_TO_ATOM(id);
-        jschar s = *atom->chars();
+        jschar s = *js::GetAtomChars(atom);
         if (NS_LIKELY((unsigned)s >= 'a' && (unsigned)s <= 'z'))
             return -1;
 
-        jsuint i;
-        return js::StringIsArrayIndex(JSID_TO_ATOM(id), &i) ? i : -1;
+        uint32_t i;
+        JSLinearString *str = js::AtomToLinearString(JSID_TO_ATOM(id));
+        return js::StringIsArrayIndex(str, &i) ? i : -1;
     }
     return IdToInt32(cx, id);
 }
@@ -679,7 +662,7 @@ ListBase<LC>::getOwnPropertyDescriptor(JSContext *cx, JSObject *proxy, jsid id, 
 
     JSObject *expando;
     if (!xpc::WrapperFactory::IsXrayWrapper(proxy) && (expando = getExpandoObject(proxy))) {
-        uintN flags = (set ? JSRESOLVE_ASSIGNING : 0) | JSRESOLVE_QUALIFIED;
+        unsigned flags = (set ? JSRESOLVE_ASSIGNING : 0) | JSRESOLVE_QUALIFIED;
         if (!JS_GetPropertyDescriptorById(cx, expando, id, flags, desc))
             return false;
         if (desc->obj) {
@@ -753,12 +736,12 @@ ListBase<LC>::ensureExpandoObject(JSContext *cx, JSObject *obj)
 
         JSCompartment *compartment = js::GetObjectCompartment(obj);
         xpc::CompartmentPrivate *priv =
-            static_cast<xpc::CompartmentPrivate *>(js_GetCompartmentPrivate(compartment));
+            static_cast<xpc::CompartmentPrivate *>(JS_GetCompartmentPrivate(compartment));
         if (!priv->RegisterDOMExpandoObject(expando))
             return NULL;
 
         js::SetProxyExtra(obj, JSPROXYSLOT_EXPANDO, ObjectValue(*expando));
-        JS_SetPrivate(cx, expando, js::GetProxyPrivate(obj).toPrivate());
+        JS_SetPrivate(expando, js::GetProxyPrivate(obj).toPrivate());
     }
     return expando;
 }
@@ -849,8 +832,9 @@ template<class LC>
 bool
 ListBase<LC>::enumerate(JSContext *cx, JSObject *proxy, AutoIdVector &props)
 {
-    // FIXME: enumerate proto as well
-    return getOwnPropertyNames(cx, proxy, props);
+    JSObject *proto = JS_GetPrototype(proxy);
+    return getOwnPropertyNames(cx, proxy, props) &&
+           (!proto || js::GetPropertyNames(cx, proto, 0, &props));
 }
 
 template<class LC>
@@ -1246,8 +1230,15 @@ ListBase<LC>::keys(JSContext *cx, JSObject *proxy, AutoIdVector &props)
 
 template<class LC>
 bool
-ListBase<LC>::iterate(JSContext *cx, JSObject *proxy, uintN flags, Value *vp)
+ListBase<LC>::iterate(JSContext *cx, JSObject *proxy, unsigned flags, Value *vp)
 {
+    if (flags == JSITER_FOR_OF) {
+        JSObject *iterobj = JS_NewElementIterator(cx, proxy);
+        if (!iterobj)
+            return false;
+        vp->setObject(*iterobj);
+        return true;
+    }
     return ProxyHandler::iterate(cx, proxy, flags, vp);
 }
 
@@ -1304,10 +1295,7 @@ NoBase::getPrototype(JSContext *cx, XPCWrappedNativeScope *scope)
     // We need to pass the object prototype to JS_NewObject. If we pass NULL then the JS engine
     // will look up a prototype on the global by using the class' name and we'll recurse into
     // getPrototype.
-    JSObject* proto;
-    if (!js_GetClassPrototype(cx, scope->GetGlobalJSObject(), JSProto_Object, &proto))
-        return NULL;
-    return proto;
+    return JS_GetObjectPrototype(cx, scope->GetGlobalJSObject());
 }
 
 

@@ -49,8 +49,9 @@
 #include "nsDOMError.h"
 #include "nsDOMString.h"
 #include "jspubtd.h"
-#include "nsDOMMemoryReporter.h"
+#include "nsWindowMemoryReporter.h"
 #include "nsIVariant.h"
+#include "nsGkAtoms.h"
 
 // Including 'windows.h' will #define GetClassInfo to something else.
 #ifdef XP_WIN
@@ -88,8 +89,7 @@ class Element;
 } // namespace mozilla
 
 enum {
-  // This bit will be set if the node has a listener manager in the listener
-  // manager hash
+  // This bit will be set if the node has a listener manager.
   NODE_HAS_LISTENERMANAGER =     0x00000001U,
 
   // Whether this node has had any properties set on it
@@ -302,7 +302,39 @@ class nsINode : public nsIDOMEventTarget,
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_INODE_IID)
 
-  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
+  // Among the sub-classes that inherit (directly or indirectly) from nsINode,
+  // measurement of the following members may be added later if DMD finds it is
+  // worthwhile:
+  // - nsGenericHTMLElement:  mForm, mFieldSet
+  // - nsGenericHTMLFrameElement: mFrameLoader (bug 672539), mTitleChangedListener
+  // - nsHTMLBodyElement:     mContentStyleRule
+  // - nsHTMLDataListElement: mOptions
+  // - nsHTMLFieldSetElement: mElements, mDependentElements, mFirstLegend
+  // - nsHTMLFormElement:     many!
+  // - nsHTMLFrameSetElement: mRowSpecs, mColSpecs
+  // - nsHTMLInputElement:    mInputData, mFiles, mFileList, mStaticDocfileList
+  // - nsHTMLMapElement:      mAreas
+  // - nsHTMLMediaElement:    many!
+  // - nsHTMLOutputElement:   mDefaultValue, mTokenList
+  // - nsHTMLRowElement:      mCells
+  // - nsHTMLSelectElement:   mOptions, mRestoreState
+  // - nsHTMLTableElement:    mTBodies, mRows, mTableInheritedAttributes
+  // - nsHTMLTableSectionElement: mRows
+  // - nsHTMLTextAreaElement: mControllers, mState
+  //
+  // The following members don't need to be measured:
+  // - nsIContent: mPrimaryFrame, because it's non-owning and measured elsewhere
+  //
+  NS_DECL_SIZEOF_EXCLUDING_THIS
+
+  // SizeOfIncludingThis doesn't need to be overridden by sub-classes because
+  // sub-classes of nsINode are guaranteed to be laid out in memory in such a
+  // way that |this| points to the start of the allocated object, even in
+  // methods of nsINode's sub-classes, and so |aMallocSizeOf(this)| is always
+  // safe to call no matter which object it was invoked on.
+  virtual size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const {
+    return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
+  }
 
   friend class nsNodeUtils;
   friend class nsNodeWeakReference;
@@ -994,6 +1026,22 @@ public:
    */
   virtual already_AddRefed<nsIURI> GetBaseURI() const = 0;
 
+  /**
+   * Facility for explicitly setting a base URI on a node.
+   */
+  nsresult SetExplicitBaseURI(nsIURI* aURI);
+  /**
+   * The explicit base URI, if set, otherwise null
+   */
+protected:
+  nsIURI* GetExplicitBaseURI() const {
+    if (HasExplicitBaseURI()) {
+      return static_cast<nsIURI*>(GetProperty(nsGkAtoms::baseURIProperty));
+    }
+    return nsnull;
+  }
+  
+public:
   nsresult GetDOMBaseURI(nsAString &aURI) const;
 
   // Note! This function must never fail. It only return an nsresult so that
@@ -1230,6 +1278,10 @@ private:
     // Maybe set if the node is a root of a subtree 
     // which needs to be kept in the purple buffer.
     NodeIsPurpleRoot,
+    // Set if the node has an explicit base URI stored
+    NodeHasExplicitBaseURI,
+    // Set if the element has some style states locked
+    ElementHasLockedStyleStates,
     // Guard value
     BooleanFlagCount
   };
@@ -1287,6 +1339,7 @@ public:
     { SetBoolFlag(NodeIsPurpleRoot, aValue); }
   bool IsPurpleRoot() const { return GetBoolFlag(NodeIsPurpleRoot); }
 
+  bool HasListenerManager() { return HasFlag(NODE_HAS_LISTENERMANAGER); }
 protected:
   void SetParentIsContent(bool aValue) { SetBoolFlag(ParentIsContent, aValue); }
   void SetInDocument() { SetBoolFlag(IsInDocument); }
@@ -1300,10 +1353,17 @@ protected:
   void ClearHasName() { ClearBoolFlag(ElementHasName); }
   void SetMayHaveContentEditableAttr()
     { SetBoolFlag(ElementMayHaveContentEditableAttr); }
+  bool HasExplicitBaseURI() const { return GetBoolFlag(NodeHasExplicitBaseURI); }
+  void SetHasExplicitBaseURI() { SetBoolFlag(NodeHasExplicitBaseURI); }
+  void SetHasLockedStyleStates() { SetBoolFlag(ElementHasLockedStyleStates); }
+  void ClearHasLockedStyleStates() { ClearBoolFlag(ElementHasLockedStyleStates); }
+  bool HasLockedStyleStates() const
+    { return GetBoolFlag(ElementHasLockedStyleStates); }
 
 public:
   // Optimized way to get classinfo.
   virtual nsXPCClassInfo* GetClassInfo() = 0;
+
 protected:
 
   // Override this function to create a custom slots class.

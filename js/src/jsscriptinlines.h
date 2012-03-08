@@ -58,7 +58,7 @@ namespace js {
 
 inline
 Bindings::Bindings(JSContext *cx)
-    : lastBinding(NULL), nargs(0), nvars(0), nupvars(0)
+    : lastBinding(NULL), nargs(0), nvars(0), nupvars(0), hasDup_(false)
 {}
 
 inline void
@@ -90,16 +90,22 @@ Bindings::lastShape() const
     return lastBinding;
 }
 
+Shape *
+Bindings::initialShape(JSContext *cx) const
+{
+    /* Get an allocation kind to match an empty call object. */
+    gc::AllocKind kind = gc::FINALIZE_OBJECT4;
+    JS_ASSERT(gc::GetGCKindSlots(kind) == CallObject::RESERVED_SLOTS + 1);
+
+    return EmptyShape::getInitialShape(cx, &CallClass, NULL, NULL, kind,
+                                       BaseShape::VAROBJ);
+}
+
 bool
 Bindings::ensureShape(JSContext *cx)
 {
     if (!lastBinding) {
-        /* Get an allocation kind to match an empty call object. */
-        gc::AllocKind kind = gc::FINALIZE_OBJECT4;
-        JS_ASSERT(gc::GetGCKindSlots(kind) == CallObject::RESERVED_SLOTS + 1);
-
-        lastBinding = EmptyShape::getInitialShape(cx, &CallClass, NULL, NULL, kind,
-                                                  BaseShape::VAROBJ);
+        lastBinding = initialShape(cx);
         if (!lastBinding)
             return false;
     }
@@ -113,10 +119,10 @@ Bindings::extensibleParents()
 }
 
 extern void
-CurrentScriptFileLineOriginSlow(JSContext *cx, const char **file, uintN *linenop, JSPrincipals **origin);
+CurrentScriptFileLineOriginSlow(JSContext *cx, const char **file, unsigned *linenop, JSPrincipals **origin);
 
 inline void
-CurrentScriptFileLineOrigin(JSContext *cx, const char **file, uintN *linenop, JSPrincipals **origin,
+CurrentScriptFileLineOrigin(JSContext *cx, const char **file, unsigned *linenop, JSPrincipals **origin,
                             LineOption opt = NOT_CALLED_FROM_JSOP_EVAL)
 {
     if (opt == CALLED_FROM_JSOP_EVAL) {
@@ -239,7 +245,9 @@ JSScript::writeBarrierPre(JSScript *script)
     JSCompartment *comp = script->compartment();
     if (comp->needsBarrier()) {
         JS_ASSERT(!comp->rt->gcRunning);
-        MarkScriptUnbarriered(comp->barrierTracer(), script, "write barrier");
+        JSScript *tmp = script;
+        MarkScriptUnbarriered(comp->barrierTracer(), &tmp, "write barrier");
+        JS_ASSERT(tmp == script);
     }
 #endif
 }

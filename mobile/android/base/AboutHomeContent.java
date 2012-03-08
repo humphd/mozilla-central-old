@@ -59,6 +59,7 @@ import org.mozilla.gecko.sync.setup.activities.SetupSyncActivity;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.accounts.OnAccountsUpdateListener;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -110,6 +111,8 @@ public class AboutHomeContent extends ScrollView {
     UriLoadCallback mUriLoadCallback = null;
     private LayoutInflater mInflater;
 
+    private AccountManager mAccountManager;
+
     protected SimpleCursorAdapter mTopSitesAdapter;
     protected GridView mTopSitesGrid;
 
@@ -122,11 +125,36 @@ public class AboutHomeContent extends ScrollView {
 
     public AboutHomeContent(Context context) {
         super(context);
+    }
+
+    public AboutHomeContent(Context context, AttributeSet attrs) {
+        super(context, attrs);
+    }
+
+    public void init() {
+        Context context = getContext();
         mInflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         mInflater.inflate(R.layout.abouthome_content, this);
 
-        setScrollContainer(true);
-        setBackgroundResource(R.drawable.abouthome_bg_repeat);
+        mAccountManager = AccountManager.get(context);
+
+        // The listener will run on the background thread (see 2nd argument)
+        mAccountManager.addOnAccountsUpdatedListener(new OnAccountsUpdateListener() {
+            public void onAccountsUpdated(Account[] accounts) {
+                final GeckoApp.StartupMode startupMode = GeckoApp.mAppContext.getStartupMode();
+                final boolean syncIsSetup = isSyncSetup();
+
+                GeckoApp.mAppContext.mMainHandler.post(new Runnable() {
+                    public void run() {
+                        // The listener might run before the UI is initially updated.
+                        // In this case, we should simply wait for the initial setup
+                        // to happen.
+                        if (mTopSitesAdapter != null)
+                            updateLayout(startupMode, syncIsSetup);
+                    }
+                });
+            }
+        }, GeckoAppShell.getHandler(), false);
 
         mTopSitesGrid = (GridView)findViewById(R.id.top_sites_grid);
         mTopSitesGrid.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -155,7 +183,7 @@ public class AboutHomeContent extends ScrollView {
         allAddonsText.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 if (mUriLoadCallback != null)
-                    mUriLoadCallback.callback("about:addons");
+                    mUriLoadCallback.callback("https://addons.mozilla.org/android");
             }
         });
 
@@ -180,6 +208,20 @@ public class AboutHomeContent extends ScrollView {
                 context.startActivity(intent);
             }
         });
+    }
+
+    void setLastTabsVisibility(boolean visible) {
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        findViewById(R.id.last_tabs_title).setVisibility(visibility);
+        findViewById(R.id.last_tabs).setVisibility(visibility);
+        findViewById(R.id.last_tabs_open_all).setVisibility(visibility);
+    }
+
+    private void setAddonsVisibility(boolean visible) {
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        findViewById(R.id.recommended_addons_title).setVisibility(visibility);
+        findViewById(R.id.recommended_addons).setVisibility(visibility);
+        findViewById(R.id.all_addons_text).setVisibility(visibility);
     }
 
     private void setTopSitesVisibility(boolean visible, boolean hasTopSites) {
@@ -219,8 +261,7 @@ public class AboutHomeContent extends ScrollView {
     }
 
     private boolean isSyncSetup() {
-        AccountManager accountManager = AccountManager.get(getContext());
-        Account[] accounts = accountManager.getAccountsByType("org.mozilla.firefox_sync");
+        Account[] accounts = mAccountManager.getAccountsByType("org.mozilla.firefox_sync");
         return accounts.length > 0;
     }
 
@@ -326,25 +367,6 @@ public class AboutHomeContent extends ScrollView {
         super.onConfigurationChanged(newConfig);
     }
 
-    private String readJSONFile(Activity activity, String filename) {
-        InputStream fileStream = null;
-        File profileDir = GeckoApp.mAppContext.getProfileDir();
-
-        if (profileDir == null)
-            return null;
-
-        File recommendedAddonsFile = new File(profileDir, filename);
-        if (recommendedAddonsFile.exists()) {
-            try {
-                fileStream = new FileInputStream(recommendedAddonsFile);
-            } catch (FileNotFoundException fnfe) {}
-        }
-        if (fileStream == null)
-            return null;
-
-        return readStringFromStream(fileStream);
-    }
-
     private String readFromZipFile(Activity activity, String filename) {
         ZipFile zip = null;
         String str = null;
@@ -418,25 +440,32 @@ public class AboutHomeContent extends ScrollView {
 
     private void readRecommendedAddons(final Activity activity) {
         final String addonsFilename = "recommended-addons.json";
-        String jsonString = readJSONFile(activity, addonsFilename);
-        if (jsonString == null) {
-            Log.i("Addons", "filestream is null");
+        String jsonString;
+        try {
+            jsonString = GeckoApp.mAppContext.getProfile().readFile(addonsFilename);
+        } catch (IOException ioe) {
+            Log.i(LOGTAG, "filestream is null");
             jsonString = readFromZipFile(activity, addonsFilename);
         }
-        if (jsonString == null)
-            return;
 
-        final JSONArray array;
-        try {
-            array = new JSONObject(jsonString).getJSONArray("addons");
-        } catch (JSONException e) {
-            Log.i(LOGTAG, "error reading json file", e);
-            return;
+        JSONArray addonsArray = null;
+        if (jsonString != null) {
+            try {
+                addonsArray = new JSONObject(jsonString).getJSONArray("addons");
+            } catch (JSONException e) {
+                Log.i(LOGTAG, "error reading json file", e);
+            }
         }
 
+        final JSONArray array = addonsArray;
         GeckoApp.mAppContext.mMainHandler.post(new Runnable() {
             public void run() {
                 try {
+                    if (array == null || array.length() == 0) {
+                        setAddonsVisibility(false);
+                        return;
+                    }
+
                     for (int i = 0; i < array.length(); i++) {
                         JSONObject jsonobj = array.getJSONObject(i);
 
@@ -446,6 +475,14 @@ public class AboutHomeContent extends ScrollView {
 
                         String iconUrl = jsonobj.getString("iconURL");
                         String pageUrl = getPageUrlFromIconUrl(iconUrl);
+
+                        final String homepageUrl = jsonobj.getString("homepageURL");
+                        row.setOnClickListener(new View.OnClickListener() {
+                            public void onClick(View v) {
+                                if (mUriLoadCallback != null)
+                                    mUriLoadCallback.callback(homepageUrl);
+                            }
+                        });
 
                         Favicons favicons = GeckoApp.mAppContext.mFavicons;
                         favicons.loadFavicon(pageUrl, iconUrl,
@@ -460,6 +497,8 @@ public class AboutHomeContent extends ScrollView {
 
                         mAddonsLayout.addView(row);
                     }
+
+                    setAddonsVisibility(true);
                 } catch (JSONException e) {
                     Log.i(LOGTAG, "error reading json file", e);
                 }
@@ -468,15 +507,13 @@ public class AboutHomeContent extends ScrollView {
     }
 
     private void readLastTabs(final Activity activity) {
-        // If gecko is ready, the session restore initialization has already occurred.
-        // This means sessionstore.js has been moved to sessionstore.bak. Otherwise, the
-        // previous session will still be in sessionstore.js.
-        final String sessionFilename = "sessionstore." + (GeckoApp.mAppContext.sIsGeckoReady ? "bak" : "js");
-        final JSONArray tabs;
-        String jsonString = readJSONFile(activity, sessionFilename);
-        if (jsonString == null)
+        String jsonString = GeckoApp.mAppContext.getProfile().readSessionFile(GeckoApp.sIsGeckoReady);
+        if (jsonString == null) {
+            // no previous session data
             return;
+        }
 
+        final JSONArray tabs;
         try {
             tabs = new JSONObject(jsonString).getJSONArray("windows")
                                              .getJSONObject(0)
@@ -496,8 +533,13 @@ public class AboutHomeContent extends ScrollView {
                 int index = tab.getInt("index");
                 JSONArray entries = tab.getJSONArray("entries");
                 JSONObject entry = entries.getJSONObject(index - 1);
-                title = entry.getString("title");
                 url = entry.getString("url");
+
+                String optTitle = entry.optString("title");
+                if (optTitle.length() == 0)
+                    title = url;
+                else
+                    title = optTitle;
             } catch (JSONException e) {
                 Log.e(LOGTAG, "error reading json file", e);
                 continue;
@@ -578,15 +620,24 @@ public class AboutHomeContent extends ScrollView {
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int numCols;
             int numRows;
+
+            SimpleCursorAdapter adapter = (SimpleCursorAdapter) getAdapter();
+            int nSites = Integer.MAX_VALUE;
+
+            if (adapter != null) {
+                Cursor c = adapter.getCursor();
+                if (c != null)
+                    nSites = c.getCount();
+            }
+
             Configuration config = getContext().getResources().getConfiguration();
             if (config.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                numCols = NUMBER_OF_COLS_LANDSCAPE;
-                numRows = NUMBER_OF_TOP_SITES_LANDSCAPE / NUMBER_OF_COLS_LANDSCAPE;
+                nSites = Math.min(nSites, NUMBER_OF_TOP_SITES_LANDSCAPE);
+                numRows = (int) Math.round((double) nSites / NUMBER_OF_COLS_LANDSCAPE);
             } else {
-                numCols = NUMBER_OF_COLS_PORTRAIT;
-                numRows = NUMBER_OF_TOP_SITES_PORTRAIT / NUMBER_OF_COLS_PORTRAIT;
+                nSites = Math.min(nSites, NUMBER_OF_TOP_SITES_PORTRAIT);
+                numRows = (int) Math.round((double) nSites / NUMBER_OF_COLS_PORTRAIT);
             }
             int expandedHeightSpec = 
                 MeasureSpec.makeMeasureSpec((int)(mDisplayDensity * numRows * kTopSiteItemHeight),
@@ -613,14 +664,14 @@ public class AboutHomeContent extends ScrollView {
             ImageView thumbnail = (ImageView) view;
 
             if (b == null) {
-                thumbnail.setImageResource(R.drawable.abouthome_topsite_placeholder);
+                thumbnail.setImageResource(R.drawable.tab_thumbnail_default);
             } else {
                 try {
                     Bitmap bitmap = BitmapFactory.decodeByteArray(b, 0, b.length);
                     thumbnail.setImageBitmap(bitmap);
                 } catch (OutOfMemoryError oom) {
                     Log.e(LOGTAG, "Unable to load thumbnail bitmap", oom);
-                    thumbnail.setImageResource(R.drawable.abouthome_topsite_placeholder);
+                    thumbnail.setImageResource(R.drawable.tab_thumbnail_default);
                 }
             }
 

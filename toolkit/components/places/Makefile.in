@@ -59,6 +59,7 @@ IS_COMPONENT = 1
 XPIDLSRCS += \
   mozIAsyncHistory.idl \
   mozIAsyncFavicons.idl \
+  mozIAsyncLivemarks.idl \
   mozIPlacesAutoComplete.idl \
   nsIAnnotationService.idl \
   nsIBrowserHistory.idl \
@@ -128,9 +129,7 @@ EXTRA_PP_JS_MODULES = \
   PlacesUtils.jsm \
   $(NULL)
 
-ifdef ENABLE_TESTS
-DIRS += tests
-endif
+TEST_DIRS += tests
 
 include $(topsrcdir)/config/config.mk
 include $(topsrcdir)/ipc/chromium/chromium-config.mk

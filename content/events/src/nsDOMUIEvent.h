@@ -66,6 +66,10 @@ public:
 
   virtual nsresult InitFromCtor(const nsAString& aType,
                                 JSContext* aCx, jsval* aVal);
+
+  static nsIntPoint GetLastScreenPoint() {
+    return sLastScreenPoint;
+  }
 protected:
   // Internal helper functions
   nsIntPoint GetScreenPoint();

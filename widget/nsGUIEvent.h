@@ -550,6 +550,7 @@ class nsHashKey;
 #define NS_FULLSCREENCHANGE          (NS_FULL_SCREEN_START)
 #define NS_FULLSCREENERROR           (NS_FULL_SCREEN_START + 1)
 
+
 #define NS_TOUCH_EVENT_START         5200
 #define NS_TOUCH_START               (NS_TOUCH_EVENT_START)
 #define NS_TOUCH_MOVE                (NS_TOUCH_EVENT_START+1)
@@ -557,6 +558,11 @@ class nsHashKey;
 #define NS_TOUCH_ENTER               (NS_TOUCH_EVENT_START+3)
 #define NS_TOUCH_LEAVE               (NS_TOUCH_EVENT_START+4)
 #define NS_TOUCH_CANCEL              (NS_TOUCH_EVENT_START+5)
+
+// Pointerlock DOM API
+#define NS_POINTERLOCK_START         5300
+#define NS_POINTERLOCKCHANGE         (NS_POINTERLOCK_START)
+#define NS_POINTERLOCKERROR          (NS_POINTERLOCK_START + 1)
 
 /**
  * Return status for event processors, nsEventStatus, is defined in

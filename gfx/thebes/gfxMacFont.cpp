@@ -46,7 +46,6 @@
 #endif
 #include "gfxPlatformMac.h"
 #include "gfxContext.h"
-#include "gfxUnicodeProperties.h"
 #include "gfxFontUtils.h"
 
 #include "cairo-quartz.h"
@@ -397,7 +396,7 @@ gfxMacFont::GetFontTable(PRUint32 aTag)
         return hb_blob_create((const char*)::CFDataGetBytePtr(dataRef),
                               ::CFDataGetLength(dataRef),
                               HB_MEMORY_MODE_READONLY,
-                              DestroyBlobFunc, (void*)dataRef);
+                              (void*)dataRef, DestroyBlobFunc);
     }
 
     if (mFontEntry->IsUserFont() && !mFontEntry->IsLocalUserFont()) {

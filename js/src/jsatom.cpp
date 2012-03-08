@@ -154,6 +154,7 @@ const char *const js_common_atom_names[] = {
     js_noSuchMethod_str,        /* noSuchMethodAtom             */
     "[object Null]",            /* objectNullAtom               */
     "[object Undefined]",       /* objectUndefinedAtom          */
+    "of",                       /* ofAtom                       */
     js_proto_str,               /* protoAtom                    */
     js_set_str,                 /* setAtom                      */
     js_source_str,              /* sourceAtom                   */
@@ -386,7 +387,9 @@ js_TraceAtomState(JSTracer *trc)
 
     if (rt->gcKeepAtoms) {
         for (AtomSet::Range r = state->atoms.all(); !r.empty(); r.popFront()) {
-            MarkRoot(trc, r.front().asPtr(), "locked_atom");
+            JSAtom *tmp = r.front().asPtr();
+            MarkStringRoot(trc, &tmp, "locked_atom");
+            JS_ASSERT(tmp == r.front().asPtr());
         }
     } else {
         for (AtomSet::Range r = state->atoms.all(); !r.empty(); r.popFront()) {
@@ -394,26 +397,28 @@ js_TraceAtomState(JSTracer *trc)
             if (!entry.isTagged())
                 continue;
 
-            MarkRoot(trc, entry.asPtr(), "interned_atom");
+            JSAtom *tmp = entry.asPtr();
+            MarkStringRoot(trc, &tmp, "interned_atom");
+            JS_ASSERT(tmp == entry.asPtr());
         }
     }
 }
 
 void
-js_SweepAtomState(JSContext *cx)
+js_SweepAtomState(JSRuntime *rt)
 {
-    JSAtomState *state = &cx->runtime->atomState;
+    JSAtomState *state = &rt->atomState;
 
     for (AtomSet::Enum e(state->atoms); !e.empty(); e.popFront()) {
         AtomStateEntry entry = e.front();
 
         if (entry.isTagged()) {
             /* Pinned or interned key cannot be finalized. */
-            JS_ASSERT(!IsAboutToBeFinalized(cx, entry.asPtr()));
+            JS_ASSERT(!IsAboutToBeFinalized(entry.asPtr()));
             continue;
         }
 
-        if (IsAboutToBeFinalized(cx, entry.asPtr()))
+        if (IsAboutToBeFinalized(entry.asPtr()))
             e.removeFront();
     }
 }
@@ -707,9 +712,9 @@ js_CheckForStringIndex(jsid id)
     const jschar *cp = s;
     const jschar *end = s + n;
 
-    jsuint index = JS7_UNDEC(*cp++);
-    jsuint oldIndex = 0;
-    jsuint c = 0;
+    uint32_t index = JS7_UNDEC(*cp++);
+    uint32_t oldIndex = 0;
+    uint32_t c = 0;
 
     if (index != 0) {
         while (JS7_ISDEC(*cp)) {
@@ -731,13 +736,13 @@ js_CheckForStringIndex(jsid id)
         if (oldIndex < -(JSID_INT_MIN / 10) ||
             (oldIndex == -(JSID_INT_MIN / 10) && c <= (-JSID_INT_MIN % 10)))
         {
-            id = INT_TO_JSID(-jsint(index));
+            id = INT_TO_JSID(-int32_t(index));
         }
     } else {
         if (oldIndex < JSID_INT_MAX / 10 ||
             (oldIndex == JSID_INT_MAX / 10 && c <= (JSID_INT_MAX % 10)))
         {
-            id = INT_TO_JSID(jsint(index));
+            id = INT_TO_JSID(int32_t(index));
         }
     }
 

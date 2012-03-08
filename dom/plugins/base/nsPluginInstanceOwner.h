@@ -128,6 +128,11 @@ public:
   NPBool     ConvertPoint(double sourceX, double sourceY, NPCoordinateSpace sourceSpace,
                           double *destX, double *destY, NPCoordinateSpace destSpace);
   
+  virtual NPError InitAsyncSurface(NPSize *size, NPImageFormat format,
+                                   void *initData, NPAsyncSurface *surface);
+  virtual NPError FinalizeAsyncSurface(NPAsyncSurface *surface);
+  virtual void SetCurrentAsyncSurface(NPAsyncSurface *surface, NPRect *changed);
+
   //nsIPluginTagInfo interface
   NS_DECL_NSIPLUGINTAGINFO
   
@@ -182,9 +187,8 @@ public:
   bool IsRemoteDrawingCoreAnimation();
   NPEventModel GetEventModel();
   static void CARefresh(nsITimer *aTimer, void *aClosure);
-  static void AddToCARefreshTimer(nsPluginInstanceOwner *aPluginInstance);
-  static void RemoveFromCARefreshTimer(nsPluginInstanceOwner *aPluginInstance);
-  void SetupCARefresh();
+  void AddToCARefreshTimer();
+  void RemoveFromCARefreshTimer();
   // This calls into the plugin (NPP_SetWindow) and can run script.
   void* FixUpPluginWindow(PRInt32 inPaintState);
   void HidePluginWindow();
@@ -275,8 +279,10 @@ public:
   }
   
   void NotifyPaintWaiter(nsDisplayListBuilder* aBuilder);
-  // Return true if we set image with valid surface
-  bool SetCurrentImage(ImageContainer* aContainer);
+
+  // Returns the image container that has our currently displayed image.
+  already_AddRefed<ImageContainer> GetImageContainer();
+
   /**
    * Returns the bounds of the current async-rendered surface. This can only
    * change in response to messages received by the event loop (i.e. not during
@@ -326,16 +332,14 @@ private:
   void FixUpURLS(const nsString &name, nsAString &value);
 #ifdef MOZ_WIDGET_ANDROID
   void SendSize(int width, int height);
-  void SendOnScreenEvent(bool onScreen);
 
   bool AddPluginView(const gfxRect& aRect);
   void RemovePluginView();
 
-  bool mOnScreen;
   bool mInverted;
 
   // For kOpenGL_ANPDrawingModel
-  mozilla::AndroidMediaLayer *mLayer;
+  nsRefPtr<mozilla::AndroidMediaLayer> mLayer;
 #endif 
  
   nsPluginNativeWindow       *mPluginWindow;

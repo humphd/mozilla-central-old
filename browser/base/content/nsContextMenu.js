@@ -289,9 +289,14 @@ nsContextMenu.prototype = {
     this.showItem("context-viewvideo", this.onVideo && (!this.inSyntheticDoc || this.inFrame));
     this.setItemAttr("context-viewvideo",  "disabled", !this.mediaURL);
 
-    // View background image depends on whether there is one.
-    this.showItem("context-viewbgimage", shouldShow && !this._hasMultipleBGImages);
-    this.showItem("context-sep-viewbgimage", shouldShow && !this._hasMultipleBGImages);
+    // View background image depends on whether there is one, but don't make
+    // background images of a stand-alone media document available.
+    this.showItem("context-viewbgimage", shouldShow &&
+                                         !this._hasMultipleBGImages &&
+                                         !this.inSyntheticDoc);
+    this.showItem("context-sep-viewbgimage", shouldShow &&
+                                             !this._hasMultipleBGImages &&
+                                             !this.inSyntheticDoc);
     document.getElementById("context-viewbgimage")
             .disabled = !this.hasBGImage;
 
@@ -331,16 +336,17 @@ nsContextMenu.prototype = {
   initSpellingItems: function() {
     var canSpell = InlineSpellCheckerUI.canSpellCheck;
     var onMisspelling = InlineSpellCheckerUI.overMisspelling;
+    var showUndo = canSpell && InlineSpellCheckerUI.canUndo();
     this.showItem("spell-check-enabled", canSpell);
     this.showItem("spell-separator", canSpell || this.onEditableArea);
     document.getElementById("spell-check-enabled")
             .setAttribute("checked", canSpell && InlineSpellCheckerUI.enabled);
 
     this.showItem("spell-add-to-dictionary", onMisspelling);
-    this.showItem("spell-undo-add-to-dictionary", InlineSpellCheckerUI.canUndo());
+    this.showItem("spell-undo-add-to-dictionary", showUndo);
 
     // suggestion list
-    this.showItem("spell-suggestions-separator", onMisspelling);
+    this.showItem("spell-suggestions-separator", onMisspelling || showUndo);
     if (onMisspelling) {
       var suggestionsSeparator =
         document.getElementById("spell-add-to-dictionary");
@@ -386,7 +392,9 @@ nsContextMenu.prototype = {
     this.showItem("context-delete", this.onTextInput);
     this.showItem("context-sep-paste", this.onTextInput);
     this.showItem("context-selectall", !(this.onLink || this.onImage ||
-                  this.onVideo || this.onAudio) || this.isDesignMode);
+                                         this.onVideo || this.onAudio ||
+                                         this.inSyntheticDoc) ||
+                                       this.isDesignMode);
     this.showItem("context-sep-selectall", this.isContentSelected );
 
     // XXX dr
@@ -859,12 +867,6 @@ nsContextMenu.prototype = {
     let video = this.target;
     if (document.mozFullScreenEnabled)
       video.mozRequestFullScreen();
-    else {
-      // Fallback for the legacy full-screen video implementation.
-      video.pause();
-      openDialog("chrome://browser/content/fullscreen-video.xhtml",
-                  "", "chrome,centerscreen,dialog=no", video);
-    }
   },
 
   // Change current window to the URL of the background image.

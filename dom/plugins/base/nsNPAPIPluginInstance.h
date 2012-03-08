@@ -64,6 +64,18 @@ class nsIPluginInstanceOwner;
 class nsIPluginStreamListener;
 class nsIOutputStream;
 
+#if defined(OS_WIN)
+const NPDrawingModel kDefaultDrawingModel = NPDrawingModelSyncWin;
+#elif defined(MOZ_X11)
+const NPDrawingModel kDefaultDrawingModel = NPDrawingModelSyncX;
+#else
+#ifndef NP_NO_QUICKDRAW
+const NPDrawingModel kDefaultDrawingModel = NPDrawingModelQuickDraw;
+#else
+const NPDrawingModel kDefaultDrawingModel = NPDrawingModelCoreGraphics;
+#endif
+#endif
+
 class nsNPAPITimer
 {
 public:
@@ -101,7 +113,7 @@ public:
   bool ShouldCache();
   nsresult IsWindowless(bool* isWindowless);
   nsresult AsyncSetWindow(NPWindow* window);
-  nsresult GetImage(ImageContainer* aContainer, Image** aImage);
+  nsresult GetImageContainer(ImageContainer **aContainer);
   nsresult GetImageSize(nsIntSize* aSize);
   nsresult NotifyPainted(void);
   nsresult UseAsyncPainting(bool* aIsAsync);
@@ -115,7 +127,6 @@ public:
   nsresult GetPluginAPIVersion(PRUint16* version);
   nsresult InvalidateRect(NPRect *invalidRect);
   nsresult InvalidateRegion(NPRegion invalidRegion);
-  nsresult ForceRedraw();
   nsresult GetMIMEType(const char* *result);
   nsresult GetJSContext(JSContext* *outContext);
   nsresult GetOwner(nsIPluginInstanceOwner **aOwner);
@@ -142,12 +153,21 @@ public:
   NPError SetUsesDOMForCursor(bool aUsesDOMForCursor);
   bool UsesDOMForCursor();
 
-#ifdef XP_MACOSX
   void SetDrawingModel(NPDrawingModel aModel);
+  void RedrawPlugin();
+#ifdef XP_MACOSX
   void SetEventModel(NPEventModel aModel);
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
+  void NotifyForeground(bool aForeground);
+  void NotifyOnScreen(bool aOnScreen);
+  void MemoryPressure();
+
+  bool IsOnScreen() {
+    return mOnScreen;
+  }
+
   PRUint32 GetANPDrawingModel() { return mANPDrawingModel; }
   void SetANPDrawingModel(PRUint32 aModel);
 
@@ -207,6 +227,11 @@ public:
 
   void URLRedirectResponse(void* notifyData, NPBool allow);
 
+  NPError InitAsyncSurface(NPSize *size, NPImageFormat format,
+                           void *initData, NPAsyncSurface *surface);
+  NPError FinalizeAsyncSurface(NPAsyncSurface *surface);
+  void SetCurrentAsyncSurface(NPAsyncSurface *surface, NPRect *changed);
+
   // Called when the instance fails to instantiate beceause the Carbon
   // event model is not supported.
   void CarbonNPAPIFailure();
@@ -225,9 +250,7 @@ protected:
   // the browser.
   NPP_t mNPP;
 
-#ifdef XP_MACOSX
   NPDrawingModel mDrawingModel;
-#endif
 
 #ifdef MOZ_WIDGET_ANDROID
   PRUint32 mANPDrawingModel;
@@ -283,6 +306,7 @@ private:
   bool mUsePluginLayersPref;
 #ifdef MOZ_WIDGET_ANDROID
   void* mSurface;
+  bool mOnScreen;
 #endif
 };
 

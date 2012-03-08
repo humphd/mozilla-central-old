@@ -46,7 +46,6 @@ import org.mozilla.gecko.gfx.LayerView;
 import java.io.*;
 import java.lang.reflect.*;
 import java.nio.*;
-import java.nio.channels.*;
 import java.text.*;
 import java.util.*;
 import java.util.zip.*;
@@ -116,6 +115,14 @@ public class GeckoAppShell
 
     private static HashMap<String, ArrayList<GeckoEventListener>> mEventListeners;
 
+    /* Is the value in sVibrationEndTime valid? */
+    private static boolean sVibrationMaybePlaying = false;
+
+    /* Time (in System.nanoTime() units) when the currently-playing vibration
+     * is scheduled to end.  This value is valid only when
+     * sVibrationMaybePlaying is true. */
+    private static long sVibrationEndTime = 0;
+
     /* The Android-side API: API methods that Android calls */
 
     // Initialization methods
@@ -146,7 +153,7 @@ public class GeckoAppShell
     private static native void reportJavaCrash(String stackTrace);
 
     public static void notifyUriVisited(String uri) {
-        sendEventToGecko(new GeckoEvent(GeckoEvent.VISITED, uri));
+        sendEventToGecko(GeckoEvent.createVisitedEvent(uri));
     }
 
     public static native void processNextNativeEvent();
@@ -170,21 +177,6 @@ public class GeckoAppShell
     public static native ByteBuffer allocateDirectBuffer(long size);
     public static native void freeDirectBuffer(ByteBuffer buf);
     public static native void bindWidgetTexture();
-
-    // A looper thread, accessed by GeckoAppShell.getHandler
-    private static class LooperThread extends Thread {
-        public SynchronousQueue<Handler> mHandlerQueue =
-            new SynchronousQueue<Handler>();
-        
-        public void run() {
-            setName("GeckoLooper Thread");
-            Looper.prepare();
-            try {
-                mHandlerQueue.put(new Handler());
-            } catch (InterruptedException ie) {}
-            Looper.loop();
-        }
-    }
 
     private static class GeckoMediaScannerClient implements MediaScannerConnectionClient {
         private String mFile = "";
@@ -216,19 +208,8 @@ public class GeckoAppShell
         return GeckoApp.mAppContext.mMainHandler;
     }
 
-    private static Handler sHandler = null;
-
-    // Get a Handler for a looper thread, or create one if it doesn't exist yet
     public static Handler getHandler() {
-        if (sHandler == null) {
-            LooperThread lt = new LooperThread();
-            lt.start();
-            try {
-                sHandler = lt.mHandlerQueue.take();
-            } catch (InterruptedException ie) {}
-
-        }
-        return sHandler;
+        return GeckoBackgroundThread.getHandler();
     }
 
     public static File getCacheDir() {
@@ -255,106 +236,15 @@ public class GeckoAppShell
         return sFreeSpace;
     }
 
-    static boolean moveFile(File inFile, File outFile)
-    {
-        Log.i(LOGTAG, "moving " + inFile + " to " + outFile);
-        if (outFile.isDirectory())
-            outFile = new File(outFile, inFile.getName());
-        try {
-            if (inFile.renameTo(outFile))
-                return true;
-        } catch (SecurityException se) {
-            Log.w(LOGTAG, "error trying to rename file", se);
-        }
-        try {
-            long lastModified = inFile.lastModified();
-            outFile.createNewFile();
-            // so copy it instead
-            FileChannel inChannel = new FileInputStream(inFile).getChannel();
-            FileChannel outChannel = new FileOutputStream(outFile).getChannel();
-            long size = inChannel.size();
-            long transferred = inChannel.transferTo(0, size, outChannel);
-            inChannel.close();
-            outChannel.close();
-            outFile.setLastModified(lastModified);
-
-            if (transferred == size)
-                inFile.delete();
-            else
-                return false;
-        } catch (Exception e) {
-            Log.e(LOGTAG, "exception while moving file: ", e);
-            try {
-                outFile.delete();
-            } catch (SecurityException se) {
-                Log.w(LOGTAG, "error trying to delete file", se);
-            }
-            return false;
-        }
-        return true;
-    }
-
-    static boolean moveDir(File from, File to) {
-        try {
-            to.mkdirs();
-            if (from.renameTo(to))
-                return true;
-        } catch (SecurityException se) {
-            Log.w(LOGTAG, "error trying to rename file", se);
-        }
-        File[] files = from.listFiles();
-        boolean retVal = true;
-        if (files == null)
-            return false;
-        try {
-            Iterator fileIterator = Arrays.asList(files).iterator();
-            while (fileIterator.hasNext()) {
-                File file = (File)fileIterator.next();
-                File dest = new File(to, file.getName());
-                if (file.isDirectory())
-                    retVal = moveDir(file, dest) ? retVal : false;
-                else
-                    retVal = moveFile(file, dest) ? retVal : false;
-            }
-            from.delete();
-        } catch(Exception e) {
-            Log.e(LOGTAG, "error trying to move file", e);
-        }
-        return retVal;
-    }
-
     // java-side stuff
     public static boolean loadLibsSetup(String apkName) {
         // The package data lib directory isn't placed in ld.so's
         // search path, so we have to manually load libraries that
         // libxul will depend on.  Not ideal.
         GeckoApp geckoApp = GeckoApp.mAppContext;
-        String homeDir;
-        sHomeDir = GeckoDirProvider.getFilesDir(geckoApp);
-        homeDir = sHomeDir.getPath();
+        GeckoProfile profile = geckoApp.getProfile();
+        profile.moveProfilesToAppInstallLocation();
 
-        // handle the application being moved to phone from sdcard
-        File profileDir = new File(homeDir, "mozilla");
-        File oldHome = new File("/data/data/" + 
-                    GeckoApp.mAppContext.getPackageName() + "/mozilla");
-        if (oldHome.exists())
-            moveDir(oldHome, profileDir);
-
-        if (Build.VERSION.SDK_INT < 8 ||
-            geckoApp.getApplication().getPackageResourcePath().startsWith("/data") ||
-            geckoApp.getApplication().getPackageResourcePath().startsWith("/system")) {
-            if (Build.VERSION.SDK_INT >= 8) {
-                File extHome =  geckoApp.getExternalFilesDir(null);
-                File extProf = new File (extHome, "mozilla");
-                if (extHome != null && extProf != null && extProf.exists())
-                    moveDir(extProf, profileDir);
-            }
-        } else {
-            File intHome =  geckoApp.getFilesDir();
-            File intProf = new File(intHome, "mozilla");
-            if (intHome != null && intProf != null && intProf.exists())
-                moveDir(intProf, profileDir);
-        }
         try {
             String[] dirs = GeckoApp.mAppContext.getPluginDirectories();
             StringBuffer pluginSearchPath = new StringBuffer();
@@ -368,7 +258,7 @@ public class GeckoAppShell
             Log.i(LOGTAG, "exception getting plugin dirs", ex);
         }
 
-        GeckoAppShell.putenv("HOME=" + homeDir);
+        GeckoAppShell.putenv("HOME=" + profile.getFilesDir().getPath());
         GeckoAppShell.putenv("GRE_HOME=" + GeckoApp.sGREDir.getPath());
         Intent i = geckoApp.getIntent();
         String env = i.getStringExtra("env0");
@@ -391,7 +281,10 @@ public class GeckoAppShell
         GeckoAppShell.putenv("EXTERNAL_STORAGE=" + f.getPath());
 
         File cacheFile = getCacheDir();
-        GeckoAppShell.putenv("MOZ_LINKER_CACHE=" + cacheFile.getPath());
+        String linkerCache = System.getenv("MOZ_LINKER_CACHE");
+        if (System.getenv("MOZ_LINKER_CACHE") == null) {
+            GeckoAppShell.putenv("MOZ_LINKER_CACHE=" + cacheFile.getPath());
+        }
 
         File pluginDataDir = GeckoApp.mAppContext.getDir("plugins", 0);
         GeckoAppShell.putenv("ANDROID_PLUGIN_DATADIR=" + pluginDataDir.getPath());
@@ -421,9 +314,9 @@ public class GeckoAppShell
             // remove any previously extracted libs
             File[] files = cacheFile.listFiles();
             if (files != null) {
-                Iterator cacheFiles = Arrays.asList(files).iterator();
+                Iterator<File> cacheFiles = Arrays.asList(files).iterator();
                 while (cacheFiles.hasNext()) {
-                    File libFile = (File)cacheFiles.next();
+                    File libFile = cacheFiles.next();
                     if (libFile.getName().endsWith(".so"))
                         libFile.delete();
                 }
@@ -506,7 +399,7 @@ public class GeckoAppShell
             public boolean onTouch(View view, MotionEvent event) {
                 if (event == null)
                     return true;
-                GeckoAppShell.sendEventToGecko(new GeckoEvent(event));
+                GeckoAppShell.sendEventToGecko(GeckoEvent.createMotionEvent(event));
                 return true;
             }
         });
@@ -558,13 +451,28 @@ public class GeckoAppShell
             mInputConnection.notifyIMEChange(text, start, end, newEnd);
     }
 
+    public static void notifyScreenShot(final ByteBuffer data, final int tabId,
+                                        final int width, final int height) {
+        getHandler().post(new Runnable() {
+            public void run() {
+                final Tab tab = Tabs.getInstance().getTab(tabId);
+                if (tab == null)
+                    return;
+
+                Bitmap b = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+                b.copyPixelsFromBuffer(data);
+                freeDirectBuffer(data);
+                GeckoApp.mAppContext.processThumbnail(tab, b, null);
+            }
+        });
+    }
+
     private static CountDownLatch sGeckoPendingAcks = null;
 
     // Block the current thread until the Gecko event loop is caught up
     synchronized public static void geckoEventSync() {
         sGeckoPendingAcks = new CountDownLatch(1);
-        GeckoAppShell.sendEventToGecko(
-            new GeckoEvent(GeckoEvent.GECKO_EVENT_SYNC));
+        GeckoAppShell.sendEventToGecko(GeckoEvent.createSyncEvent());
         while (sGeckoPendingAcks.getCount() != 0) {
             try {
                 sGeckoPendingAcks.await();
@@ -632,12 +540,52 @@ public class GeckoAppShell
             });
     }
 
+    /*
+     * Keep these values consistent with |SensorType| in Hal.h
+     */
+    private static final int SENSOR_ORIENTATION = 1;
+    private static final int SENSOR_ACCELERATION = 2;
+    private static final int SENSOR_PROXIMITY = 3;
+
+    private static Sensor gProximitySensor = null;
+
+    public static void enableSensor(int aSensortype) {
+        SensorManager sm = (SensorManager)
+            GeckoApp.mAppContext.getSystemService(Context.SENSOR_SERVICE);
+
+        switch(aSensortype) {
+        case SENSOR_PROXIMITY:
+            if(gProximitySensor == null)
+                gProximitySensor = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+            sm.registerListener(GeckoApp.mAppContext, gProximitySensor,
+                                SensorManager.SENSOR_DELAY_GAME);
+            break;
+        }
+    }
+
+    public static void disableSensor(int aSensortype) {
+        SensorManager sm = (SensorManager)
+            GeckoApp.mAppContext.getSystemService(Context.SENSOR_SERVICE);
+
+        switch(aSensortype) {
+        case SENSOR_PROXIMITY:
+            sm.unregisterListener(GeckoApp.mAppContext, gProximitySensor);
+            break;
+        }
+    }
+
     public static void moveTaskToBack() {
         GeckoApp.mAppContext.moveTaskToBack(true);
     }
 
     public static void returnIMEQueryResult(String result, int selectionStart, int selectionLength) {
         mInputConnection.returnIMEQueryResult(result, selectionStart, selectionLength);
+    }
+
+    public static void resetIMESelection() {
+        if (mInputConnection != null) {
+            mInputConnection.resetSelection();
+        }
     }
 
     static void onXreExit() {
@@ -840,10 +788,12 @@ public class GeckoAppShell
                                    String aClassName, String aAction, String aTitle) {
         Intent intent = getIntentForActionString(aAction);
         if (aAction.equalsIgnoreCase(Intent.ACTION_SEND)) {
-            intent.putExtra(Intent.EXTRA_TEXT, aUriSpec);
-            intent.putExtra(Intent.EXTRA_SUBJECT, aTitle);
+            Intent shareIntent = getIntentForActionString(aAction);
+            shareIntent.putExtra(Intent.EXTRA_TEXT, aUriSpec);
+            shareIntent.putExtra(Intent.EXTRA_SUBJECT, aTitle);
             if (aMimeType != null && aMimeType.length() > 0)
-                intent.setType(aMimeType);
+                shareIntent.setType(aMimeType);
+            intent = Intent.createChooser(shareIntent, GeckoApp.mAppContext.getResources().getString(R.string.share_title)); 
         } else if (aMimeType.length() > 0) {
             intent.setDataAndType(Uri.parse(aUriSpec), aMimeType);
         } else {
@@ -963,7 +913,7 @@ public class GeckoAppShell
             String resource = imageUri.getSchemeSpecificPart();
             resource = resource.substring(resource.lastIndexOf('/') + 1);
             try {
-                Class drawableClass = R.drawable.class;
+                Class<R.drawable> drawableClass = R.drawable.class;
                 Field f = drawableClass.getField(resource);
                 icon = f.getInt(null);
             } catch (Exception e) {} // just means the resource doesn't exist
@@ -1081,11 +1031,15 @@ public class GeckoAppShell
     }
 
     public static void performHapticFeedback(boolean aIsLongPress) {
-        LayerController layerController = GeckoApp.mAppContext.getLayerController();
-        LayerView layerView = layerController.getView();
-        layerView.performHapticFeedback(aIsLongPress ?
-                                        HapticFeedbackConstants.LONG_PRESS :
-                                        HapticFeedbackConstants.VIRTUAL_KEY);
+        // Don't perform haptic feedback if a vibration is currently playing,
+        // because the haptic feedback will nuke the vibration.
+        if (!sVibrationMaybePlaying || System.nanoTime() >= sVibrationEndTime) {
+            LayerController layerController = GeckoApp.mAppContext.getLayerController();
+            LayerView layerView = layerController.getView();
+            layerView.performHapticFeedback(aIsLongPress ?
+                                            HapticFeedbackConstants.LONG_PRESS :
+                                            HapticFeedbackConstants.VIRTUAL_KEY);
+        }
     }
 
     private static Vibrator vibrator() {
@@ -1096,14 +1050,28 @@ public class GeckoAppShell
     }
 
     public static void vibrate(long milliseconds) {
+        sVibrationEndTime = System.nanoTime() + milliseconds * 1000000;
+        sVibrationMaybePlaying = true;
         vibrator().vibrate(milliseconds);
     }
 
     public static void vibrate(long[] pattern, int repeat) {
+        // If pattern.length is even, the last element in the pattern is a
+        // meaningless delay, so don't include it in vibrationDuration.
+        long vibrationDuration = 0;
+        int iterLen = pattern.length - (pattern.length % 2 == 0 ? 1 : 0);
+        for (int i = 0; i < iterLen; i++) {
+          vibrationDuration += pattern[i];
+        }
+
+        sVibrationEndTime = System.nanoTime() + vibrationDuration * 1000000;
+        sVibrationMaybePlaying = true;
         vibrator().vibrate(pattern, repeat);
     }
 
     public static void cancelVibrate() {
+        sVibrationMaybePlaying = false;
+        sVibrationEndTime = 0;
         vibrator().cancel();
     }
 
@@ -1667,14 +1635,25 @@ public class GeckoAppShell
             if (mEventListeners == null)
                 return "";
 
-            if (!mEventListeners.containsKey(type))
-                return "";
-            
             ArrayList<GeckoEventListener> listeners = mEventListeners.get(type);
-            Iterator items = listeners.iterator();
-            while (items.hasNext()) {
-                ((GeckoEventListener) items.next()).handleMessage(type, geckoObject);
+            if (listeners == null)
+                return "";
+
+            String response = null;
+
+            for (GeckoEventListener listener : listeners) {
+                listener.handleMessage(type, geckoObject);
+                if (listener instanceof GeckoEventResponder) {
+                    String newResponse = ((GeckoEventResponder)listener).getResponse();
+                    if (response != null && newResponse != null) {
+                        Log.e(LOGTAG, "Received two responses for message of type " + type);
+                    }
+                    response = newResponse;
+                }
             }
+
+            if (response != null)
+                return response;
 
         } catch (Exception e) {
             Log.i(LOGTAG, "handleGeckoMessage throws " + e);
@@ -1818,7 +1797,7 @@ public class GeckoAppShell
 
     public static void viewSizeChanged() {
         if (mInputConnection != null && mInputConnection.isIMEEnabled()) {
-            sendEventToGecko(new GeckoEvent("ScrollTo:FocusedInput", ""));
+            sendEventToGecko(GeckoEvent.createBroadcastEvent("ScrollTo:FocusedInput", ""));
         }
     }
 
@@ -1834,19 +1813,24 @@ public class GeckoAppShell
         GeckoNetworkManager.getInstance().disableNotifications();
     }
 
-    private static final int GUID_ENCODE_FLAGS = Base64.URL_SAFE | Base64.NO_WRAP;
+    // values taken from android's Base64
+    public static final int BASE64_DEFAULT = 0;
+    public static final int BASE64_URL_SAFE = 8;
 
     /**
      * taken from http://www.source-code.biz/base64coder/java/Base64Coder.java.txt and modified (MIT License)
      */
     // Mapping table from 6-bit nibbles to Base64 characters.
     private static final byte[] map1 = new byte[64];
+    private static final byte[] map1_urlsafe;
     static {
       int i=0;
       for (byte c='A'; c<='Z'; c++) map1[i++] = c;
       for (byte c='a'; c<='z'; c++) map1[i++] = c;
       for (byte c='0'; c<='9'; c++) map1[i++] = c;
-      map1[i++] = '-'; map1[i++] = '_'; 
+      map1[i++] = '+'; map1[i++] = '/';
+      map1_urlsafe = map1.clone();
+      map1_urlsafe[62] = '-'; map1_urlsafe[63] = '_'; 
     }
 
     // Mapping table from Base64 characters to 6-bit nibbles.
@@ -1854,6 +1838,7 @@ public class GeckoAppShell
     static {
         for (int i=0; i<map2.length; i++) map2[i] = -1;
         for (int i=0; i<64; i++) map2[map1[i]] = (byte)i;
+        map2['-'] = (byte)62; map2['_'] = (byte)63;
     }
 
     final static byte EQUALS_ASCII = (byte) '=';
@@ -1864,15 +1849,16 @@ public class GeckoAppShell
      * @param in    An array containing the data bytes to be encoded.
      * @return      A character array containing the Base64 encoded data.
      */
-    public static byte[] encodeBase64(byte[] in) {
+    public static byte[] encodeBase64(byte[] in, int flags) {
         if (Build.VERSION.SDK_INT >=Build.VERSION_CODES.FROYO)
-            return Base64.encode(in, GUID_ENCODE_FLAGS);
+            return Base64.encode(in, flags | Base64.NO_WRAP);
         int oDataLen = (in.length*4+2)/3;       // output length without padding
         int oLen = ((in.length+2)/3)*4;         // output length including padding
         byte[] out = new byte[oLen];
         int ip = 0;
         int iEnd = in.length;
         int op = 0;
+        byte[] toMap = ((flags & BASE64_URL_SAFE) == 0 ? map1 : map1_urlsafe);
         while (ip < iEnd) {
             int i0 = in[ip++] & 0xff;
             int i1 = ip < iEnd ? in[ip++] & 0xff : 0;
@@ -1881,10 +1867,10 @@ public class GeckoAppShell
             int o1 = ((i0 &   3) << 4) | (i1 >>> 4);
             int o2 = ((i1 & 0xf) << 2) | (i2 >>> 6);
             int o3 = i2 & 0x3F;
-            out[op++] = map1[o0];
-            out[op++] = map1[o1];
-            out[op] = op < oDataLen ? map1[o2] : EQUALS_ASCII; op++;
-            out[op] = op < oDataLen ? map1[o3] : EQUALS_ASCII; op++;
+            out[op++] = toMap[o0];
+            out[op++] = toMap[o1];
+            out[op] = op < oDataLen ? toMap[o2] : EQUALS_ASCII; op++;
+            out[op] = op < oDataLen ? toMap[o3] : EQUALS_ASCII; op++;
         }
         return out; 
     }
@@ -1898,9 +1884,9 @@ public class GeckoAppShell
      * @return      An array containing the decoded data bytes.
      * @throws      IllegalArgumentException If the input is not valid Base64 encoded data.
      */
-    public static byte[] decodeBase64(byte[] in) {
+    public static byte[] decodeBase64(byte[] in, int flags) {
         if (Build.VERSION.SDK_INT >=Build.VERSION_CODES.FROYO)
-            return Base64.decode(in, GUID_ENCODE_FLAGS);
+            return Base64.decode(in, flags);
         int iOff = 0;
         int iLen = in.length;
         if (iLen%4 != 0) throw new IllegalArgumentException ("Length of Base64 encoded input string is not a multiple of 4.");
@@ -1932,7 +1918,7 @@ public class GeckoAppShell
         return out; 
     }
 
-    public static byte[] decodeBase64(String s) {
-        return decodeBase64(s.getBytes());
+    public static byte[] decodeBase64(String s, int flags) {
+        return decodeBase64(s.getBytes(), flags);
     }
 }

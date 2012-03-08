@@ -77,16 +77,16 @@ protected:
 
 public:
   static EventTarget*
-  FromJSObject(JSContext* aCx, JSObject* aObj);
+  FromJSObject(JSObject* aObj);
 
   static JSBool
-  AddEventListener(JSContext* aCx, uintN aArgc, jsval* aVp);
+  AddEventListener(JSContext* aCx, unsigned aArgc, jsval* aVp);
 
   static JSBool
-  RemoveEventListener(JSContext* aCx, uintN aArgc, jsval* aVp);
+  RemoveEventListener(JSContext* aCx, unsigned aArgc, jsval* aVp);
 
   static JSBool
-  DispatchEvent(JSContext* aCx, uintN aArgc, jsval* aVp);
+  DispatchEvent(JSContext* aCx, unsigned aArgc, jsval* aVp);
 
   bool
   HasListeners()

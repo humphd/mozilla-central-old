@@ -308,8 +308,6 @@ IDBIndex::Create(IDBObjectStore* aObjectStore,
   NS_ASSERTION(aObjectStore, "Null pointer!");
   NS_ASSERTION(aIndexInfo, "Null pointer!");
 
-  IDBDatabase* database = aObjectStore->Transaction()->Database();
-
   nsRefPtr<IDBIndex> index = new IDBIndex();
 
   index->mObjectStore = aObjectStore;
@@ -526,7 +524,7 @@ IDBIndex::GetAll(const jsval& aKey,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  if (aOptionalArgCount < 2) {
+  if (aOptionalArgCount < 2 || aLimit == 0) {
     aLimit = PR_UINT32_MAX;
   }
 
@@ -565,7 +563,7 @@ IDBIndex::GetAllKeys(const jsval& aKey,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  if (aOptionalArgCount < 2) {
+  if (aOptionalArgCount < 2 || aLimit == 0) {
     aLimit = PR_UINT32_MAX;
   }
 
@@ -906,7 +904,7 @@ GetAllKeysHelper::GetSuccessResult(JSContext* aCx,
   }
 
   if (!keys.IsEmpty()) {
-    if (!JS_SetArrayLength(aCx, array, jsuint(keys.Length()))) {
+    if (!JS_SetArrayLength(aCx, array, uint32_t(keys.Length()))) {
       NS_WARNING("Failed to set array length!");
       return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
     }
@@ -1452,5 +1450,5 @@ nsresult
 CountHelper::GetSuccessResult(JSContext* aCx,
                               jsval* aVal)
 {
-  return JS_NewNumberValue(aCx, static_cast<jsdouble>(mCount), aVal);
+  return JS_NewNumberValue(aCx, static_cast<double>(mCount), aVal);
 }

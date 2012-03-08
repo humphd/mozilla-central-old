@@ -69,7 +69,8 @@
 #ifdef MOZ_GRAPHITE
 #include "gfxGraphiteShaper.h"
 #endif
-#include "gfxUnicodeProperties.h"
+#include "nsUnicodeProperties.h"
+#include "nsUnicodeScriptCodes.h"
 #include "gfxFontconfigUtils.h"
 #include "gfxUserFontSet.h"
 #include "gfxAtoms.h"
@@ -90,6 +91,7 @@
 #include <math.h>
 
 using namespace mozilla;
+using namespace mozilla::unicode;
 
 #define FLOAT_PANGO_SCALE ((gfxFloat)PANGO_SCALE)
 
@@ -327,9 +329,9 @@ gfxFcFontEntry::ShouldUseHarfBuzz(PRInt32 aRunScript) {
     }
 
     // Mimicing gfxHarfBuzzShaper::ShapeWord
-    hb_script_t script =
-        aRunScript <= HB_SCRIPT_INHERITED ? HB_SCRIPT_LATIN
-        : static_cast<hb_script_t>(aRunScript);
+    hb_script_t script = (aRunScript <= MOZ_SCRIPT_INHERITED) ?
+        HB_SCRIPT_LATIN :
+        hb_script_t(GetScriptTagForCode(aRunScript));
 
     // Prefer HarfBuzz if the font also has support for OpenType shaping of
     // this script.
@@ -339,9 +341,10 @@ gfxFcFontEntry::ShouldUseHarfBuzz(PRInt32 aRunScript) {
     // Subtract 5, for 4 characters and NUL. 
     const PRUint32 scriptOffset = ArrayLength(otCapTemplate) - 5;
 
-    for (const hb_tag_t *scriptTags = hb_ot_tags_from_script(script);
-         hb_tag_t scriptTag = *scriptTags;
-         scriptTags++) {
+    hb_tag_t tags[2];
+    hb_ot_tags_from_script(script, &tags[0], &tags[1]);
+    for (int i = 0; i < 2; ++i) {
+        hb_tag_t scriptTag = tags[i];
         if (scriptTag == HB_TAG('D','F','L','T')) { // e.g. HB_SCRIPT_UNKNOWN
             continue;
         }
@@ -2052,8 +2055,8 @@ gfxPangoFontGroup::FindFontForChar(PRUint32 aCh, PRUint32 aPrevCh,
         // Don't switch fonts for control characters, regardless of
         // whether they are present in the current font, as they won't
         // actually be rendered (see bug 716229)
-        PRUint8 category = gfxUnicodeProperties::GetGeneralCategory(aCh);
-        if (category == HB_CATEGORY_CONTROL) {
+        PRUint8 category = GetGeneralCategory(aCh);
+        if (category == HB_UNICODE_GENERAL_CATEGORY_CONTROL) {
             return nsRefPtr<gfxFont>(aPrevMatchedFont).forget();
         }
 
@@ -2123,7 +2126,8 @@ gfxPangoFontGroup::FindFontForChar(PRUint32 aCh, PRUint32 aPrevCh,
         nextFont = 1;
     }
 
-    // Pango, GLib, and HarfBuzz all happen to use the same script codes.
+    // Pango, GLib, and Thebes (but not harfbuzz!) all happen to use the same
+    // script codes, so we can just cast the value here.
     const PangoScript script = static_cast<PangoScript>(aRunScript);
     // Might be nice to call pango_language_includes_script only once for the
     // run rather than for each character.
@@ -2150,6 +2154,15 @@ gfxPangoFontGroup::FindFontForChar(PRUint32 aCh, PRUint32 aPrevCh,
 
     return nsnull;
 }
+
+// Sanity-check: spot-check a few constants to confirm that Thebes and
+// Pango script codes really do match
+PR_STATIC_ASSERT(MOZ_SCRIPT_COMMON    == PANGO_SCRIPT_COMMON);
+PR_STATIC_ASSERT(MOZ_SCRIPT_INHERITED == PANGO_SCRIPT_INHERITED);
+PR_STATIC_ASSERT(MOZ_SCRIPT_ARABIC    == PANGO_SCRIPT_ARABIC);
+PR_STATIC_ASSERT(MOZ_SCRIPT_LATIN     == PANGO_SCRIPT_LATIN);
+PR_STATIC_ASSERT(MOZ_SCRIPT_UNKNOWN   == PANGO_SCRIPT_UNKNOWN);
+PR_STATIC_ASSERT(MOZ_SCRIPT_NKO       == PANGO_SCRIPT_NKO);
 
 /**
  ** gfxFcFont

@@ -123,6 +123,7 @@ public:
   virtual void            GetWindowClipRegion(nsTArray<nsIntRect>* aRects);
   NS_IMETHOD              SetWindowShadowStyle(PRInt32 aStyle);
   virtual void            SetShowsToolbarButton(bool aShow) {}
+  virtual void            SetWindowAnimationType(WindowAnimationType aType) {}
   NS_IMETHOD              HideWindowChrome(bool aShouldHide);
   NS_IMETHOD              MakeFullScreen(bool aFullScreen);
   virtual nsDeviceContext* GetDeviceContext();
@@ -236,6 +237,8 @@ public:
 
   bool                    Destroyed() { return mOnDestroyCalled; }
 
+  nsWindowType            GetWindowType() { return mWindowType; }
+
 protected:
 
   virtual void            ResolveIconName(const nsAString &aIconName,
@@ -300,6 +303,7 @@ protected:
   nsBorderStyle     mBorderStyle;
   bool              mOnDestroyCalled;
   bool              mUseAcceleratedRendering;
+  bool              mForceLayersAcceleration;
   bool              mTemporarilyUseBasicLayerManager;
   nsIntRect         mBounds;
   nsIntRect*        mOriginalBounds;

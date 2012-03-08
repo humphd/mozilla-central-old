@@ -166,13 +166,9 @@ static const char sPrintOptionsContractID[]         = "@mozilla.org/gfx/printset
 #include "nsIWindowWatcher.h"
 
 // Printing 
-#include "nsPrintEngine.h"
 #include "nsPagePrintTimer.h"
 
 #endif // NS_PRINTING
-
-// FrameSet
-#include "nsIDocument.h"
 
 //focus
 #include "nsIDOMEventTarget.h"
@@ -190,9 +186,6 @@ static const char sPrintOptionsContractID[]         = "@mozilla.org/gfx/printset
 //paint forcing
 #include "prenv.h"
 #include <stdio.h>
-
-//switch to page layout
-#include "nsGfxCIID.h"
 
 #include "nsObserverService.h"
 
@@ -2873,7 +2866,7 @@ DocumentViewerImpl::SetMinFontSize(PRInt32 aMinFontSize)
 
   // Now change our own min font
   nsPresContext* pc = GetPresContext();
-  if (pc && aMinFontSize != mPresContext->MinFontSize()) {
+  if (pc && aMinFontSize != mPresContext->MinFontSize(nsnull)) {
     pc->SetMinFontSize(aMinFontSize);
   }
 
@@ -2889,7 +2882,7 @@ DocumentViewerImpl::GetMinFontSize(PRInt32* aMinFontSize)
 {
   NS_ENSURE_ARG_POINTER(aMinFontSize);
   nsPresContext* pc = GetPresContext();
-  *aMinFontSize = pc ? pc->MinFontSize() : 0;
+  *aMinFontSize = pc ? pc->MinFontSize(nsnull) : 0;
   return NS_OK;
 }
 

@@ -349,7 +349,8 @@ class MMListenerRemover
 {
 public:
   MMListenerRemover(nsFrameMessageManager* aMM)
-  : mMM(aMM), mWasHandlingMessage(aMM->mHandlingMessage)
+    : mWasHandlingMessage(aMM->mHandlingMessage)
+    , mMM(aMM)
   {
     mMM->mHandlingMessage = true;
   }
@@ -881,9 +882,7 @@ nsFrameScriptExecutor::InitTabChildGlobalInternal(nsISupports* aScope)
   JS_SetContextPrivate(cx, aScope);
 
   nsresult rv =
-    xpc->InitClassesWithNewWrappedGlobal(cx, aScope,
-                                         NS_GET_IID(nsISupports),
-                                         mPrincipal, nsnull,
+    xpc->InitClassesWithNewWrappedGlobal(cx, aScope, mPrincipal,
                                          flags, getter_AddRefs(mGlobal));
   NS_ENSURE_SUCCESS(rv, false);
 
@@ -1092,7 +1091,7 @@ NS_NewChildProcessMessageManager(nsISyncMessageSender** aResult)
 {
   NS_ASSERTION(!nsFrameMessageManager::sChildProcessManager,
                "Re-creating sChildProcessManager");
-  PRBool isChrome = IsChromeProcess();
+  bool isChrome = IsChromeProcess();
   nsFrameMessageManager* mm = new nsFrameMessageManager(false,
                                                         isChrome ? SendSyncMessageToSameProcessParent
                                                                  : SendSyncMessageToParentProcess,

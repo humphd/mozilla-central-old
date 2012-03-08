@@ -60,7 +60,6 @@
 #include "nsIObserverService.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
-#include "nsIPrefBranch2.h"
 #include "nsILocalFile.h"
 #include "nsIOService.h"
 #include "nsDirectoryServiceDefs.h"
@@ -264,7 +263,7 @@ public:
 
         nsCacheService::SetDiskCacheCapacity(mSmartSize);
 
-        nsCOMPtr<nsIPrefBranch2> ps = do_GetService(NS_PREFSERVICE_CONTRACTID);
+        nsCOMPtr<nsIPrefBranch> ps = do_GetService(NS_PREFSERVICE_CONTRACTID);
         if (!ps ||
             NS_FAILED(ps->SetIntPref(DISK_CACHE_SMART_SIZE_PREF, mSmartSize)))
             NS_WARNING("Failed to set smart size pref");
@@ -336,7 +335,7 @@ nsCacheProfilePrefObserver::Install()
     }
     
     // install preferences observer
-    nsCOMPtr<nsIPrefBranch2> branch = do_GetService(NS_PREFSERVICE_CONTRACTID);
+    nsCOMPtr<nsIPrefBranch> branch = do_GetService(NS_PREFSERVICE_CONTRACTID);
     if (!branch) return NS_ERROR_FAILURE;
 
     for (unsigned int i=0; i<ArrayLength(prefList); i++) {
@@ -384,7 +383,7 @@ nsCacheProfilePrefObserver::Remove()
     }
 
     // remove Pref Service observers
-    nsCOMPtr<nsIPrefBranch2> prefs =
+    nsCOMPtr<nsIPrefBranch> prefs =
         do_GetService(NS_PREFSERVICE_CONTRACTID);
     if (!prefs)
         return;
@@ -2325,7 +2324,13 @@ nsCacheService::OnDataSizeChange(nsCacheEntry * entry, PRInt32 deltaSize)
 void
 nsCacheService::Lock()
 {
-    gService->mLock.Lock();
+    if (NS_IsMainThread()) {
+        Telemetry::AutoTimer<Telemetry::CACHE_SERVICE_LOCK_WAIT_MAINTHREAD> timer;
+        gService->mLock.Lock();
+    } else {
+        Telemetry::AutoTimer<Telemetry::CACHE_SERVICE_LOCK_WAIT> timer;
+        gService->mLock.Lock();
+    }
 }
 
 void

@@ -46,10 +46,10 @@
 #include "jscntxt.h"
 #include "jsfun.h"
 #include "jsgc.h"
-#include "jsgcstats.h"
 #include "jsobj.h"
 #include "jsscope.h"
 #include "vm/GlobalObject.h"
+#include "vm/RegExpObject.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -125,17 +125,17 @@ class MathCache;
  */
 class DtoaCache {
     double        d;
-    jsint         base;
+    int         base;
     JSFixedString *s;      // if s==NULL, d and base are not valid
   public:
     DtoaCache() : s(NULL) {}
     void purge() { s = NULL; }
 
-    JSFixedString *lookup(jsint base, double d) {
+    JSFixedString *lookup(int base, double d) {
         return this->s && base == this->base && d == this->d ? this->s : NULL;
     }
 
-    void cache(jsint base, double d, JSFixedString *s) {
+    void cache(int base, double d, JSFixedString *s) {
         this->base = base;
         this->d = d;
         this->s = s;
@@ -162,6 +162,23 @@ typedef HashSet<ScriptFilenameEntry *,
                 ScriptFilenameHasher,
                 SystemAllocPolicy> ScriptFilenameTable;
 
+/* If HashNumber grows, need to change WrapperHasher. */
+JS_STATIC_ASSERT(sizeof(HashNumber) == 4);
+
+struct WrapperHasher
+{
+    typedef Value Lookup;
+
+    static HashNumber hash(Value key) {
+        uint64_t bits = JSVAL_TO_IMPL(key).asBits;
+        return uint32_t(bits) ^ uint32_t(bits >> 32);
+    }
+
+    static bool match(const Value &l, const Value &k) { return l == k; }
+};
+
+typedef HashMap<Value, ReadBarrieredValue, WrapperHasher, SystemAllocPolicy> WrapperMap;
+
 } /* namespace js */
 
 namespace JS {
@@ -176,7 +193,6 @@ struct JSCompartment
     js::gc::ArenaLists           arenas;
 
     bool                         needsBarrier_;
-    js::GCMarker                 *gcIncrementalTracer;
 
     bool needsBarrier() {
         return needsBarrier_;
@@ -184,9 +200,7 @@ struct JSCompartment
 
     js::GCMarker *barrierTracer() {
         JS_ASSERT(needsBarrier_);
-        if (gcIncrementalTracer)
-            return gcIncrementalTracer;
-        return createBarrierTracer();
+        return &rt->gcMarker;
     }
 
     size_t                       gcBytes;
@@ -216,7 +230,6 @@ struct JSCompartment
 
     void                         *data;
     bool                         active;  // GC flag, whether there are active frames
-    bool                         hasDebugModeCodeToDrop;
     js::WrapperMap               crossCompartmentWrappers;
 
 #ifdef JS_METHODJIT
@@ -244,9 +257,10 @@ struct JSCompartment
     size_t sizeOfMjitCode() const;
 #endif
 
+    js::RegExpCompartment        regExps;
+
     size_t sizeOfShapeTable(JSMallocSizeOfFun mallocSizeOf);
-    void sizeOfTypeInferenceData(JSContext *cx, JS::TypeInferenceSizes *stats,
-                                 JSMallocSizeOfFun mallocSizeOf);
+    void sizeOfTypeInferenceData(JS::TypeInferenceSizes *stats, JSMallocSizeOfFun mallocSizeOf);
 
     /*
      * Shared scope property tree, and arena-pool for allocating its nodes.
@@ -255,10 +269,10 @@ struct JSCompartment
 
 #ifdef DEBUG
     /* Property metering. */
-    jsrefcount                   livePropTreeNodes;
-    jsrefcount                   totalPropTreeNodes;
-    jsrefcount                   propTreeKidsChunks;
-    jsrefcount                   liveDictModeNodes;
+    unsigned                     livePropTreeNodes;
+    unsigned                     totalPropTreeNodes;
+    unsigned                     propTreeKidsChunks;
+    unsigned                     liveDictModeNodes;
 #endif
 
     /* Set of all unowned base shapes in the compartment. */
@@ -287,7 +301,7 @@ struct JSCompartment
   private:
     enum { DebugFromC = 1, DebugFromJS = 2 };
 
-    uintN                        debugModeBits;  // see debugMode() below
+    unsigned                        debugModeBits;  // see debugMode() below
     
     /*
      * Malloc counter to measure memory pressure for GC scheduling. It runs
@@ -322,10 +336,11 @@ struct JSCompartment
     bool wrap(JSContext *cx, js::AutoIdVector &props);
 
     void markTypes(JSTracer *trc);
+    void discardJitCode(JSContext *cx);
     void sweep(JSContext *cx, bool releaseTypes);
-    void purge(JSContext *cx);
+    void purge();
 
-    void setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind);
+    void setGCLastBytes(size_t lastBytes, js::JSGCInvocationKind gckind);
     void reduceGCTriggerBytes(size_t amount);
     
     void resetGCMallocBytes();
@@ -370,12 +385,8 @@ struct JSCompartment
      */
     bool debugMode() const { return !!debugModeBits; }
 
-    /*
-     * True if any scripts from this compartment are on the JS stack in the
-     * calling thread. cx is a context in the calling thread, and it is assumed
-     * that no other thread is using this compartment.
-     */
-    bool hasScriptsOnStack(JSContext *cx);
+    /* True if any scripts from this compartment are on the JS stack. */
+    bool hasScriptsOnStack();
 
   private:
     /* This is called only when debugMode() has just toggled. */
@@ -393,8 +404,6 @@ struct JSCompartment
 
   private:
     void sweepBreakpoints(JSContext *cx);
-
-    js::GCMarker *createBarrierTracer();
 
   public:
     js::WatchpointMap *watchpointMap;

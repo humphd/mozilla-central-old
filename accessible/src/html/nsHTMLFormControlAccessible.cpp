@@ -68,8 +68,8 @@ using namespace mozilla::a11y;
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLCheckboxAccessible::
-  nsHTMLCheckboxAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsFormControlAccessible(aContent, aShell)
+  nsHTMLCheckboxAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsFormControlAccessible(aContent, aDoc)
 {
 }
 
@@ -154,8 +154,8 @@ nsHTMLCheckboxAccessible::IsWidget() const
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLRadioButtonAccessible::
-  nsHTMLRadioButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsRadioButtonAccessible(aContent, aShell)
+  nsHTMLRadioButtonAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsRadioButtonAccessible(aContent, aDoc)
 {
 }
 
@@ -243,8 +243,8 @@ nsHTMLRadioButtonAccessible::GetPositionAndSizeInternal(PRInt32 *aPosInSet,
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLButtonAccessible::
-  nsHTMLButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLButtonAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 
@@ -314,7 +314,7 @@ nsresult
 nsHTMLButtonAccessible::GetNameInternal(nsAString& aName)
 {
   nsAccessible::GetNameInternal(aName);
-  if (!aName.IsEmpty())
+  if (!aName.IsEmpty() || mContent->Tag() != nsGkAtoms::input)
     return NS_OK;
 
   // No name from HTML or ARIA
@@ -354,77 +354,12 @@ nsHTMLButtonAccessible::IsWidget() const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// nsHTML4ButtonAccessible
-////////////////////////////////////////////////////////////////////////////////
-
-nsHTML4ButtonAccessible::
-  nsHTML4ButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
-{
-}
-
-PRUint8
-nsHTML4ButtonAccessible::ActionCount()
-{
-  return 1;
-}
-
-NS_IMETHODIMP nsHTML4ButtonAccessible::GetActionName(PRUint8 aIndex, nsAString& aName)
-{
-  if (aIndex == eAction_Click) {
-    aName.AssignLiteral("press"); 
-    return NS_OK;
-  }
-  return NS_ERROR_INVALID_ARG;
-}
-
-NS_IMETHODIMP
-nsHTML4ButtonAccessible::DoAction(PRUint8 aIndex)
-{
-  if (aIndex != 0)
-    return NS_ERROR_INVALID_ARG;
-
-  DoCommand();
-  return NS_OK;
-}
-
-role
-nsHTML4ButtonAccessible::NativeRole()
-{
-  return roles::PUSHBUTTON;
-}
-
-PRUint64
-nsHTML4ButtonAccessible::NativeState()
-{
-  PRUint64 state = nsHyperTextAccessibleWrap::NativeState();
-
-  state |= states::FOCUSABLE;
-
-  nsEventStates elmState = mContent->AsElement()->State();
-  if (elmState.HasState(NS_EVENT_STATE_DEFAULT))
-    state |= states::DEFAULT;
-
-  return state;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// nsHTML4ButtonAccessible: Widgets
-
-bool
-nsHTML4ButtonAccessible::IsWidget() const
-{
-  return true;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 // nsHTMLTextFieldAccessible
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLTextFieldAccessible::
-  nsHTMLTextFieldAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLTextFieldAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 
@@ -655,8 +590,8 @@ nsHTMLTextFieldAccessible::ContainerWidget() const
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLFileInputAccessible::
-nsHTMLFileInputAccessible(nsIContent* aContent, nsIWeakReference* aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+nsHTMLFileInputAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
   mFlags |= eHTMLFileInputAccessible;
 }
@@ -710,8 +645,8 @@ nsHTMLFileInputAccessible::HandleAccEvent(AccEvent* aEvent)
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLGroupboxAccessible::
-  nsHTMLGroupboxAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLGroupboxAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 
@@ -770,8 +705,8 @@ nsHTMLGroupboxAccessible::RelationByType(PRUint32 aType)
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLLegendAccessible::
-  nsHTMLLegendAccessible(nsIContent *aContent, nsIWeakReference *aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLLegendAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 
@@ -800,8 +735,8 @@ nsHTMLLegendAccessible::NativeRole()
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLFigureAccessible::
-  nsHTMLFigureAccessible(nsIContent* aContent, nsIWeakReference* aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLFigureAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 
@@ -870,8 +805,8 @@ nsHTMLFigureAccessible::Caption() const
 ////////////////////////////////////////////////////////////////////////////////
 
 nsHTMLFigcaptionAccessible::
-  nsHTMLFigcaptionAccessible(nsIContent* aContent, nsIWeakReference* aShell) :
-  nsHyperTextAccessibleWrap(aContent, aShell)
+  nsHTMLFigcaptionAccessible(nsIContent* aContent, nsDocAccessible* aDoc) :
+  nsHyperTextAccessibleWrap(aContent, aDoc)
 {
 }
 

@@ -75,13 +75,17 @@ public class PanZoomController
 
     // Animation stops if the velocity is below this value when overscrolled or panning.
     private static final float STOPPED_THRESHOLD = 4.0f;
+
     // Animation stops is the velocity is below this threshold when flinging.
     private static final float FLING_STOPPED_THRESHOLD = 0.1f;
-    // The distance the user has to pan before we recognize it as such (e.g. to avoid
-    // 1-pixel pans between the touch-down and touch-up of a click). In units of inches.
-    public static final float PAN_THRESHOLD = 0.1f;
+
+    // The distance the user has to pan before we recognize it as such (e.g. to avoid 1-pixel pans
+    // between the touch-down and touch-up of a click). In units of density-independent pixels.
+    public static final float PAN_THRESHOLD = 1/16f * GeckoAppShell.getDpi();
+
     // Angle from axis within which we stay axis-locked
     private static final double AXIS_LOCK_ANGLE = Math.PI / 6.0; // 30 degrees
+
     // The maximum amount we allow you to zoom into a page
     private static final float MAX_ZOOM = 4.0f;
 
@@ -163,7 +167,6 @@ public class PanZoomController
         Log.i(LOGTAG, "Got message: " + event);
         try {
             if (MESSAGE_ZOOM_RECT.equals(event)) {
-                float scale = mController.getZoomFactor();
                 float x = (float)message.getDouble("x");
                 float y = (float)message.getDouble("y");
                 final RectF zoomRect = new RectF(x, y,
@@ -175,17 +178,17 @@ public class PanZoomController
                     }
                 });
             } else if (MESSAGE_ZOOM_PAGE.equals(event)) {
-                float scale = mController.getZoomFactor();
                 FloatSize pageSize = mController.getPageSize();
 
                 RectF viewableRect = mController.getViewport();
                 float y = viewableRect.top;
                 // attempt to keep zoom keep focused on the center of the viewport
-                float dh = viewableRect.height()*(1 - pageSize.width/viewableRect.width()); // increase in the height
+                float newHeight = viewableRect.height() * pageSize.width / viewableRect.width();
+                float dh = viewableRect.height() - newHeight; // increase in the height
                 final RectF r = new RectF(0.0f,
                                     y + dh/2,
                                     pageSize.width,
-                                    (y + pageSize.width * viewableRect.height()/viewableRect.width()));
+                                    y + dh/2 + newHeight);
                 mController.post(new Runnable() {
                     public void run() {
                         animatedZoomTo(r);
@@ -198,7 +201,7 @@ public class PanZoomController
     }
 
     public boolean onTouchEvent(MotionEvent event) {
-        switch (event.getAction() & event.ACTION_MASK) {
+        switch (event.getAction() & MotionEvent.ACTION_MASK) {
         case MotionEvent.ACTION_DOWN:   return onTouchStart(event);
         case MotionEvent.ACTION_MOVE:   return onTouchMove(event);
         case MotionEvent.ACTION_UP:     return onTouchEnd(event);
@@ -208,7 +211,6 @@ public class PanZoomController
     }
 
     /** This function must be called from the UI thread. */
-    @SuppressWarnings("fallthrough")
     public void abortAnimation() {
         checkMainThread();
         // this happens when gecko changes the viewport on us or if the device is rotated.
@@ -278,7 +280,6 @@ public class PanZoomController
         return false;
     }
 
-    @SuppressWarnings("fallthrough")
     private boolean onTouchMove(MotionEvent event) {
         Log.d(LOGTAG, "onTouchMove in state " + mState);
 
@@ -288,27 +289,34 @@ public class PanZoomController
             // should never happen
             Log.e(LOGTAG, "Received impossible touch move while in " + mState);
             return false;
+
         case TOUCHING:
-            if (panDistance(event) < PAN_THRESHOLD * GeckoAppShell.getDpi()) {
+            if (panDistance(event) < PAN_THRESHOLD) {
                 return false;
             }
             cancelTouch();
+            startPanning(event.getX(0), event.getY(0), event.getEventTime());
             GeckoApp.mAppContext.hidePlugins(false /* don't hide layers */);
-            // fall through
+            GeckoApp.mFormAssistPopup.hide();
+            track(event);
+            return true;
+
         case PANNING_HOLD_LOCKED:
-            GeckoApp.mAppContext.mAutoCompletePopup.hide();
+            GeckoApp.mFormAssistPopup.hide();
             mState = PanZoomState.PANNING_LOCKED;
             // fall through
         case PANNING_LOCKED:
             track(event);
             return true;
+
         case PANNING_HOLD:
-            GeckoApp.mAppContext.mAutoCompletePopup.hide();
+            GeckoApp.mFormAssistPopup.hide();
             mState = PanZoomState.PANNING;
             // fall through
         case PANNING:
             track(event);
             return true;
+
         case ANIMATED_ZOOM:
         case PINCHING:
             // scale gesture listener will handle this
@@ -367,6 +375,29 @@ public class PanZoomController
         mLastEventTime = time;
     }
 
+    private void startPanning(float x, float y, long time) {
+        float dx = mX.panDistance(x);
+        float dy = mY.panDistance(y);
+        double angle = Math.atan2(dy, dx); // range [-pi, pi]
+        angle = Math.abs(angle); // range [0, pi]
+
+        // When the touch move breaks through the pan threshold, reposition the touch down origin
+        // so the page won't jump when we start panning.
+        mX.startTouch(x);
+        mY.startTouch(y);
+        mLastEventTime = time;
+
+        if (angle < AXIS_LOCK_ANGLE || angle > (Math.PI - AXIS_LOCK_ANGLE)) {
+            mY.setScrollingDisabled(true);
+            mState = PanZoomState.PANNING_LOCKED;
+        } else if (Math.abs(angle - (Math.PI / 2)) < AXIS_LOCK_ANGLE) {
+            mX.setScrollingDisabled(true);
+            mState = PanZoomState.PANNING_LOCKED;
+        } else {
+            mState = PanZoomState.PANNING;
+        }
+    }
+
     private float panDistance(MotionEvent move) {
         float dx = mX.panDistance(move.getX(0));
         float dy = mY.panDistance(move.getY(0));
@@ -381,27 +412,6 @@ public class PanZoomController
             return;
         }
         mLastEventTime = time;
-
-        if (mState == PanZoomState.PANNING_LOCKED) {
-            // check to see if we should break the axis lock
-            double angle = Math.atan2(mY.panDistance(y), mX.panDistance(x)); // range [-pi, pi]
-            angle = Math.abs(angle); // range [0, pi]
-            if (angle < AXIS_LOCK_ANGLE || angle > (Math.PI - AXIS_LOCK_ANGLE)) {
-                // lock to x-axis
-                mX.setLocked(false);
-                mY.setLocked(true);
-            } else if (Math.abs(angle - (Math.PI / 2)) < AXIS_LOCK_ANGLE) {
-                // lock to y-axis
-                mX.setLocked(true);
-                mY.setLocked(false);
-            } else {
-                // break axis lock but log the angle so we can fine-tune this when people complain
-                mState = PanZoomState.PANNING;
-                mX.setLocked(false);
-                mY.setLocked(false);
-                angle = Math.abs(angle - (Math.PI / 2));  // range [0, pi/2]
-            }
-        }
 
         mX.updateWithTouchAt(x, timeDelta);
         mY.updateWithTouchAt(y, timeDelta);
@@ -672,7 +682,10 @@ public class PanZoomController
 
     /* Returns the nearest viewport metrics with no overscroll visible. */
     private ViewportMetrics getValidViewportMetrics() {
-        ViewportMetrics viewportMetrics = new ViewportMetrics(mController.getViewportMetrics());
+        return getValidViewportMetrics(new ViewportMetrics(mController.getViewportMetrics()));
+    }
+
+    private ViewportMetrics getValidViewportMetrics(ViewportMetrics viewportMetrics) {
         Log.d(LOGTAG, "generating valid viewport using " + viewportMetrics);
 
         /* First, we adjust the zoom factor so that we can make no overscrolled area visible. */
@@ -747,7 +760,7 @@ public class PanZoomController
         mState = PanZoomState.PINCHING;
         mLastZoomFocus = new PointF(detector.getFocusX(), detector.getFocusY());
         GeckoApp.mAppContext.hidePlugins(false /* don't hide layers, only views */);
-        GeckoApp.mAppContext.mAutoCompletePopup.hide();
+        GeckoApp.mFormAssistPopup.hide();
         cancelTouch();
 
         return true;
@@ -834,7 +847,7 @@ public class PanZoomController
             return;
         }
 
-        GeckoAppShell.sendEventToGecko(new GeckoEvent(event, json));
+        GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent(event, json));
     }
 
     @Override
@@ -850,7 +863,7 @@ public class PanZoomController
 
     @Override
     public boolean onSingleTapConfirmed(MotionEvent motionEvent) {
-        GeckoApp.mAppContext.mAutoCompletePopup.hide();
+        GeckoApp.mFormAssistPopup.hide();
         sendPointToGecko("Gesture:SingleTap", motionEvent);
         return true;
     }
@@ -862,32 +875,46 @@ public class PanZoomController
     }
 
     public void cancelTouch() {
-        GeckoEvent e = new GeckoEvent("Gesture:CancelTouch", "");
+        GeckoEvent e = GeckoEvent.createBroadcastEvent("Gesture:CancelTouch", "");
         GeckoAppShell.sendEventToGecko(e);
     }
 
     private boolean animatedZoomTo(RectF zoomToRect) {
-        GeckoApp.mAppContext.mAutoCompletePopup.hide();
+        GeckoApp.mFormAssistPopup.hide();
 
         mState = PanZoomState.ANIMATED_ZOOM;
         final float startZoom = mController.getZoomFactor();
-        final PointF startPoint = mController.getOrigin();
 
         RectF viewport = mController.getViewport();
-
-        float newHeight = zoomToRect.width() * viewport.height() / viewport.width();
-        // if the requested rect would not fill the screen, shift it to be centered
-        if (zoomToRect.height() < newHeight) {
-            zoomToRect.top -= (newHeight - zoomToRect.height())/2;
+        // 1. adjust the aspect ratio of zoomToRect to match that of the current viewport,
+        // enlarging as necessary (if it gets too big, it will get shrunk in the next step).
+        // while enlarging make sure we enlarge equally on both sides to keep the target rect
+        // centered.
+        float targetRatio = viewport.width() / viewport.height();
+        float rectRatio = zoomToRect.width() / zoomToRect.height();
+        if (FloatUtils.fuzzyEquals(targetRatio, rectRatio)) {
+            // all good, do nothing
+        } else if (targetRatio < rectRatio) {
+            // need to increase zoomToRect height
+            float newHeight = zoomToRect.width() / targetRatio;
+            zoomToRect.top -= (newHeight - zoomToRect.height()) / 2;
             zoomToRect.bottom = zoomToRect.top + newHeight;
+        } else { // targetRatio > rectRatio) {
+            // need to increase zoomToRect width
+            float newWidth = targetRatio * zoomToRect.height();
+            zoomToRect.left -= (newWidth - zoomToRect.width()) / 2;
+            zoomToRect.right = zoomToRect.left + newWidth;
         }
 
-        zoomToRect = mController.restrictToPageSize(zoomToRect);
         float finalZoom = viewport.width() * startZoom / zoomToRect.width();
 
         ViewportMetrics finalMetrics = new ViewportMetrics(mController.getViewportMetrics());
         finalMetrics.setOrigin(new PointF(zoomToRect.left, zoomToRect.top));
         finalMetrics.scaleTo(finalZoom, new PointF(0.0f, 0.0f));
+
+        // 2. now run getValidViewportMetrics on it, so that the target viewport is
+        // clamped down to prevent overscroll, over-zoom, and other bad conditions.
+        finalMetrics = getValidViewportMetrics(finalMetrics);
 
         bounce(finalMetrics);
         return true;

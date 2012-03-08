@@ -44,8 +44,7 @@
 #import <OpenGL/OpenGL.h>
 
 class gfxASurface;
-class _CGLContextObject;
-class NSOpenGLContext;
+struct _CGLContextObject;
 
 typedef _CGLContextObject* CGLContextObj;
 typedef uint32_t IOSurfaceID;
@@ -66,7 +65,9 @@ public:
   size_t GetBytesPerRow();
   void Lock();
   void Unlock();
-  CGLError CGLTexImageIOSurface2D(NSOpenGLContext *ctxt,
+  // We would like to forward declare NSOpenGLContext, but it is an @interface
+  // and this file is also used from c++, so we use a void *.
+  CGLError CGLTexImageIOSurface2D(void *ctxt,
                                   GLenum internalFormat, GLenum format,
                                   GLenum type, GLuint plane);
   already_AddRefed<gfxASurface> GetAsSurface();

@@ -147,7 +147,7 @@ function whereToOpenLink( e, ignoreButton, ignoreAlt )
 #endif
     return shift ? "tabshifted" : "tab";
 
-  if (alt)
+  if (alt && getBoolPref("browser.altClickSave", false))
     return "save";
 
   if (shift || (middle && !middleUsesTabs))
@@ -403,7 +403,8 @@ function getShellService()
   try {
     shell = Components.classes["@mozilla.org/browser/shell-service;1"]
       .getService(Components.interfaces.nsIShellService);
-  } catch (e) {dump("*** e = " + e + "\n");}
+  } catch (e) {
+  }
   return shell;
 }
 

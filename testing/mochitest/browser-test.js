@@ -95,7 +95,36 @@ Tester.prototype = {
     this._cs.registerListener(this);
     this._globalProperties = Object.keys(window);
     this._globalPropertyWhitelist = ["navigator", "constructor", "Application",
-      "__SS_tabsToRestore", "webConsoleCommandController"];
+      "__SS_tabsToRestore", "__SSi", "webConsoleCommandController",
+
+      // Temporarily added to whitelist for Fennec tests:
+      "AddonUpdateChecker",
+      "PlacesAggregatedTransaction",
+      "PlacesCreateFolderTransaction",
+      "PlacesCreateBookmarkTransaction",
+      "PlacesCreateSeparatorTransaction",
+      "PlacesCreateLivemarkTransaction",
+      "PlacesMoveItemTransaction",
+      "PlacesRemoveItemTransaction",
+      "PlacesEditItemTitleTransaction",
+      "PlacesEditBookmarkURITransaction",
+      "PlacesSetItemAnnotationTransaction",
+      "PlacesSetPageAnnotationTransaction",
+      "PlacesEditBookmarkKeywordTransaction",
+      "PlacesEditBookmarkPostDataTransaction",
+      "PlacesEditLivemarkSiteURITransaction",
+      "PlacesEditLivemarkFeedURITransaction",
+      "PlacesEditItemDateAddedTransaction",
+      "PlacesEditItemLastModifiedTransaction",
+      "PlacesSortFolderByNameTransaction",
+      "PlacesTagURITransaction",
+      "PlacesUntagURITransaction",
+      "DownloadUtils",
+      "AddonRepository",
+      "LocaleRepository",
+      "Contacts",
+      "VKBstateHasChanged"
+    ];
 
     if (this.tests.length)
       this.nextTest();
@@ -186,6 +215,10 @@ Tester.prototype = {
   },
 
   observe: function Tester_observe(aConsoleMessage) {
+    // Ignore empty messages.
+    if (!aConsoleMessage.message)
+      return;
+
     try {
       var msg = "Console message: " + aConsoleMessage.message;
       if (this.currentTest)

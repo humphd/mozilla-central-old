@@ -225,13 +225,13 @@ pref("extensions.update.url", "https://versioncheck.addons.mozilla.org/update/Ve
 /* preferences for the Get Add-ons pane */
 pref("extensions.getAddons.cache.enabled", true);
 pref("extensions.getAddons.maxResults", 15);
-pref("extensions.getAddons.recommended.browseURL", "https://addons.mozilla.org/%LOCALE%/mobile/recommended/");
-pref("extensions.getAddons.recommended.url", "https://services.addons.mozilla.org/%LOCALE%/mobile/api/%API_VERSION%/list/featured/all/%MAX_RESULTS%/%OS%/%VERSION%");
-pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/mobile/search?q=%TERMS%");
-pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/mobile/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%/%COMPATIBILITY_MODE%");
-pref("extensions.getAddons.browseAddons", "https://addons.mozilla.org/%LOCALE%/mobile/");
-pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/mobile/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%");
-pref("extensions.getAddons.getWithPerformance.url", "https://services.addons.mozilla.org/%LOCALE%/mobile/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%&tMain=%TIME_MAIN%&tFirstPaint=%TIME_FIRST_PAINT%&tSessionRestored=%TIME_SESSION_RESTORED%");
+pref("extensions.getAddons.recommended.browseURL", "https://addons.mozilla.org/%LOCALE%/android/recommended/");
+pref("extensions.getAddons.recommended.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/list/featured/all/%MAX_RESULTS%/%OS%/%VERSION%");
+pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/android/search?q=%TERMS%");
+pref("extensions.getAddons.search.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/%TERMS%/all/%MAX_RESULTS%/%OS%/%VERSION%/%COMPATIBILITY_MODE%");
+pref("extensions.getAddons.browseAddons", "https://addons.mozilla.org/%LOCALE%/android/");
+pref("extensions.getAddons.get.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%");
+pref("extensions.getAddons.getWithPerformance.url", "https://services.addons.mozilla.org/%LOCALE%/android/api/%API_VERSION%/search/guid:%IDS%?src=mobile&appOS=%OS%&appVersion=%VERSION%&tMain=%TIME_MAIN%&tFirstPaint=%TIME_FIRST_PAINT%&tSessionRestored=%TIME_SESSION_RESTORED%");
 
 /* preference for the locale picker */
 pref("extensions.getLocales.get.url", "");
@@ -464,13 +464,16 @@ pref("dom.ipc.content.nice", 1);
 // product URLs
 // The breakpad report server to link to in about:crashes
 pref("breakpad.reportURL", "http://crash-stats.mozilla.com/report/index/");
-pref("app.releaseNotesURL", "http://www.mozilla.com/%LOCALE%/mobile/%VERSION%/releasenotes/");
-pref("app.sync.tutorialURL", "https://support.mozilla.com/kb/sync-firefox-between-desktop-and-mobile");
-pref("app.support.baseURL", "http://support.mozilla.com/mobile");
+pref("app.support.baseURL", "http://support.mozilla.org/mobile");
 pref("app.feedbackURL", "http://input.mozilla.com/feedback/");
 pref("app.privacyURL", "http://www.mozilla.com/%LOCALE%/m/privacy.html");
 pref("app.creditsURL", "http://www.mozilla.org/credits/");
 pref("app.channelURL", "http://www.mozilla.org/%LOCALE%/firefox/channel/");
+#if MOZ_UPDATE_CHANNEL == aurora
+pref("app.releaseNotesURL", "http://www.mozilla.com/%LOCALE%/mobile/%VERSION%/auroranotes/");
+#else
+pref("app.releaseNotesURL", "http://www.mozilla.com/%LOCALE%/mobile/%VERSION%/releasenotes/");
+#endif
 #if MOZ_UPDATE_CHANNEL == beta
 pref("app.featuresURL", "http://www.mozilla.com/%LOCALE%/mobile/beta/features/");
 pref("app.faqURL", "http://www.mozilla.com/%LOCALE%/mobile/beta/faq/");
@@ -662,9 +665,6 @@ pref("urlclassifier.gethashtables", "goog-phish-shavar,goog-malware-shavar");
 // a gethash request will be forced to check that the result is still in
 // the database.
 pref("urlclassifier.confirm-age", 2700);
-
-// Maximum size of the sqlite3 cache during an update, in bytes
-pref("urlclassifier.updatecachemax", 4194304);
 
 // URL for checking the reason for a malware warning.
 pref("browser.safebrowsing.malware.reportURL", "http://safebrowsing.clients.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");

@@ -96,8 +96,8 @@ private:
 };
 
 gfxContext::gfxContext(gfxASurface *surface)
-  : mSurface(surface)
-  , mRefCairo(NULL)
+  : mRefCairo(NULL)
+  , mSurface(surface)
 {
   MOZ_COUNT_CTOR(gfxContext);
 
@@ -480,7 +480,7 @@ gfxContext::Rectangle(const gfxRect& rect, bool snapToPixels)
 
     if (snapToPixels) {
       gfxRect newRect(rect);
-      if (UserToDevicePixelSnapped(newRect, PR_TRUE)) {
+      if (UserToDevicePixelSnapped(newRect, true)) {
         gfxMatrix mat = ThebesMatrix(mDT->GetTransform());
         mat.Invert();
 
@@ -1266,8 +1266,6 @@ gfxContext::ClipContainsRect(const gfxRect& aRect)
       }
     }
 
-    bool result = true;
-
     // Since we always return false when the clip list contains a
     // non-rectangular clip or a non-rectilinear transform, our 'total' clip
     // is always a rectangle if we hit the end of this function.
@@ -1608,7 +1606,7 @@ gfxContext::PointInStroke(const gfxPoint& pt)
     return cairo_in_stroke(mCairo, pt.x, pt.y);
   } else {
     // XXX - Used by SVG, needs fixing.
-    return PR_FALSE;
+    return false;
   }
 }
 
@@ -1669,7 +1667,7 @@ gfxContext::HasError()
     return cairo_status(mCairo) != CAIRO_STATUS_SUCCESS;
   } else {
     // As far as this is concerned, an Azure context is never in error.
-    return PR_FALSE;
+    return false;
   }
 }
 

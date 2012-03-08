@@ -68,7 +68,7 @@
 #include "gfxContext.h"
 
 #include "mozilla/Preferences.h"
-#include "mozilla/StdInt.h"
+#include "mozilla/StandardInteger.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -397,10 +397,7 @@ RasterImage::AdvanceFrame(TimeStamp aTime, nsIntRect* aDirtyRect)
     EvaluateAnimation();
   }
 
-  imgFrame *frameToUse = nsnull;
-
   if (nextFrameIndex == 0) {
-    frameToUse = nextFrame;
     *aDirtyRect = mAnim->firstFrameRefreshArea;
   } else {
     imgFrame *curFrame = mFrames[currentFrameIndex];
@@ -978,50 +975,54 @@ RasterImage::GetImageContainer(ImageContainer **_retval)
   return NS_OK;
 }
 
-namespace {
-
-PRUint32
-GetDecodedSize(const nsTArray<imgFrame *> &aFrames,
-               gfxASurface::MemoryLocation aLocation)
+size_t
+RasterImage::HeapSizeOfSourceWithComputedFallback(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  PRUint32 val = 0;
+  // n == 0 is possible for two reasons. 
+  // - This is a zero-length image.
+  // - We're on a platform where moz_malloc_size_of always returns 0.
+  // In either case the fallback works appropriately.
+  size_t n = mSourceData.SizeOfExcludingThis(aMallocSizeOf);
+  if (n == 0) {
+    n = mSourceData.Length();
+    NS_ABORT_IF_FALSE(StoringSourceData() || (n == 0),
+                      "Non-zero source data size when we aren't storing it?");
+  }
+  return n;
+}
+
+static size_t
+SizeOfDecodedWithComputedFallbackIfHeap(
+  const nsTArray<imgFrame*>& aFrames, gfxASurface::MemoryLocation aLocation,
+  nsMallocSizeOfFun aMallocSizeOf)
+{
+  size_t n = 0;
   for (PRUint32 i = 0; i < aFrames.Length(); ++i) {
-    imgFrame *frame = aFrames.SafeElementAt(i, nsnull);
+    imgFrame* frame = aFrames.SafeElementAt(i, nsnull);
     NS_ABORT_IF_FALSE(frame, "Null frame in frame array!");
-    val += frame->EstimateMemoryUsed(aLocation);
+    n += frame->SizeOfExcludingThisWithComputedFallbackIfHeap(aLocation, aMallocSizeOf);
   }
 
-  return val;
+  return n;
 }
 
-} // anonymous namespace
-
-PRUint32
-RasterImage::GetDecodedHeapSize()
+size_t
+RasterImage::HeapSizeOfDecodedWithComputedFallback(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  return GetDecodedSize(mFrames, gfxASurface::MEMORY_IN_PROCESS_HEAP);
+  return SizeOfDecodedWithComputedFallbackIfHeap(
+           mFrames, gfxASurface::MEMORY_IN_PROCESS_HEAP, aMallocSizeOf);
 }
 
-PRUint32
-RasterImage::GetDecodedNonheapSize()
+size_t
+RasterImage::NonHeapSizeOfDecoded() const
 {
-  return GetDecodedSize(mFrames, gfxASurface::MEMORY_IN_PROCESS_NONHEAP);
+  return SizeOfDecodedWithComputedFallbackIfHeap(mFrames, gfxASurface::MEMORY_IN_PROCESS_NONHEAP, NULL);
 }
 
-PRUint32
-RasterImage::GetDecodedOutOfProcessSize()
+size_t
+RasterImage::OutOfProcessSizeOfDecoded() const
 {
-  return GetDecodedSize(mFrames, gfxASurface::MEMORY_OUT_OF_PROCESS);
-}
-
-PRUint32
-RasterImage::GetSourceHeapSize()
-{
-  PRUint32 sourceDataSize = mSourceData.Length();
-  
-  NS_ABORT_IF_FALSE(StoringSourceData() || (sourceDataSize == 0),
-                    "Non-zero source data size when we aren't storing it?");
-  return sourceDataSize;
+  return SizeOfDecodedWithComputedFallbackIfHeap(mFrames, gfxASurface::MEMORY_OUT_OF_PROCESS, NULL);
 }
 
 void
@@ -2226,7 +2227,7 @@ RasterImage::DiscardingActive() {
 // Helper method to determine if we're storing the source data in a buffer
 // or just writing it directly to the decoder
 bool
-RasterImage::StoringSourceData() {
+RasterImage::StoringSourceData() const {
   return (mDecodeOnDraw || mDiscardable);
 }
 
@@ -2919,7 +2920,9 @@ RasterImage::DecodeWorker::Run()
     if (!request)
       break;
 
-    RasterImage *image = request->mImage;
+    // This has to be a strong pointer, because DecodeSomeOfImage may destroy
+    // image->mDecoder, which may be holding the only other reference to image.
+    nsRefPtr<RasterImage> image = request->mImage;
     DecodeSomeOfImage(image);
 
     // If we aren't yet finished decoding and we have more data in hand, add
@@ -3006,10 +3009,10 @@ RasterImage::DecodeWorker::DecodeSomeOfImage(
 
     if (aDecodeType == DECODE_TYPE_UNTIL_SIZE && aImg->mHasSize)
       break;
-  }
-  while (aImg->mSourceData.Length() > aImg->mBytesDecoded &&
-         !aImg->IsDecodeFinished() &&
-         TimeStamp::Now() < deadline);
+
+  } while (aImg->mSourceData.Length() > aImg->mBytesDecoded &&
+           !aImg->IsDecodeFinished() &&
+           TimeStamp::Now() < deadline);
 
   aImg->mDecodeRequest.mDecodeTime += (TimeStamp::Now() - start);
 
@@ -3017,11 +3020,26 @@ RasterImage::DecodeWorker::DecodeSomeOfImage(
     Telemetry::Accumulate(Telemetry::IMAGE_DECODE_CHUNKS, chunkCount);
   }
 
-  // Flush invalidations _after_ we've written everything we're going to.
-  // Furthermore, if we have all of the data, we don't want to do progressive
-  // display at all. In that case, let Decoder::PostFrameStop() do the
-  // flush once the whole frame is ready.
-  if (!aImg->mHasSourceData) {
+  // Flush invalidations (and therefore paint) now that we've decoded all the
+  // chunks we're going to.
+  //
+  // However, don't paint if:
+  //
+  //  * This was an until-size decode.  Until-size decodes are always followed
+  //    by normal decodes, so don't bother painting.
+  //
+  //  * The decoder flagged an error.  The decoder may have written garbage
+  //    into the output buffer; don't paint it to the screen.
+  //
+  //  * We have all the source data.  This disables progressive display of
+  //    previously-decoded images, thus letting us finish decoding faster,
+  //    since we don't waste time painting while we decode.
+  //    Decoder::PostFrameStop() will flush invalidations once the decode is
+  //    done.
+
+  if (aDecodeType != DECODE_TYPE_UNTIL_SIZE &&
+      !aImg->mDecoder->HasError() &&
+      !aImg->mHasSourceData) {
     aImg->mInDecoder = true;
     aImg->mDecoder->FlushInvalidations();
     aImg->mInDecoder = false;

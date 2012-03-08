@@ -28,6 +28,26 @@ function testAbsentAttrs(aAccOrElmOrID, aAbsentAttrs)
 }
 
 /**
+ * Test CSS based object attributes.
+ */
+function testCSSAttrs(aID)
+{
+  var node = document.getElementById(aID);
+  var computedStyle = document.defaultView.getComputedStyle(node, "");
+
+  var attrs = {
+    "display": computedStyle.display,
+    "text-align": computedStyle.textAlign,
+    "text-indent": computedStyle.textIndent,
+    "margin-left": computedStyle.marginLeft,
+    "margin-right": computedStyle.marginRight,
+    "margin-top": computedStyle.marginTop,
+    "margin-bottom": computedStyle.marginBottom
+  };
+  testAttrs(aID, attrs, true);
+}
+
+/**
  * Test group object attributes (posinset, setsize and level) and
  * nsIAccessible::groupPosition() method.
  *
@@ -188,6 +208,39 @@ const kBoldFontWeight =
 const kInputFontSize = WIN ?
   "10pt" : (MAC ? "8pt" : function() { return true; });
 
+const kAbsentFontFamily =
+  function(aFontFamily) { return aFontFamily != "sans-serif"; }
+const kInputFontFamily =
+  function(aFontFamily) { return aFontFamily != "sans-serif"; }
+
+const kMonospaceFontFamily =
+  function(aFontFamily) { return aFontFamily != "monospace"; }
+const kSansSerifFontFamily =
+  function(aFontFamily) { return aFontFamily != "sans-serif"; }
+const kSerifFontFamily =
+  function(aFontFamily) { return aFontFamily != "serif"; }
+
+const kCursiveFontFamily = WIN ? "Comic Sans MS" :
+  (LINUX ? "DejaVu Serif" : "MacFont");
+
+/**
+ * Return used font from the given computed style.
+ */
+function fontFamily(aComputedStyle)
+{
+  var name = aComputedStyle.fontFamily;
+  switch (name) {
+    case "monospace":
+      return kMonospaceFontFamily;
+    case "sans-serif":
+      return kSansSerifFontFamily;
+    case "serif":
+      return kSerifFontFamily;
+    default:
+      return name;
+  }
+}
+
 /**
  * Build an object of default text attributes expected for the given accessible.
  *
@@ -196,7 +249,7 @@ const kInputFontSize = WIN ?
  * @param aFontWeight  [in, optional] kBoldFontWeight or kNormalFontWeight,
  *                      default value is kNormalFontWeight
  */
-function buildDefaultTextAttrs(aID, aFontSize, aFontWeight)
+function buildDefaultTextAttrs(aID, aFontSize, aFontWeight, aFontFamily)
 {
   var elm = getNode(aID);
   var computedStyle = document.defaultView.getComputedStyle(elm, "");
@@ -209,7 +262,7 @@ function buildDefaultTextAttrs(aID, aFontSize, aFontWeight)
     "background-color": bgColor,
     "font-weight": aFontWeight ? aFontWeight : kNormalFontWeight,
     "color": computedStyle.color,
-    "font-family": computedStyle.fontFamily,
+    "font-family": aFontFamily ? aFontFamily : fontFamily(computedStyle),
     "text-position": computedStyle.verticalAlign
   };
 

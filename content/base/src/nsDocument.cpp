@@ -147,7 +147,7 @@
 #include "nsILink.h"
 #include "nsBlobProtocolHandler.h"
 
-#include "nsICharsetAlias.h"
+#include "nsCharsetAlias.h"
 #include "nsIParser.h"
 #include "nsIContentSink.h"
 
@@ -209,10 +209,6 @@
 #include "imgILoader.h"
 #include "nsWrapperCacheInlines.h"
 
-#include "nsDOMMozPointerLock.h"
-#include "nsIDOMMozNavigatorPointerLock.h"
-#include "Navigator.h"
-
 using namespace mozilla;
 using namespace mozilla::dom;
 
@@ -224,6 +220,11 @@ nsWeakPtr nsDocument::sFullScreenDoc = nsnull;
 // Reference to the root document of the branch containing the document
 // which requested DOM full-screen mode.
 nsWeakPtr nsDocument::sFullScreenRootDoc = nsnull;
+
+// Reference to the pointerlock element
+nsRefPtr<Element> nsDocument::sPointerLockElement;
+// Reference to the document which requested pointerlock
+nsRefPtr<nsDocument> nsDocument::sPointerLockDoc = nsnull;
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gDocumentLeakPRLog;
@@ -863,7 +864,7 @@ TransferZoomLevels(nsIDocument* aFromDoc,
     return;
 
   toCtxt->SetFullZoom(fromCtxt->GetFullZoom());
-  toCtxt->SetMinFontSize(fromCtxt->MinFontSize());
+  toCtxt->SetMinFontSize(fromCtxt->MinFontSize(nsnull));
   toCtxt->SetTextZoom(fromCtxt->TextZoom());
 }
 
@@ -1640,6 +1641,7 @@ nsDocument::~nsDocument()
 
   if (mListenerManager) {
     mListenerManager->Disconnect();
+    UnsetFlags(NODE_HAS_LISTENERMANAGER);
   }
 
   if (mScriptLoader) {
@@ -1728,7 +1730,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_DESTROY(nsDocument,
                                               nsNodeUtils::LastRelease(this))
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsDocument)
-  return nsGenericElement::CanSkip(tmp);
+  return nsGenericElement::CanSkip(tmp, aRemovingAllowed);
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(nsDocument)
@@ -1954,6 +1956,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsDocument)
 
   if (tmp->mListenerManager) {
     tmp->mListenerManager->Disconnect();
+    tmp->UnsetFlags(NODE_HAS_LISTENERMANAGER);
     tmp->mListenerManager = nsnull;
   }
 
@@ -2122,7 +2125,6 @@ nsDocument::ResetToURI(nsIURI *aURI, nsILoadGroup *aLoadGroup,
   }
 #endif
 
-  SetPrincipal(nsnull);
   mSecurityInfo = nsnull;
 
   mDocumentLoadGroup = nsnull;
@@ -2171,6 +2173,12 @@ nsDocument::ResetToURI(nsIURI *aURI, nsILoadGroup *aLoadGroup,
 
   // Release the stylesheets list.
   mDOMStyleSheets = nsnull;
+
+  // Release our principal after tearing down the document, rather than before.
+  // This ensures that, during teardown, the document and the dying window (which
+  // already nulled out its document pointer and cached the principal) have
+  // matching principals.
+  SetPrincipal(nsnull);
 
   // Clear the original URI so SetDocumentURI sets it.
   mOriginalURI = nsnull;
@@ -2462,25 +2470,41 @@ nsDocument::InitCSP()
     // regular-strength CSP.
     if (cspHeaderValue.IsEmpty()) {
       mCSP->SetReportOnlyMode(true);
-      mCSP->RefinePolicy(cspROHeaderValue, chanURI);
-#ifdef PR_LOGGING 
-      {
-        PR_LOG(gCspPRLog, PR_LOG_DEBUG, 
-                ("CSP (report only) refined, policy: \"%s\"", 
-                  NS_ConvertUTF16toUTF8(cspROHeaderValue).get()));
-      }
+
+      // Need to tokenize the header value since multiple headers could be
+      // concatenated into one comma-separated list of policies.
+      // See RFC2616 section 4.2 (last paragraph)
+      nsCharSeparatedTokenizer tokenizer(cspROHeaderValue, ',');
+      while (tokenizer.hasMoreTokens()) {
+        const nsSubstring& policy = tokenizer.nextToken();
+        mCSP->RefinePolicy(policy, chanURI);
+#ifdef PR_LOGGING
+        {
+          PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+                  ("CSP (report only) refined with policy: \"%s\"",
+                    NS_ConvertUTF16toUTF8(policy).get()));
+        }
 #endif
+      }
     } else {
       //XXX(sstamm): maybe we should post a warning when both read only and regular 
       // CSP headers are present.
-      mCSP->RefinePolicy(cspHeaderValue, chanURI);
-#ifdef PR_LOGGING 
-      {
-        PR_LOG(gCspPRLog, PR_LOG_DEBUG, 
-               ("CSP refined, policy: \"%s\"",
-                NS_ConvertUTF16toUTF8(cspHeaderValue).get()));
-      }
+
+      // Need to tokenize the header value since multiple headers could be
+      // concatenated into one comma-separated list of policies.
+      // See RFC2616 section 4.2 (last paragraph)
+      nsCharSeparatedTokenizer tokenizer(cspHeaderValue, ',');
+      while (tokenizer.hasMoreTokens()) {
+        const nsSubstring& policy = tokenizer.nextToken();
+        mCSP->RefinePolicy(policy, chanURI);
+#ifdef PR_LOGGING
+        {
+          PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+                ("CSP refined with policy: \"%s\"",
+                  NS_ConvertUTF16toUTF8(policy).get()));
+        }
 #endif
+      }
     }
 
     // Check for frame-ancestor violation
@@ -2993,13 +3017,10 @@ nsDocument::SetDocumentCharacterSet(const nsACString& aCharSetID)
     mCharacterSet = aCharSetID;
 
 #ifdef DEBUG
-    nsCOMPtr<nsICharsetAlias> calias(do_GetService(NS_CHARSETALIAS_CONTRACTID));
-    if (calias) {
-      nsCAutoString canonicalName;
-      calias->GetPreferred(aCharSetID, canonicalName);
-      NS_ASSERTION(canonicalName.Equals(aCharSetID),
-                   "charset name must be canonical");
-    }
+    nsCAutoString canonicalName;
+    nsCharsetAlias::GetPreferred(aCharSetID, canonicalName);
+    NS_ASSERTION(canonicalName.Equals(aCharSetID),
+                 "charset name must be canonical");
 #endif
 
     PRInt32 n = mCharSetObservers.Length();
@@ -3153,16 +3174,10 @@ nsDocument::TryChannelCharset(nsIChannel *aChannel,
     nsCAutoString charsetVal;
     nsresult rv = aChannel->GetContentCharset(charsetVal);
     if (NS_SUCCEEDED(rv)) {
-      nsCOMPtr<nsICharsetAlias> calias(do_GetService(NS_CHARSETALIAS_CONTRACTID));
-      if (calias) {
-        nsCAutoString preferred;
-        rv = calias->GetPreferred(charsetVal,
-                                  preferred);
-        if(NS_SUCCEEDED(rv)) {
-          aCharset = preferred;
-          aCharsetSource = kCharsetFromChannel;
-          return true;
-        }
+      rv = nsCharsetAlias::GetPreferred(charsetVal, aCharset);
+      if(NS_SUCCEEDED(rv)) {
+        aCharsetSource = kCharsetFromChannel;
+        return true;
       }
     }
   }
@@ -5116,11 +5131,9 @@ NS_IMETHODIMP
 nsDocument::GetDefaultView(nsIDOMWindow** aDefaultView)
 {
   *aDefaultView = nsnull;
-  nsPIDOMWindow* win = GetWindow();
-  if (!win) {
-    return NS_OK;
-  }
-  return CallQueryInterface(win, aDefaultView);
+  nsCOMPtr<nsPIDOMWindow> win = GetWindow();
+  win.forget(aDefaultView);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -5815,8 +5828,12 @@ nsDocument::AppendChild(nsIDOMNode* aNewChild, nsIDOMNode** aReturn)
 }
 
 NS_IMETHODIMP
-nsDocument::CloneNode(bool aDeep, nsIDOMNode** aReturn)
+nsDocument::CloneNode(bool aDeep, PRUint8 aOptionalArgc, nsIDOMNode** aReturn)
 {
+  if (!aOptionalArgc) {
+    aDeep = true;
+  }
+  
   return nsNodeUtils::CloneNodeImpl(this, aDeep, !mCreatingStaticClone, aReturn);
 }
 
@@ -6196,6 +6213,7 @@ nsDocument::GetListenerManager(bool aCreateIfNotFound)
   if (!mListenerManager && aCreateIfNotFound) {
     mListenerManager =
       new nsEventListenerManager(static_cast<nsIDOMEventTarget*>(this));
+    SetFlags(NODE_HAS_LISTENERMANAGER);
   }
 
   return mListenerManager;
@@ -8047,7 +8065,7 @@ nsIDocument::CreateStaticClone(nsISupports* aCloneContainer)
   nsCOMPtr<nsISupports> originalContainer = GetContainer();
   SetContainer(aCloneContainer);
   nsCOMPtr<nsIDOMNode> clonedNode;
-  nsresult rv = domDoc->CloneNode(true, getter_AddRefs(clonedNode));
+  nsresult rv = domDoc->CloneNode(true, 1, getter_AddRefs(clonedNode));
   SetContainer(originalContainer);
 
   nsCOMPtr<nsIDocument> clonedDoc;
@@ -8103,7 +8121,7 @@ nsIDocument::ScheduleFrameRequestCallback(nsIFrameRequestCallback* aCallback,
   PRInt32 newHandle = ++mFrameRequestCallbackCounter;
 
   bool alreadyRegistered = !mFrameRequestCallbacks.IsEmpty();
-  FrameRequest *request =
+  DebugOnly<FrameRequest*> request =
     mFrameRequestCallbacks.AppendElement(FrameRequest(aCallback, newHandle));
   NS_ASSERTION(request, "This is supposed to be infallible!");
   if (!alreadyRegistered && mPresShell && IsEventHandlingEnabled()) {
@@ -8286,11 +8304,8 @@ nsDocument::RemoveImage(imgIRequest* aImage)
   NS_ENSURE_ARG_POINTER(aImage);
 
   // Get the old count. It should exist and be > 0.
-  PRUint32 count;
-#ifdef DEBUG
-  bool found =
-#endif
-  mImageTracker.Get(aImage, &count);
+  PRUint32 count = 0;
+  DebugOnly<bool> found = mImageTracker.Get(aImage, &count);
   NS_ABORT_IF_FALSE(found, "Removing image that wasn't in the tracker!");
   NS_ABORT_IF_FALSE(count > 0, "Entry in the cache tracker with count 0!");
 
@@ -8467,19 +8482,6 @@ nsDocument::CreateTouchList(nsIVariant* aPoints,
   return NS_OK;
 }
 
-PRInt64
-nsIDocument::SizeOf() const
-{
-  PRInt64 size = MemoryReporter::GetBasicSize<nsIDocument, nsINode>(this);
-
-  for (nsIContent* node = GetFirstChild(); node;
-       node = node->GetNextNode(this)) {
-    size += node->SizeOf();
-  }
-
-  return size;
-}
-
 static void
 DispatchFullScreenChange(nsIDocument* aTarget)
 {
@@ -8514,7 +8516,7 @@ public:
   NS_IMETHOD Run()
   {
     if (mDoc->GetWindow()) {
-      mDoc->GetWindow()->SetFullScreen(mValue);
+      mDoc->GetWindow()->SetFullScreenInternal(mValue, false);
     }
     return NS_OK;
   }
@@ -8564,36 +8566,17 @@ ResetFullScreen(nsIDocument* aDocument, void* aData) {
 
 /* static */
 void
-nsDocument::MaybeUnlockMouse(nsIDocument* aDocument)
+nsDocument::MaybeUnlockPointer(nsIDocument* aDocument)
 {
   if (!aDocument) {
     return;
   }
 
-  // When exiting fullscreen, if the pointer is also locked to the fullscreen element,
-  // we'll need to unlock it as we the document exits fullscreen.
-  nsCOMPtr<nsIDOMWindow> window = aDocument->GetWindow();
-  if (!window) {
+  if (!sPointerLockDoc) {
     return;
   }
 
-  nsCOMPtr<nsIDOMNavigator> navigator;
-  window->GetNavigator(getter_AddRefs(navigator));
-  if (!navigator) {
-    return;
-  }
-
-  nsCOMPtr<nsIDOMMozNavigatorPointerLock> navigatorPointerLock =
-    do_QueryInterface(navigator);
-
-  nsCOMPtr<nsIDOMMozPointerLock> pointer;
-  navigatorPointerLock->GetMozPointer(getter_AddRefs(pointer));
-  if (!pointer) {
-    return;
-  }
-
-  // Unlock will bail early if not really locked
-  pointer->Unlock();
+  sPointerLockDoc->UnLockPointer();
 }
 
 /* static */
@@ -8616,10 +8599,9 @@ nsDocument::ExitFullScreen()
   // dispatch to so that we dispatch in the specified order.
   nsAutoTArray<nsIDocument*, 8> changed;
 
-  // We may also need to unlock the mouse pointer, if it's locked.
-  nsCOMPtr<nsIDocument> fullScreenDoc(do_QueryReferent(sFullScreenDoc));
-  if (fullScreenDoc) {
-    MaybeUnlockMouse(fullScreenDoc);
+  // We may also need to unlock the pointer, if it's locked.
+  if (sPointerLockElement) {
+    UnLockPointer();
   }
 
   // Walk the tree of full-screen documents, and reset their full-screen state.
@@ -8652,13 +8634,18 @@ nsDocument::RestorePreviousFullScreenState()
     return;
   }
 
+  // If fullscreen mode is updated the pointer should be unlocked
+  if (sPointerLockElement) {
+    UnLockPointer();
+  }
+
   // Clear full-screen stacks in all descendant documents, bottom up.
   nsCOMPtr<nsIDocument> fullScreenDoc(do_QueryReferent(sFullScreenDoc));
   nsIDocument* doc = fullScreenDoc;
   while (doc != this) {
     NS_ASSERTION(doc->IsFullScreenDoc(), "Should be full-screen doc");
     static_cast<nsDocument*>(doc)->ClearFullScreenStack();
-    MaybeUnlockMouse(doc);
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     doc = doc->GetParentDocument();
   }
@@ -8667,7 +8654,7 @@ nsDocument::RestorePreviousFullScreenState()
   NS_ASSERTION(doc == this, "Must have reached this doc.");
   while (doc != nsnull) {
     static_cast<nsDocument*>(doc)->FullScreenStackPop();
-    MaybeUnlockMouse(doc);
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     if (static_cast<nsDocument*>(doc)->mFullScreenStack.IsEmpty()) {
       // Full-screen stack in document is empty. Go back up to the parent
@@ -8949,7 +8936,13 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
   // If a document is already in fullscreen, then unlock the mouse pointer
   // before setting a new document to fullscreen
   if (fullScreenDoc) {
-    MaybeUnlockMouse(fullScreenDoc);
+    MaybeUnlockPointer(fullScreenDoc);
+  }
+
+  // If a document is already in fullscreen, then unlock the mouse pointer
+  // before setting a new document to fullscreen
+  if (sPointerLockElement) {
+    UnLockPointer();
   }
 
   // Set the full-screen element. This sets the full-screen style on the
@@ -9114,12 +9107,178 @@ nsDocument::IsFullScreenEnabled(bool aCallerIsChrome, bool aLogFailure)
   return true;
 }
 
-PRInt64
-nsDocument::SizeOf() const
+static void
+DispatchPointerLockChange(nsIDocument* aTarget)
 {
-  PRInt64 size = MemoryReporter::GetBasicSize<nsDocument, nsIDocument>(this);
-  size += mAttrStyleSheet ? mAttrStyleSheet->DOMSizeOf() : 0;
-  return size;
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(aTarget,
+                        NS_LITERAL_STRING("mozpointerlockchange"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+}
+
+static void
+DispatchPointerLockError(nsIDocument* aTarget)
+{
+  nsRefPtr<nsAsyncDOMEvent> e =
+    new nsAsyncDOMEvent(aTarget,
+                        NS_LITERAL_STRING("mozpointerlockerror"),
+                        true,
+                        false);
+  e->PostDOMEvent();
+}
+
+void
+nsDocument::RequestPointerLock(Element* aElement)
+{
+  NS_ASSERTION(aElement,
+    "Must pass non-null element to nsDocument::RequestPointerLock");
+  if (!aElement) {
+    NS_WARNING("RequestPointerLock(): No Element");
+    return;
+  }
+
+  if (aElement == sPointerLockElement) {
+    DispatchPointerLockChange(this);
+    return;
+  }
+
+  if (!ShouldLockPointer(aElement) ||
+      !SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)) {
+      DispatchPointerLockError(this);
+      return;
+  }
+
+  nsEventStateManager::SetPointerLockState(aElement, true);
+  sPointerLockElement = aElement;
+  sPointerLockDoc = this;
+  DispatchPointerLockChange(this);
+}
+
+bool
+nsDocument::ShouldLockPointer(Element* aElement)
+{
+  // Check if pointer lock pref is enabled
+  nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
+  bool pointerLockEnabled;
+  prefs->GetBoolPref("full-screen-api.pointer-lock.enabled", &pointerLockEnabled);
+  if (!pointerLockEnabled) {
+    NS_WARNING("ShouldLockPointer(): Pointer Lock pref not enabled");
+    return false;
+  }
+
+  if (aElement != GetFullScreenElement()) {
+    NS_WARNING("ShouldLockPointer(): Element not in fullscreen");
+    return false;
+  }
+
+  if (!aElement->IsInDoc()) {
+    NS_WARNING("ShouldLockPointer(): Element without Document");
+    return false;
+  }
+
+  // Check if the element is display:none, etc.
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
+  FlushPendingNotifications(Flush_Layout);
+  if (!(content && content->GetPrimaryFrame())) {
+    NS_WARNING("ShouldLockPointer(): Element without Frame");
+    return false;
+  }
+
+  return true;
+}
+
+bool
+nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
+{
+  if (!GetWindow()) {
+    NS_WARNING("SetPointerLock(): No Window");
+    return false;
+  }
+
+  nsIDocShell *docShell = GetWindowInternal()->GetDocShell();
+  if (!docShell) {
+    NS_WARNING("SetPointerLock(): No DocShell (window already closed?)");
+    return false;
+  }
+
+  nsRefPtr<nsPresContext> presContext;
+  docShell->GetPresContext(getter_AddRefs(presContext));
+  if (!presContext) {
+    NS_WARNING("SetPointerLock(): Unable to get presContext in \
+                domWindow->GetDocShell()->GetPresContext()");
+    return false;
+  }
+
+  nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
+  if (!shell) {
+    NS_WARNING("SetPointerLock(): Unable to find presContext->PresShell()");
+    return false;
+  }
+
+  nsIFrame* rootFrame = shell->GetRootFrame();
+  if (!rootFrame) {
+    NS_WARNING("SetPointerLock(): Unable to get root frame");
+    return false;
+  }
+
+  nsCOMPtr<nsIWidget> widget = rootFrame->GetNearestWidget();
+  if (!widget) {
+    NS_WARNING("SetPointerLock(): Unable to find widget in \
+                shell->GetRootFrame()->GetNearestWidget();");
+    return false;
+  }
+
+  // Hide the cursor and set pointer lock for future mouse events
+  nsRefPtr<nsEventStateManager> esm = presContext->EventStateManager();
+  esm->SetCursor(aCursorStyle, nsnull, false,
+                 0.0f, 0.0f, widget, true);
+  esm->SetPointerLock(widget, aElement);
+
+  return true;
+}
+
+void
+nsDocument::UnLockPointer()
+{
+  if (!sPointerLockElement) {
+    return;
+  }
+
+  if (!sPointerLockDoc->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
+    return;
+  }
+
+  DispatchPointerLockChange(sPointerLockDoc);
+  nsEventStateManager::SetPointerLockState(sPointerLockElement, false);
+  sPointerLockElement = nsnull;
+  sPointerLockDoc = nsnull;
+}
+
+void
+nsIDocument::UnLockPointer()
+{
+  nsDocument::UnLockPointer();
+}
+
+NS_IMETHODIMP
+nsDocument::MozExitPointerLock()
+{
+  UnLockPointer();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement)
+{
+  NS_ENSURE_ARG_POINTER(aPointerLockElement);
+  *aPointerLockElement = nsnull;
+  if (sPointerLockElement) {
+    CallQueryInterface(sPointerLockElement, aPointerLockElement);
+  }
+
+  return NS_OK;
 }
 
 #define EVENT(name_, id_, type_, struct_)                                 \
@@ -9194,6 +9353,31 @@ nsDocument::GetMozVisibilityState(nsAString& aState)
   return NS_OK;
 }
 
+/* virtual */ void
+nsIDocument::DocSizeOfExcludingThis(nsWindowSizes* aWindowSizes) const
+{
+  aWindowSizes->mDOM +=
+    nsINode::SizeOfExcludingThis(aWindowSizes->mMallocSizeOf);
+
+  if (mPresShell) {
+    mPresShell->SizeOfIncludingThis(aWindowSizes->mMallocSizeOf,
+                                    &aWindowSizes->mLayoutArenas,
+                                    &aWindowSizes->mLayoutStyleSets,
+                                    &aWindowSizes->mLayoutTextRuns);
+  }
+
+  // Measurement of the following members may be added later if DMD finds it
+  // is worthwhile:
+  // - many!
+}
+
+void
+nsIDocument::DocSizeOfIncludingThis(nsWindowSizes* aWindowSizes) const
+{
+  aWindowSizes->mDOM += aWindowSizes->mMallocSizeOf(this);
+  DocSizeOfExcludingThis(aWindowSizes);
+}
+
 static size_t
 SizeOfStyleSheetsElementIncludingThis(nsIStyleSheet* aStyleSheet,
                                       nsMallocSizeOfFun aMallocSizeOf,
@@ -9202,9 +9386,39 @@ SizeOfStyleSheetsElementIncludingThis(nsIStyleSheet* aStyleSheet,
   return aStyleSheet->SizeOfIncludingThis(aMallocSizeOf);
 }
 
-/* virtual */ size_t
-nsDocument::SizeOfStyleSheets(nsMallocSizeOfFun aMallocSizeOf) const
+size_t
+nsDocument::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  return mStyleSheets.SizeOfExcludingThis(SizeOfStyleSheetsElementIncludingThis,
-                                          aMallocSizeOf); 
+  // This SizeOfExcludingThis() overrides the one from nsINode.  But
+  // nsDocuments can only appear at the top of the DOM tree, and we use the
+  // specialized DocSizeOfExcludingThis() in that case.  So this should never
+  // be called.
+  MOZ_NOT_REACHED("nsDocument::SizeOfExcludingThis");
+  return 0;
+}
+
+void
+nsDocument::DocSizeOfExcludingThis(nsWindowSizes* aWindowSizes) const
+{
+  nsIDocument::DocSizeOfExcludingThis(aWindowSizes);
+
+  for (nsIContent* node = nsINode::GetFirstChild();
+       node;
+       node = node->GetNextNode(this))
+  {
+    aWindowSizes->mDOM +=
+      node->SizeOfIncludingThis(aWindowSizes->mMallocSizeOf);
+  }
+
+  aWindowSizes->mStyleSheets +=
+    mStyleSheets.SizeOfExcludingThis(SizeOfStyleSheetsElementIncludingThis,
+                                     aWindowSizes->mMallocSizeOf); 
+  aWindowSizes->mDOM +=
+    mAttrStyleSheet ?
+    mAttrStyleSheet->DOMSizeOfIncludingThis(aWindowSizes->mMallocSizeOf) :
+    0;
+
+  // Measurement of the following members may be added later if DMD finds it
+  // is worthwhile:
+  // - many!
 }
