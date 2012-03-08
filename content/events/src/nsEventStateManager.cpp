@@ -4070,6 +4070,9 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
     return;
   }
 
+  // Reset mouse wheel transaction
+  nsMouseWheelTransaction::EndTransaction();
+
   if (sPointerLockedElement) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
