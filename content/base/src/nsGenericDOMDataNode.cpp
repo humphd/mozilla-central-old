@@ -98,7 +98,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(nsGenericDOMDataNode)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(nsGenericDOMDataNode)
-  return nsGenericElement::CanSkip(tmp);
+  return nsGenericElement::CanSkip(tmp, aRemovingAllowed);
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
 
 NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(nsGenericDOMDataNode)
@@ -752,6 +752,9 @@ nsGenericDOMDataNode::SplitData(PRUint32 aOffset, nsIContent** aReturn,
     return rv;
   }
 
+  nsIDocument* document = GetCurrentDoc();
+  mozAutoDocUpdate updateBatch(document, UPDATE_CONTENT_MODEL, true);
+
   // Use Clone for creating the new node so that the new node is of same class
   // as this node!
   nsCOMPtr<nsIContent> newContent = CloneDataNode(mNodeInfo, false);
@@ -994,12 +997,11 @@ nsGenericDOMDataNode::GetClassAttributeName() const
   return nsnull;
 }
 
-PRInt64
-nsGenericDOMDataNode::SizeOf() const
+size_t
+nsGenericDOMDataNode::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
 {
-  PRInt64 size = dom::MemoryReporter::GetBasicSize<nsGenericDOMDataNode,
-                                                   nsIContent>(this);
-  size += mText.SizeOf() - sizeof(mText);
-  return size;
+  size_t n = nsIContent::SizeOfExcludingThis(aMallocSizeOf);
+  n += mText.SizeOfExcludingThis(aMallocSizeOf);
+  return n;
 }
 

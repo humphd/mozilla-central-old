@@ -1,6 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+// Some tests here assume that all restored tabs are loaded without waiting for
+// the user to bring them to the foreground. We ensure this by resetting the
+// related preference (see the "firefox.js" defaults file for details).
+Services.prefs.setBoolPref("browser.sessionstore.restore_on_demand", false);
+registerCleanupFunction(function () {
+  Services.prefs.clearUserPref("browser.sessionstore.restore_on_demand");
+});
+
+// ----------
 function createEmptyGroupItem(contentWindow, width, height, padding, animate) {
   let pageBounds = contentWindow.Items.getPageBounds();
   pageBounds.inset(padding, padding);
@@ -322,15 +331,19 @@ function newWindowWithState(state, callback) {
       callback(win);
   };
 
-  whenWindowLoaded(win, function () {
-    whenWindowStateReady(win, function () {
-      afterAllTabsLoaded(check, win);
+  whenDelayedStartupFinished(win, function () {
+    ss.setWindowState(win, JSON.stringify(state), true);
+    win.close();
+    win = ss.undoCloseWindow(0);
+
+    whenWindowLoaded(win, function () {
+      whenWindowStateReady(win, function () {
+        afterAllTabsLoaded(check, win);
+      });
     });
 
-    ss.setWindowState(win, JSON.stringify(state), true);
+    whenDelayedStartupFinished(win, check);
   });
-
-  whenDelayedStartupFinished(win, check);
 }
 
 // ----------

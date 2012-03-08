@@ -52,7 +52,6 @@
 #include "nsIDOMEvent.h"
 #include "nsIPrivateDOMEvent.h"
 #include "nsIDOMEventTarget.h"
-#include "nsParserUtils.h"
 #include "nsContentUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsAsyncDOMEvent.h"
@@ -84,6 +83,9 @@ public:
 
   // nsIDOMHTMLLinkElement
   NS_DECL_NSIDOMHTMLLINKELEMENT
+
+  // DOM memory reporter participant
+  NS_DECL_SIZEOF_EXCLUDING_THIS
 
   // nsILink
   NS_IMETHOD    LinkAdded();
@@ -439,7 +441,7 @@ nsHTMLLinkElement::GetStyleSheetInfo(nsAString& aTitle,
   nsAutoString mimeType;
   nsAutoString notUsed;
   GetAttr(kNameSpaceID_None, nsGkAtoms::type, aType);
-  nsParserUtils::SplitMimeType(aType, mimeType, notUsed);
+  nsContentUtils::SplitMimeType(aType, mimeType, notUsed);
   if (!mimeType.IsEmpty() && !mimeType.LowerCaseEqualsLiteral("text/css")) {
     return;
   }
@@ -456,3 +458,11 @@ nsHTMLLinkElement::IntrinsicState() const
 {
   return Link::LinkState() | nsGenericHTMLElement::IntrinsicState();
 }
+
+size_t
+nsHTMLLinkElement::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
+{
+  return nsGenericHTMLElement::SizeOfExcludingThis(aMallocSizeOf) +
+         Link::SizeOfExcludingThis(aMallocSizeOf);
+}
+

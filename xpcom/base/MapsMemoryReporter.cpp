@@ -43,7 +43,8 @@
 #include "nsIMemoryReporter.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
-#include "nsHashSets.h"
+#include "nsTHashtable.h"
+#include "nsHashKeys.h"
 #include <stdio.h>
 
 namespace mozilla {
@@ -123,7 +124,8 @@ void GetBasename(const nsCString &aPath, nsACString &aOut)
 }
 
 // MapsReporter::CollectReports uses this stuct to keep track of whether it's
-// seen a mapping under 'map/resident', 'map/vsize', and 'map/swap'.
+// seen a mapping under 'smaps/resident', 'smaps/pss', 'smaps/vsize', and
+// 'smaps/swap'.
 struct CategoriesSeen {
   CategoriesSeen() :
     mSeenResident(false),
@@ -147,6 +149,12 @@ public:
   MapsReporter();
 
   NS_DECL_ISUPPORTS
+
+  NS_IMETHOD GetName(nsACString &aName)
+  {
+      aName.AssignLiteral("smaps");
+      return NS_OK;
+  }
 
   NS_IMETHOD
   CollectReports(nsIMemoryMultiReporterCallback *aCallback,
@@ -186,7 +194,7 @@ private:
 
   bool mSearchedForLibxul;
   nsCString mLibxulDir;
-  nsCStringHashSet mMozillaLibraries;
+  nsTHashtable<nsCStringHashKey> mMozillaLibraries;
 };
 
 NS_IMPL_THREADSAFE_ISUPPORTS1(MapsReporter, nsIMemoryMultiReporter)
@@ -199,7 +207,7 @@ MapsReporter::MapsReporter()
   for (PRUint32 i = 0; i < len; i++) {
     nsCAutoString str;
     str.Assign(mozillaLibraries[i]);
-    mMozillaLibraries.Put(str);
+    mMozillaLibraries.PutEntry(str);
   }
 }
 
@@ -221,16 +229,16 @@ MapsReporter::CollectReports(nsIMemoryMultiReporterCallback *aCallback,
 
   fclose(f);
 
-  // For sure we should have created some node under 'map/resident' and
-  // 'map/vsize'; otherwise we're probably not reading smaps correctly.  If we
-  // didn't create a node under 'map/swap', create one here so about:memory
-  // knows to create an empty 'map/swap' tree.  See also bug 682735.
+  // For sure we should have created some node under 'smaps/resident' and
+  // 'smaps/vsize'; otherwise we're probably not reading smaps correctly.  If we
+  // didn't create a node under 'smaps/swap', create one here so about:memory
+  // knows to create an empty 'smaps/swap' tree.  See also bug 682735.
 
   NS_ASSERTION(categoriesSeen.mSeenVsize, "Didn't create a vsize node?");
   NS_ASSERTION(categoriesSeen.mSeenVsize, "Didn't create a resident node?");
   if (!categoriesSeen.mSeenSwap) {
     aCallback->Callback(NS_LITERAL_CSTRING(""),
-                        NS_LITERAL_CSTRING("map/swap/total"),
+                        NS_LITERAL_CSTRING("smaps/swap/total"),
                         nsIMemoryReporter::KIND_NONHEAP,
                         nsIMemoryReporter::UNITS_BYTES,
                         0,
@@ -510,7 +518,7 @@ MapsReporter::ParseMapBody(
   }
 
   nsCAutoString path;
-  path.Append("map/");
+  path.Append("smaps/");
   path.Append(category);
   path.Append("/");
   path.Append(aName);

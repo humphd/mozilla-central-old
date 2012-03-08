@@ -382,9 +382,12 @@
     var gInitQueue = null;
     function initTests()
     {
-      // register 'test-a11y-search' autocomplete search
-      initAutoComplete([ "hello", "hi" ],
-                       [ "Beep beep'm beep beep yeah", "Baby you can drive my car" ]);
+      if (SEAMONKEY) {
+        todo(false, "Skipping this test on SeaMonkey ftb. (Bug 718237)");
+        shutdownAutoComplete();
+        SimpleTest.finish();
+        return;
+      }
 
       gInitQueue = new eventQueue();
       gInitQueue.push(new loadFormAutoComplete("iframe"));
@@ -455,6 +458,12 @@
     }
 
     SimpleTest.waitForExplicitFinish();
+
+    // Register 'test-a11y-search' autocomplete search.
+    // XPFE AutoComplete needs to register early.
+    initAutoComplete([ "hello", "hi" ],
+                     [ "Beep beep'm beep beep yeah", "Baby you can drive my car" ]);
+
     addA11yLoadEvent(initTests);
   ]]>
   </script>

@@ -50,7 +50,6 @@
 #include "nsWeakPtr.h"
 #include "nsVoidArray.h"
 #include "nsTArray.h"
-#include "nsHashSets.h"
 #include "nsIDOMXMLDocument.h"
 #include "nsIDOMDocumentXBL.h"
 #include "nsStubDocumentObserver.h"
@@ -124,6 +123,7 @@ class nsXMLEventsManager;
 class nsHTMLStyleSheet;
 class nsHTMLCSSStyleSheet;
 class nsDOMNavigationTiming;
+class nsWindowSizes;
 
 /**
  * Right now our identifier map entries contain information for 'name'
@@ -506,7 +506,8 @@ public:
   typedef mozilla::dom::Element Element;
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
+
+  NS_DECL_SIZEOF_EXCLUDING_THIS
 
   using nsINode::GetScriptTypeID;
 
@@ -961,7 +962,7 @@ public:
   virtual void RestorePreviousFullScreenState();
   virtual bool IsFullScreenDoc();
   static void ExitFullScreen();
-  static void MaybeUnlockMouse(nsIDocument* aDocument);
+  static void MaybeUnlockPointer(nsIDocument* aDocument);
 
   // This is called asynchronously by nsIDocument::AsyncRequestFullScreen()
   // to move document into full-screen mode if allowed. aWasCallerChrome
@@ -986,13 +987,20 @@ public:
   // Returns the top element from the full-screen stack.
   Element* FullScreenStackTop();
 
+
+  void RequestPointerLock(Element* aElement);
+  bool ShouldLockPointer(Element* aElement);
+  bool SetPointerLock(Element* aElement, int aCursorStyle);
+  static void UnLockPointer();
+
   // This method may fire a DOM event; if it does so it will happen
   // synchronously.
   void UpdateVisibilityState();
   // Posts an event to call UpdateVisibilityState
   virtual void PostVisibilityUpdateEvent();
 
-  virtual size_t SizeOfStyleSheets(nsMallocSizeOfFun aMallocSizeOf) const;
+  virtual void DocSizeOfExcludingThis(nsWindowSizes* aWindowSizes) const;
+  // DocSizeOfIncludingThis is inherited from nsIDocument.
 
 protected:
   friend class nsNodeUtils;
@@ -1308,6 +1316,9 @@ private:
   nsDataHashtable< nsPtrHashKey<imgIRequest>, PRUint32> mImageTracker;
 
   VisibilityState mVisibilityState;
+
+  static nsRefPtr<Element> sPointerLockElement;
+  static nsRefPtr<nsDocument> sPointerLockDoc;
 
 #ifdef DEBUG
 protected:

@@ -196,7 +196,7 @@ mozJSLoaderErrorReporter(JSContext *cx, const char *message, JSErrorReport *rep)
 }
 
 static JSBool
-Dump(JSContext *cx, uintN argc, jsval *vp)
+Dump(JSContext *cx, unsigned argc, jsval *vp)
 {
     JSString *str;
     if (!argc)
@@ -221,7 +221,7 @@ Dump(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Debug(JSContext *cx, uintN argc, jsval *vp)
+Debug(JSContext *cx, unsigned argc, jsval *vp)
 {
 #ifdef DEBUG
     return Dump(cx, argc, vp);
@@ -231,7 +231,7 @@ Debug(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Atob(JSContext *cx, uintN argc, jsval *vp)
+Atob(JSContext *cx, unsigned argc, jsval *vp)
 {
     if (!argc)
         return true;
@@ -240,7 +240,7 @@ Atob(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-Btoa(JSContext *cx, uintN argc, jsval *vp)
+Btoa(JSContext *cx, unsigned argc, jsval *vp)
 {
     if (!argc)
         return true;
@@ -249,7 +249,7 @@ Btoa(JSContext *cx, uintN argc, jsval *vp)
 }
 
 static JSBool
-File(JSContext *cx, uintN argc, jsval *vp)
+File(JSContext *cx, unsigned argc, jsval *vp)
 {
     nsresult rv;
 
@@ -694,9 +694,7 @@ mozJSComponentLoader::GlobalForLocation(nsILocalFile *aComponentFile,
 
     nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
     rv = xpc->InitClassesWithNewWrappedGlobal(cx, backstagePass,
-                                              NS_GET_IID(nsISupports),
                                               mSystemPrincipal,
-                                              nsnull,
                                               nsIXPConnect::
                                               FLAG_SYSTEM_GLOBAL_OBJECT,
                                               getter_AddRefs(holder));
@@ -1164,19 +1162,21 @@ mozJSComponentLoader::ImportInto(const nsACString & aLocation,
         if (!newEntry || !mInProgressImports.Put(key, newEntry))
             return NS_ERROR_OUT_OF_MEMORY;
 
-        jsval exception = JSVAL_VOID;
+        JS::Anchor<jsval> exception(JSVAL_VOID);
         rv = GlobalForLocation(sourceLocalFile, resURI, &newEntry->global,
-                               &newEntry->location, &exception);
+                               &newEntry->location, &exception.get());
 
         mInProgressImports.Remove(key);
 
         if (NS_FAILED(rv)) {
             *_retval = nsnull;
 
-            if (!JSVAL_IS_VOID(exception)) {
+            if (!JSVAL_IS_VOID(exception.get())) {
                 // An exception was thrown during compilation. Propagate it
                 // out to our caller so they can report it.
-                JS_SetPendingException(callercx, exception);
+                if (!JS_WrapValue(callercx, &exception.get()))
+                    return NS_ERROR_OUT_OF_MEMORY;
+                JS_SetPendingException(callercx, exception.get());
                 return NS_OK;
             }
 
@@ -1214,7 +1214,7 @@ mozJSComponentLoader::ImportInto(const nsACString & aLocation,
 
         // Iterate over symbols array, installing symbols on targetObj:
 
-        jsuint symbolCount = 0;
+        uint32_t symbolCount = 0;
         if (!JS_GetArrayLength(mContext, symbolsObj, &symbolCount)) {
             return ReportOnCaller(cxhelper, ERROR_GETTING_ARRAY_LENGTH,
                                   PromiseFlatCString(aLocation).get());
@@ -1224,7 +1224,7 @@ mozJSComponentLoader::ImportInto(const nsACString & aLocation,
         nsCAutoString logBuffer;
 #endif
 
-        for (jsuint i = 0; i < symbolCount; ++i) {
+        for (uint32_t i = 0; i < symbolCount; ++i) {
             jsval val;
             jsid symbolId;
 

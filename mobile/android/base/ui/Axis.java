@@ -61,7 +61,7 @@ abstract class Axis {
     // The rate of deceleration when the surface has overscrolled.
     private static final float OVERSCROLL_DECEL_RATE = 0.04f;
     // The percentage of the surface which can be overscrolled before it must snap back.
-    private static final float SNAP_LIMIT = 0.75f;
+    private static final float SNAP_LIMIT = 0.3f;
 
     // The minimum amount of space that must be present for an axis to be considered scrollable,
     // in pixels.
@@ -88,7 +88,7 @@ abstract class Axis {
     private float mTouchPos;                /* Position of the most recent touch event on the current drag. */
     private float mLastTouchPos;            /* Position of the touch event before touchPos. */
     private float mVelocity;                /* Velocity in this direction; pixels per animation frame. */
-    private boolean mLocked;                /* Whether movement on this axis is locked. */
+    public boolean mScrollingDisabled;      /* Whether movement on this axis is locked. */
     private boolean mDisableSnap;           /* Whether overscroll snapping is disabled. */
     private float mDisplacement;
 
@@ -108,7 +108,7 @@ abstract class Axis {
 
     void startTouch(float pos) {
         mVelocity = 0.0f;
-        mLocked = false;
+        mScrollingDisabled = false;
         mFirstTouchPos = mTouchPos = mLastTouchPos = pos;
     }
 
@@ -116,8 +116,8 @@ abstract class Axis {
         return currentPos - mFirstTouchPos;
     }
 
-    void setLocked(boolean locked) {
-        mLocked = locked;
+    void setScrollingDisabled(boolean disabled) {
+        mScrollingDisabled = disabled;
     }
 
     void saveTouchPos() {
@@ -172,11 +172,12 @@ abstract class Axis {
     }
 
     /*
-     * Returns true if the page is zoomed in to some degree along this axis such that scrolling
-     * is possible. Otherwise, returns false.
+     * Returns true if the page is zoomed in to some degree along this axis such that scrolling is
+     * possible and this axis has not been scroll locked while panning. Otherwise, returns false.
      */
     private boolean scrollable() {
-        return getViewportLength() <= getPageLength() - MIN_SCROLLABLE_DISTANCE;
+        return getViewportLength() <= getPageLength() - MIN_SCROLLABLE_DISTANCE &&
+               !mScrollingDisabled;
     }
 
     /*
@@ -195,7 +196,7 @@ abstract class Axis {
 
     /* Returns the velocity. If the axis is locked, returns 0. */
     float getRealVelocity() {
-        return (mLocked || !scrollable()) ? 0.0f : mVelocity;
+        return scrollable() ? mVelocity : 0f;
     }
 
     void startPan() {
@@ -253,7 +254,7 @@ abstract class Axis {
 
     // Performs displacement of the viewport position according to the current velocity.
     void displace() {
-        if (!mSubscroller.scrolling() && (mLocked || !scrollable()))
+        if (!mSubscroller.scrolling() && !scrollable())
             return;
 
         if (mFlingState == FlingStates.PANNING)

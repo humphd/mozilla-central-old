@@ -76,7 +76,8 @@ function PlacesCategoriesStarter()
       Cc["@mozilla.org/categorymanager;1"]
         .getService(Ci.nsICategoryManager)
         .deleteCategoryEntry("bookmarks-observer", this, false);
-      Services.obs.notifyObservers(null, "bookmarks-service-ready", null);
+      // Directly notify PlacesUtils, to ensure it catches the notification.
+      PlacesUtils.observe(null, "bookmarks-service-ready", null);
     }
   }).bind(this);
   [ "onItemAdded", "onItemRemoved", "onItemChanged", "onBeginUpdateBatch",
@@ -128,6 +129,8 @@ PlacesCategoriesStarter.prototype = {
   //// nsISupports
 
   classID: Components.ID("803938d5-e26d-4453-bf46-ad4b26e41114"),
+
+  _xpcom_factory: XPCOMUtils.generateSingletonFactory(PlacesCategoriesStarter),
 
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIObserver

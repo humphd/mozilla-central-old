@@ -485,7 +485,7 @@ JSObject::toDictionaryMode(JSContext *cx)
  */
 static inline bool
 NormalizeGetterAndSetter(JSContext *cx, JSObject *obj,
-                         jsid id, uintN attrs, uintN flags,
+                         jsid id, unsigned attrs, unsigned flags,
                          PropertyOp &getter,
                          StrictPropertyOp &setter)
 {
@@ -581,8 +581,8 @@ JSObject::checkShapeConsistency()
 Shape *
 JSObject::addProperty(JSContext *cx, jsid id,
                       PropertyOp getter, StrictPropertyOp setter,
-                      uint32_t slot, uintN attrs,
-                      uintN flags, intN shortid, bool allowDictionary)
+                      uint32_t slot, unsigned attrs,
+                      unsigned flags, int shortid, bool allowDictionary)
 {
     JS_ASSERT(!JSID_IS_VOID(id));
 
@@ -604,8 +604,8 @@ JSObject::addProperty(JSContext *cx, jsid id,
 Shape *
 JSObject::addPropertyInternal(JSContext *cx, jsid id,
                               PropertyOp getter, StrictPropertyOp setter,
-                              uint32_t slot, uintN attrs,
-                              uintN flags, intN shortid, Shape **spp,
+                              uint32_t slot, unsigned attrs,
+                              unsigned flags, int shortid, Shape **spp,
                               bool allowDictionary)
 {
     JS_ASSERT_IF(!allowDictionary, !inDictionaryMode());
@@ -644,7 +644,7 @@ JSObject::addPropertyInternal(JSContext *cx, jsid id,
     {
         shape = self->lastProperty();
 
-        jsuint index;
+        uint32_t index;
         bool indexed = js_IdIsIndex(id, &index);
         UnownedBaseShape *nbase;
         if (shape->base()->matchesGetterSetter(getter, setter) && !indexed) {
@@ -690,7 +690,7 @@ JSObject::addPropertyInternal(JSContext *cx, jsid id,
  * enforce all restrictions from ECMA-262 v5 8.12.9 [[DefineOwnProperty]].
  */
 inline bool
-CheckCanChangeAttrs(JSContext *cx, JSObject *obj, const Shape *shape, uintN *attrsp)
+CheckCanChangeAttrs(JSContext *cx, JSObject *obj, const Shape *shape, unsigned *attrsp)
 {
     if (shape->configurable())
         return true;
@@ -711,8 +711,8 @@ CheckCanChangeAttrs(JSContext *cx, JSObject *obj, const Shape *shape, uintN *att
 Shape *
 JSObject::putProperty(JSContext *cx, jsid id,
                       PropertyOp getter, StrictPropertyOp setter,
-                      uint32_t slot, uintN attrs,
-                      uintN flags, intN shortid)
+                      uint32_t slot, unsigned attrs,
+                      unsigned flags, int shortid)
 {
     JS_ASSERT(!JSID_IS_VOID(id));
 
@@ -758,7 +758,7 @@ JSObject::putProperty(JSContext *cx, jsid id,
 
     RootedVar<UnownedBaseShape*> nbase(cx);
     {
-        jsuint index;
+        uint32_t index;
         bool indexed = js_IdIsIndex(id, &index);
         StackBaseShape base(self->lastProperty()->base());
         base.updateGetterSetter(attrs, getter, setter);
@@ -862,7 +862,7 @@ JSObject::putProperty(JSContext *cx, jsid id,
 }
 
 Shape *
-JSObject::changeProperty(JSContext *cx, Shape *shape, uintN attrs, uintN mask,
+JSObject::changeProperty(JSContext *cx, Shape *shape, unsigned attrs, unsigned mask,
                          PropertyOp getter, StrictPropertyOp setter)
 {
     JS_ASSERT(nativeContains(cx, *shape));
@@ -1062,7 +1062,7 @@ JSObject::replaceWithNewEquivalentShape(JSContext *cx, Shape *oldShape, Shape *n
 {
     JS_ASSERT_IF(oldShape != lastProperty(),
                  inDictionaryMode() &&
-                 nativeLookup(cx, oldShape->maybePropid()) == oldShape);
+                 nativeLookup(cx, oldShape->propidRef()) == oldShape);
 
     JSObject *self = this;
 
@@ -1086,7 +1086,7 @@ JSObject::replaceWithNewEquivalentShape(JSContext *cx, Shape *oldShape, Shape *n
     PropertyTable &table = self->lastProperty()->table();
     Shape **spp = oldShape->isEmptyShape()
                   ? NULL
-                  : table.search(oldShape->maybePropid(), false);
+                  : table.search(oldShape->propidRef(), false);
 
     /*
      * Splice the new shape into the same position as the old shape, preserving

@@ -75,6 +75,7 @@
 #include "nsGUIEvent.h"
 #include "nsIIOService.h"
 #include "nsDocument.h"
+#include "nsAttrValueOrString.h"
 
 #include "nsPresState.h"
 #include "nsLayoutErrors.h"
@@ -119,6 +120,8 @@
 
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Util.h" // DebugOnly
+
+#include "nsIIDNService.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -184,7 +187,7 @@ static const nsAttrValue::EnumTable* kInputDefaultAutocomplete = &kInputAutocomp
   {0xb5, 0x13, 0x7b, 0x36, 0x93, 0x43, 0xe3, 0xa0} \
 }
 
-class nsHTMLInputElementState : public nsISupports
+class nsHTMLInputElementState MOZ_FINAL : public nsISupports
 {
   public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_INPUT_ELEMENT_STATE_IID)
@@ -266,10 +269,10 @@ AsyncClickHandler::Run()
   }
 
   // Check if page is allowed to open the popup
-  if (mPopupControlState != openAllowed) {
+  if (mPopupControlState > openControlled) {
     nsCOMPtr<nsIPopupWindowManager> pm =
       do_GetService(NS_POPUPWINDOWMANAGER_CONTRACTID);
- 
+
     if (!pm) {
       return NS_OK;
     }
@@ -722,7 +725,7 @@ nsHTMLInputElement::Clone(nsINodeInfo *aNodeInfo, nsINode **aResult) const
 
 nsresult
 nsHTMLInputElement::BeforeSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                                  const nsAString* aValue,
+                                  const nsAttrValueOrString* aValue,
                                   bool aNotify)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
@@ -739,7 +742,7 @@ nsHTMLInputElement::BeforeSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
     } else if (aNotify && aName == nsGkAtoms::src &&
                mType == NS_FORM_INPUT_IMAGE) {
       if (aValue) {
-        LoadImage(*aValue, true, aNotify);
+        LoadImage(aValue->String(), true, aNotify);
       } else {
         // Null value means the attr got unset; drop the image
         CancelImageRequests(aNotify);
@@ -755,8 +758,7 @@ nsHTMLInputElement::BeforeSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 
 nsresult
 nsHTMLInputElement::AfterSetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
-                                 const nsAString* aValue,
-                                 bool aNotify)
+                                 const nsAttrValue* aValue, bool aNotify)
 {
   if (aNameSpaceID == kNameSpaceID_None) {
     //
@@ -3918,18 +3920,34 @@ nsHTMLInputElement::IsValidEmailAddressList(const nsAString& aValue)
 bool
 nsHTMLInputElement::IsValidEmailAddress(const nsAString& aValue)
 {
+  nsCAutoString value = NS_ConvertUTF16toUTF8(aValue);
   PRUint32 i = 0;
-  PRUint32 length = aValue.Length();
+  PRUint32 length = value.Length();
+
+  // Puny-encode the string if needed before running the validation algorithm.
+  nsCOMPtr<nsIIDNService> idnSrv = do_GetService(NS_IDNSERVICE_CONTRACTID);
+  if (idnSrv) {
+    bool ace;
+    if (NS_SUCCEEDED(idnSrv->IsACE(value, &ace)) && !ace) {
+      nsCAutoString punyCodedValue;
+      if (NS_SUCCEEDED(idnSrv->ConvertUTF8toACE(value, punyCodedValue))) {
+        value = punyCodedValue;
+        length = value.Length();
+      }
+    }
+  } else {
+    NS_ERROR("nsIIDNService isn't present!");
+  }
 
   // If the email address is empty, begins with a '@' or ends with a '.',
   // we know it's invalid.
-  if (length == 0 || aValue[0] == '@' || aValue[length-1] == '.') {
+  if (length == 0 || value[0] == '@' || value[length-1] == '.') {
     return false;
   }
 
   // Parsing the username.
-  for (; i < length && aValue[i] != '@'; ++i) {
-    PRUnichar c = aValue[i];
+  for (; i < length && value[i] != '@'; ++i) {
+    PRUnichar c = value[i];
 
     // The username characters have to be in this list to be valid.
     if (!(nsCRT::IsAsciiAlpha(c) || nsCRT::IsAsciiDigit(c) ||
@@ -3948,17 +3966,17 @@ nsHTMLInputElement::IsValidEmailAddress(const nsAString& aValue)
   }
 
   // The domain name can't begin with a dot.
-  if (aValue[i] == '.') {
+  if (value[i] == '.') {
     return false;
   }
 
   // Parsing the domain name.
   for (; i < length; ++i) {
-    PRUnichar c = aValue[i];
+    PRUnichar c = value[i];
 
     if (c == '.') {
       // A dot can't follow a dot.
-      if (aValue[i-1] == '.') {
+      if (value[i-1] == '.') {
         return false;
       }
     } else if (!(nsCRT::IsAsciiAlpha(c) || nsCRT::IsAsciiDigit(c) ||

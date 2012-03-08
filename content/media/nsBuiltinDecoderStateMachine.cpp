@@ -48,7 +48,8 @@
 #include "nsDeque.h"
 
 #include "mozilla/Preferences.h"
-#include "mozilla/StdInt.h"
+#include "mozilla/StandardInteger.h"
+#include "mozilla/Util.h"
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -307,9 +308,8 @@ void StateMachineTracker::EnsureGlobalStateMachine()
   ReentrantMonitorAutoEnter mon(mMonitor);
   if (mStateMachineCount == 0) {
     NS_ASSERTION(!mStateMachineThread, "Should have null state machine thread!");
-    nsresult res = NS_NewThread(&mStateMachineThread,
-                                nsnull);
-    NS_ABORT_IF_FALSE(NS_SUCCEEDED(res), "Can't create media state machine thread");
+    DebugOnly<nsresult> rv = NS_NewThread(&mStateMachineThread, nsnull);
+    NS_ABORT_IF_FALSE(NS_SUCCEEDED(rv), "Can't create media state machine thread");
   }
   mStateMachineCount++;
 }
@@ -806,53 +806,39 @@ void nsBuiltinDecoderStateMachine::AudioLoop()
 
     // Calculate the number of frames that have been pushed onto the audio
     // hardware.
-    PRInt64 playedFrames = 0;
-    if (!UsecsToFrames(audioStartTime, rate, playedFrames)) {
-      NS_WARNING("Int overflow converting playedFrames");
-      break;
-    }
-    if (!AddOverflow(playedFrames, audioDuration, playedFrames)) {
-      NS_WARNING("Int overflow adding playedFrames");
-      break;
-    }
-
+    CheckedInt64 playedFrames = UsecsToFrames(audioStartTime, rate) +
+                                              audioDuration;
     // Calculate the timestamp of the next chunk of audio in numbers of
     // samples.
-    PRInt64 sampleTime = 0;
-    if (!UsecsToFrames(s->mTime, rate, sampleTime)) {
-      NS_WARNING("Int overflow converting sampleTime");
-      break;
-    }
-    PRInt64 missingFrames = 0;
-    if (!AddOverflow(sampleTime, -playedFrames, missingFrames)) {
-      NS_WARNING("Int overflow adding missingFrames");
+    CheckedInt64 sampleTime = UsecsToFrames(s->mTime, rate);
+    CheckedInt64 missingFrames = sampleTime - playedFrames;
+    if (!missingFrames.valid() || !sampleTime.valid()) {
+      NS_WARNING("Int overflow adding in AudioLoop()");
       break;
     }
 
     PRInt64 framesWritten = 0;
-    if (missingFrames > 0) {
+    if (missingFrames.value() > 0) {
       // The next audio chunk begins some time after the end of the last chunk
       // we pushed to the audio hardware. We must push silence into the audio
       // hardware so that the next audio chunk begins playback at the correct
       // time.
-      missingFrames = NS_MIN(static_cast<PRInt64>(PR_UINT32_MAX), missingFrames);
-      framesWritten = PlaySilence(static_cast<PRUint32>(missingFrames),
-                                  channels, playedFrames);
+      missingFrames = NS_MIN(static_cast<PRInt64>(PR_UINT32_MAX),
+                             missingFrames.value());
+      framesWritten = PlaySilence(static_cast<PRUint32>(missingFrames.value()),
+                                  channels, playedFrames.value());
     } else {
-      framesWritten = PlayFromAudioQueue(sampleTime, channels);
+      framesWritten = PlayFromAudioQueue(sampleTime.value(), channels);
     }
     audioDuration += framesWritten;
     {
       ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-      PRInt64 playedUsecs;
-      if (!FramesToUsecs(audioDuration, rate, playedUsecs)) {
-        NS_WARNING("Int overflow calculating playedUsecs");
-        break;
-      }
-      if (!AddOverflow(audioStartTime, playedUsecs, mAudioEndTime)) {
+      CheckedInt64 playedUsecs = FramesToUsecs(audioDuration, rate) + audioStartTime;
+      if (!playedUsecs.valid()) {
         NS_WARNING("Int overflow calculating audio end time");
         break;
       }
+      mAudioEndTime = playedUsecs.value();
     }
   }
   if (mReader->mAudioQueue.AtEndOfStream() &&
@@ -1651,7 +1637,7 @@ void nsBuiltinDecoderStateMachine::DecodeSeek()
   // if we need to seek again.
 
   nsCOMPtr<nsIRunnable> stopEvent;
-  bool isLiveStream = mDecoder->GetStream()->GetLength() == -1;
+  bool isLiveStream = mDecoder->GetResource()->GetLength() == -1;
   if (GetMediaTime() == mEndTime && !isLiveStream) {
     // Seeked to end of media, move to COMPLETED state. Note we don't do
     // this if we're playing a live stream, since the end of media will advance
@@ -1721,8 +1707,8 @@ nsresult nsBuiltinDecoderStateMachine::RunStateMachine()
 {
   mDecoder->GetReentrantMonitor().AssertCurrentThreadIn();
 
-  nsMediaStream* stream = mDecoder->GetStream();
-  NS_ENSURE_TRUE(stream, NS_ERROR_NULL_POINTER);
+  MediaResource* resource = mDecoder->GetResource();
+  NS_ENSURE_TRUE(resource, NS_ERROR_NULL_POINTER);
 
   switch (mState) {
     case DECODER_STATE_SHUTDOWN: {
@@ -1802,13 +1788,13 @@ nsresult nsBuiltinDecoderStateMachine::RunStateMachine()
       // data to begin playback, or if we've not downloaded a reasonable
       // amount of data inside our buffering time.
       TimeDuration elapsed = now - mBufferingStart;
-      bool isLiveStream = mDecoder->GetStream()->GetLength() == -1;
+      bool isLiveStream = mDecoder->GetResource()->GetLength() == -1;
       if ((isLiveStream || !mDecoder->CanPlayThrough()) &&
             elapsed < TimeDuration::FromSeconds(mBufferingWait) &&
             (mQuickBuffering ? HasLowDecodedData(QUICK_BUFFERING_LOW_DATA_USECS)
                             : (GetUndecodedData() < mBufferingWait * USECS_PER_S / 1000)) &&
-            !stream->IsDataCachedToEndOfStream(mDecoder->mDecoderPosition) &&
-            !stream->IsSuspended())
+            !resource->IsDataCachedToEndOfResource(mDecoder->mDecoderPosition) &&
+            !resource->IsSuspended())
       {
         LOG(PR_LOG_DEBUG,
             ("%p Buffering: %.3lfs/%ds, timeout in %.3lfs %s",
@@ -1908,9 +1894,9 @@ void nsBuiltinDecoderStateMachine::RenderVideoFrame(VideoData* aData,
     return;
   }
 
-  nsRefPtr<Image> image = aData->mImage;
-  if (image) {
-    mDecoder->SetVideoData(aData->mDisplay, image, aTarget);
+  VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
+  if (container) {
+    container->SetCurrentFrame(aData->mDisplay, aData->mImage, aTarget);
   }
 }
 
@@ -2000,12 +1986,12 @@ void nsBuiltinDecoderStateMachine::AdvanceFrame()
 
   // Check to see if we don't have enough data to play up to the next frame.
   // If we don't, switch to buffering mode.
-  nsMediaStream* stream = mDecoder->GetStream();
+  MediaResource* resource = mDecoder->GetResource();
   if (mState == DECODER_STATE_DECODING &&
       mDecoder->GetState() == nsBuiltinDecoder::PLAY_STATE_PLAYING &&
       HasLowDecodedData(remainingTime + EXHAUSTED_DATA_MARGIN_USECS) &&
-      !stream->IsDataCachedToEndOfStream(mDecoder->mDecoderPosition) &&
-      !stream->IsSuspended() &&
+      !resource->IsDataCachedToEndOfResource(mDecoder->mDecoderPosition) &&
+      !resource->IsSuspended() &&
       (JustExitedQuickBuffering() || HasLowUndecodedData()))
   {
     if (currentFrame) {
@@ -2032,6 +2018,13 @@ void nsBuiltinDecoderStateMachine::AdvanceFrame()
       // If we have video, we want to increment the clock in steps of the frame
       // duration.
       RenderVideoFrame(currentFrame, presTime);
+    }
+    // If we're no longer playing after dropping and reacquiring the lock,
+    // playback must've been stopped on the decode thread (by a seek, for
+    // example).  In that case, the current frame is probably out of date.
+    if (!IsPlaying()) {
+      ScheduleStateMachine();
+      return;
     }
     mDecoder->GetFrameStatistics().NotifyPresentedFrame();
     PRInt64 now = DurationToUsecs(TimeStamp::Now() - mPlayStartTime) + mPlayDuration;
@@ -2178,11 +2171,11 @@ void nsBuiltinDecoderStateMachine::StartBuffering()
 }
 
 nsresult nsBuiltinDecoderStateMachine::GetBuffered(nsTimeRanges* aBuffered) {
-  nsMediaStream* stream = mDecoder->GetStream();
-  NS_ENSURE_TRUE(stream, NS_ERROR_FAILURE);
-  stream->Pin();
+  MediaResource* resource = mDecoder->GetResource();
+  NS_ENSURE_TRUE(resource, NS_ERROR_FAILURE);
+  resource->Pin();
   nsresult res = mReader->GetBuffered(aBuffered, mStartTime);
-  stream->Unpin();
+  resource->Unpin();
   return res;
 }
 

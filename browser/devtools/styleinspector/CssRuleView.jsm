@@ -38,7 +38,7 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-"use strict"
+"use strict";
 
 const Cc = Components.classes;
 const Ci = Components.interfaces;
@@ -103,6 +103,13 @@ function ElementStyle(aElement, aStore)
 {
   this.element = aElement;
   this.store = aStore || {};
+
+  // We don't want to overwrite this.store.userProperties so we only create it
+  // if it doesn't already exist.
+  if (!("userProperties" in this.store)) {
+    this.store.userProperties = new UserProperties();
+  }
+
   if (this.store.disabled) {
     this.store.disabled = aStore.disabled;
   } else {
@@ -116,7 +123,7 @@ function ElementStyle(aElement, aStore)
   // how their .style attribute reflects them as computed values.
   this.dummyElement = doc.createElementNS(this.element.namespaceURI,
                                           this.element.tagName);
-  this._populate();
+  this.populate();
 }
 // We're exporting _ElementStyle for unit tests.
 var _ElementStyle = ElementStyle;
@@ -147,7 +154,7 @@ ElementStyle.prototype = {
    * Refresh the list of rules to be displayed for the active element.
    * Upon completion, this.rules[] will hold a list of Rule objects.
    */
-  _populate: function ElementStyle_populate()
+  populate: function ElementStyle_populate()
   {
     this.rules = [];
 
@@ -181,8 +188,8 @@ ElementStyle.prototype = {
       let domRule = domRules.GetElementAt(i);
 
       // XXX: Optionally provide access to system sheets.
-      let systemSheet = CssLogic.isSystemStyleSheet(domRule.parentStyleSheet);
-      if (systemSheet) {
+      let contentSheet = CssLogic.isContentStylesheet(domRule.parentStyleSheet);
+      if (!contentSheet) {
         continue;
       }
 
@@ -324,7 +331,7 @@ ElementStyle.prototype = {
     aProp.overridden = overridden;
     return dirty;
   }
-}
+};
 
 /**
  * A single style rule or declaration.
@@ -358,11 +365,9 @@ Rule.prototype = {
     if (this._title) {
       return this._title;
     }
-    let sheet = this.domRule ? this.domRule.parentStyleSheet : null;
-    this._title = CssLogic.shortSource(sheet);
+    this._title = CssLogic.shortSource(this.sheet);
     if (this.domRule) {
-      let line = this.elementStyle.domUtils.getRuleLine(this.domRule);
-      this._title += ":" + line;
+      this._title += ":" + this.ruleLine;
     }
 
     if (this.inherited) {
@@ -376,6 +381,26 @@ Rule.prototype = {
     }
 
     return this._title;
+  },
+
+  /**
+   * The rule's stylesheet.
+   */
+  get sheet()
+  {
+    return this.domRule ? this.domRule.parentStyleSheet : null;
+  },
+
+  /**
+   * The rule's line within a stylesheet
+   */
+  get ruleLine()
+  {
+    if (!this.sheet) {
+      // No stylesheet, no ruleLine
+      return null;
+    }
+    return this.elementStyle.domUtils.getRuleLine(this.domRule);
   },
 
   /**
@@ -404,6 +429,7 @@ Rule.prototype = {
   applyProperties: function Rule_applyProperties()
   {
     let disabledProps = [];
+    let store = this.elementStyle.store;
 
     for each (let prop in this.textProps) {
       if (!prop.enabled) {
@@ -415,10 +441,11 @@ Rule.prototype = {
         continue;
       }
 
+      store.userProperties.setProperty(this.style, prop.name, prop.value);
+
       this.style.setProperty(prop.name, prop.value, prop.priority);
-      // Refresh the property's value from the style, to reflect
+      // Refresh the property's priority from the style, to reflect
       // any changes made during parsing.
-      prop.value = this.style.getPropertyValue(prop.name);
       prop.priority = this.style.getPropertyPriority(prop.name);
       prop.updateComputed();
     }
@@ -501,6 +528,7 @@ Rule.prototype = {
   _getTextProperties: function Rule_getTextProperties()
   {
     this.textProps = [];
+    let store = this.elementStyle.store;
     let lines = this.style.cssText.match(CSS_LINE_RE);
     for each (let line in lines) {
       let matches = CSS_PROP_RE.exec(line);
@@ -512,8 +540,8 @@ Rule.prototype = {
           !this.elementStyle.domUtils.isInheritedProperty(name)) {
         continue;
       }
-
-      let prop = new TextProperty(this, name, matches[2], matches[3] || "");
+      let value = store.userProperties.getProperty(this.style, name, matches[2]);
+      let prop = new TextProperty(this, name, value, matches[3] || "");
       this.textProps.push(prop);
     }
 
@@ -524,13 +552,13 @@ Rule.prototype = {
     }
 
     for each (let prop in disabledProps) {
-      let textProp = new TextProperty(this, prop.name,
-                                      prop.value, prop.priority);
+      let value = store.userProperties.getProperty(this.style, prop.name, prop.value);
+      let textProp = new TextProperty(this, prop.name, value, prop.priority);
       textProp.enabled = false;
       this.textProps.push(textProp);
     }
   },
-}
+};
 
 /**
  * A single property in a rule's cssText.
@@ -618,7 +646,7 @@ TextProperty.prototype = {
   {
     this.rule.removeProperty(this);
   }
-}
+};
 
 
 /**
@@ -643,7 +671,7 @@ TextProperty.prototype = {
  * apply to a given element.  After construction, the 'element'
  * property will be available with the user interface.
  *
- * @param Document aDocument
+ * @param Document aDoc
  *        The document that will contain the rule view.
  * @param object aStore
  *        The CSS rule view can use this object to store metadata
@@ -655,7 +683,6 @@ function CssRuleView(aDoc, aStore)
 {
   this.doc = aDoc;
   this.store = aStore;
-
   this.element = this.doc.createElementNS(XUL_NS, "vbox");
   this.element.setAttribute("tabindex", "0");
   this.element.classList.add("ruleview");
@@ -696,15 +723,33 @@ CssRuleView.prototype = {
 
     this._createEditors();
   },
+  
+  /**
+   * Update the rules for the currently highlighted element.
+   */
+  nodeChanged: function CssRuleView_nodeChanged()
+  {
+    this._clearRules();
+    this._elementStyle.populate();
+    this._createEditors();
+  },  
+
+  /**
+   * Clear the rules.
+   */
+  _clearRules: function CssRuleView_clearRules()
+  {
+    while (this.element.hasChildNodes()) {
+      this.element.removeChild(this.element.lastChild);
+    }
+  },
 
   /**
    * Clear the rule view.
    */
   clear: function CssRuleView_clear()
   {
-    while (this.element.hasChildNodes()) {
-      this.element.removeChild(this.element.lastChild);
-    }
+    this._clearRules();
     this._viewedElement = null;
     this._elementStyle = null;
   },
@@ -768,6 +813,14 @@ RuleEditor.prototype = {
       class: "ruleview-rule-source",
       textContent: this.rule.title
     });
+    source.addEventListener("click", function() {
+      let rule = this.rule;
+      let evt = this.doc.createEvent("CustomEvent");
+      evt.initCustomEvent("CssRuleViewCSSLinkClicked", true, false, {
+        rule: rule,
+      });
+      this.element.dispatchEvent(evt);
+    }.bind(this));
 
     let code = createChild(this.element, "div", {
       class: "ruleview-code"
@@ -950,6 +1003,12 @@ TextPropertyEditor.prototype = {
 
     appendText(this.element, ";");
 
+    this.warning = createChild(this.element, "div", {
+      hidden: "",
+      class: "ruleview-warning",
+      title: CssLogic.l10n("rule.warning.title"),
+    });
+
     // Holds the viewers for the computed properties.
     // will be populated in |_updateComputed|.
     this.computed = createChild(this.element, "ul", {
@@ -985,6 +1044,7 @@ TextPropertyEditor.prototype = {
       val += " !" + this.prop.priority;
     }
     this.valueSpan.textContent = val;
+    this.warning.hidden = this._validate();
 
     // Populate the computed styles.
     this._updateComputed();
@@ -1094,8 +1154,6 @@ TextPropertyEditor.prototype = {
   _parseValue: function TextPropertyEditor_parseValue(aValue)
   {
     let pieces = aValue.split("!", 2);
-    let value = pieces[0];
-    let priority = pieces.length > 1 ? pieces[1] : "";
     return {
       value: pieces[0].trim(),
       priority: (pieces.length > 1 ? pieces[1].trim() : "")
@@ -1121,6 +1179,23 @@ TextPropertyEditor.prototype = {
     } else {
       this.prop.setValue(this.committed.value, this.committed.priority);
     }
+  },
+
+  /**
+   * Validate this property.
+   *
+   * @returns {Boolean}
+   *          True if the property value is valid, false otherwise.
+   */
+  _validate: function TextPropertyEditor_validate()
+  {
+    let name = this.prop.name;
+    let value = this.prop.value;
+    let style = this.doc.createElementNS(HTML_NS, "div").style;
+
+    style.setProperty(name, value, null);
+
+    return !!style.getPropertyValue(name);
   },
 };
 
@@ -1338,6 +1413,61 @@ InplaceEditor.prototype = {
       this.change(this.input.value.trim());
     }
   }
+};
+
+/**
+ * Store of CSSStyleDeclarations mapped to properties that have been changed by
+ * the user.
+ */
+function UserProperties()
+{
+  this.weakMap = new WeakMap();
+}
+
+UserProperties.prototype = {
+  /**
+   * Get a named property for a given CSSStyleDeclaration.
+   *
+   * @param {CSSStyleDeclaration} aStyle
+   *        The CSSStyleDeclaration against which the property is mapped.
+   * @param {String} aName
+   *        The name of the property to get.
+   * @param {Boolean} aDefault
+   *        Indicates whether the property value is one entered by a user.
+   * @returns {String}
+   *          The property value if it has previously been set by the user, null
+   *          otherwise.
+   */
+  getProperty: function UP_getProperty(aStyle, aName, aDefault) {
+    let entry = this.weakMap.get(aStyle, null);
+
+    if (entry && aName in entry) {
+      return entry[aName];
+    }
+    return typeof aDefault != "undefined" ? aDefault : null;
+
+  },
+
+  /**
+   * Set a named property for a given CSSStyleDeclaration.
+   *
+   * @param {CSSStyleDeclaration} aStyle
+   *        The CSSStyleDeclaration against which the property is to be mapped.
+   * @param {String} aName
+   *        The name of the property to set.
+   * @param {String} aValue
+   *        The value of the property to set.
+   */
+  setProperty: function UP_setProperty(aStyle, aName, aValue) {
+    let entry = this.weakMap.get(aStyle, null);
+    if (entry) {
+      entry[aName] = aValue;
+    } else {
+      let props = {};
+      props[aName] = aValue;
+      this.weakMap.set(aStyle, props);
+    }
+  },
 };
 
 /**

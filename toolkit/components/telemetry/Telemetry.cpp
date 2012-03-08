@@ -64,6 +64,60 @@ namespace {
 using namespace base;
 using namespace mozilla;
 
+template<class EntryType>
+class AutoHashtable : public nsTHashtable<EntryType>
+{
+public:
+  AutoHashtable(PRUint32 initSize = PL_DHASH_MIN_SIZE);
+  ~AutoHashtable();
+  typedef bool (*ReflectEntryFunc)(EntryType *entry, JSContext *cx, JSObject *obj);
+  bool ReflectHashtable(ReflectEntryFunc entryFunc, JSContext *cx, JSObject *obj);
+private:
+  struct EnumeratorArgs {
+    JSContext *cx;
+    JSObject *obj;
+    ReflectEntryFunc entryFunc;
+  };
+  static PLDHashOperator ReflectEntryStub(EntryType *entry, void *arg);
+};
+
+template<class EntryType>
+AutoHashtable<EntryType>::AutoHashtable(PRUint32 initSize)
+{
+  this->Init(initSize);
+}
+
+template<class EntryType>
+AutoHashtable<EntryType>::~AutoHashtable()
+{
+  this->Clear();
+}
+
+template<typename EntryType>
+PLDHashOperator
+AutoHashtable<EntryType>::ReflectEntryStub(EntryType *entry, void *arg)
+{
+  EnumeratorArgs *args = static_cast<EnumeratorArgs *>(arg);
+  if (!args->entryFunc(entry, args->cx, args->obj)) {
+    return PL_DHASH_STOP;
+  }
+  return PL_DHASH_NEXT;
+}
+
+/**
+ * Reflect the individual entries of table into JS, usually by defining
+ * some property and value of obj.  entryFunc is called for each entry.
+ */
+template<typename EntryType>
+bool
+AutoHashtable<EntryType>::ReflectHashtable(ReflectEntryFunc entryFunc,
+                                           JSContext *cx, JSObject *obj)
+{
+  EnumeratorArgs args = { cx, obj, entryFunc };
+  PRUint32 num = this->EnumerateEntries(ReflectEntryStub, static_cast<void*>(&args));
+  return num == this->Count();
+}
+
 class TelemetryImpl : public nsITelemetry
 {
   NS_DECL_ISUPPORTS
@@ -87,6 +141,8 @@ public:
   typedef nsBaseHashtableET<nsCStringHashKey, StmtStats> SlowSQLEntryType;
 
 private:
+  static bool StatementReflector(SlowSQLEntryType *entry, JSContext *cx,
+                                 JSObject *obj);
   bool AddSQLInfo(JSContext *cx, JSObject *rootObj, bool mainThread);
 
   // Like GetHistogramById, but returns the underlying C++ object, not the JS one.
@@ -94,14 +150,37 @@ private:
   bool ShouldReflectHistogram(Histogram *h);
   void IdentifyCorruptHistograms(StatisticsRecorder::Histograms &hs);
   typedef StatisticsRecorder::Histograms::iterator HistogramIterator;
+
+  struct AddonHistogramInfo {
+    PRUint32 min;
+    PRUint32 max;
+    PRUint32 bucketCount;
+    PRUint32 histogramType;
+    Histogram *h;
+  };
+  typedef nsBaseHashtableET<nsCStringHashKey, AddonHistogramInfo> AddonHistogramEntryType;
+  typedef AutoHashtable<AddonHistogramEntryType> AddonHistogramMapType;
+  typedef nsBaseHashtableET<nsCStringHashKey, AddonHistogramMapType *> AddonEntryType;
+  typedef AutoHashtable<AddonEntryType> AddonMapType;
+  struct AddonEnumeratorArgs {
+    JSContext *cx;
+    JSObject *obj;
+  };
+  static bool AddonHistogramReflector(AddonHistogramEntryType *entry,
+                                      JSContext *cx, JSObject *obj);
+  static bool AddonReflector(AddonEntryType *entry, JSContext *cx, JSObject *obj);
+  AddonMapType mAddonMap;
+
   // This is used for speedy string->Telemetry::ID conversions
   typedef nsBaseHashtableET<nsCharPtrHashKey, Telemetry::ID> CharPtrEntryType;
-  typedef nsTHashtable<CharPtrEntryType> HistogramMapType;
+  typedef AutoHashtable<CharPtrEntryType> HistogramMapType;
   HistogramMapType mHistogramMap;
   bool mCanRecord;
   static TelemetryImpl *sTelemetry;
-  nsTHashtable<SlowSQLEntryType> mSlowSQLOnMainThread;
-  nsTHashtable<SlowSQLEntryType> mSlowSQLOnOtherThread;
+  AutoHashtable<SlowSQLEntryType> mSlowSQLOnMainThread;
+  AutoHashtable<SlowSQLEntryType> mSlowSQLOnOtherThread;
+  // This gets marked immutable in debug builds, so we can't use
+  // AutoHashtable here.
   nsTHashtable<nsCStringHashKey> mTrackedDBs;
   Mutex mHashMutex;
 };
@@ -239,26 +318,41 @@ ReflectHistogramAndSamples(JSContext *cx, JSObject *obj, Histogram *h,
     return REFLECT_CORRUPT;
   }
 
-  JSObject *counts_array;
-  JSObject *rarray;
-  const size_t count = h->bucket_count();
   if (!(JS_DefineProperty(cx, obj, "min", INT_TO_JSVAL(h->declared_min()), NULL, NULL, JSPROP_ENUMERATE)
         && JS_DefineProperty(cx, obj, "max", INT_TO_JSVAL(h->declared_max()), NULL, NULL, JSPROP_ENUMERATE)
         && JS_DefineProperty(cx, obj, "histogram_type", INT_TO_JSVAL(h->histogram_type()), NULL, NULL, JSPROP_ENUMERATE)
-        && JS_DefineProperty(cx, obj, "sum", DOUBLE_TO_JSVAL(ss.sum()), NULL, NULL, JSPROP_ENUMERATE)
-        && (rarray = JS_NewArrayObject(cx, count, NULL))
-        && JS_DefineProperty(cx, obj, "ranges", OBJECT_TO_JSVAL(rarray), NULL, NULL, JSPROP_ENUMERATE)
-        && FillRanges(cx, rarray, h)
-        && (counts_array = JS_NewArrayObject(cx, count, NULL))
-        && JS_DefineProperty(cx, obj, "counts", OBJECT_TO_JSVAL(counts_array), NULL, NULL, JSPROP_ENUMERATE)
-        )) {
+        && JS_DefineProperty(cx, obj, "sum", DOUBLE_TO_JSVAL(ss.sum()), NULL, NULL, JSPROP_ENUMERATE))) {
+    return REFLECT_FAILURE;
+  }
+
+  const size_t count = h->bucket_count();
+  JSObject *rarray = JS_NewArrayObject(cx, count, nsnull);
+  if (!rarray) {
+    return REFLECT_FAILURE;
+  }
+  JS::AutoObjectRooter aroot(cx, rarray);
+  if (!(FillRanges(cx, rarray, h)
+        && JS_DefineProperty(cx, obj, "ranges", OBJECT_TO_JSVAL(rarray),
+                             NULL, NULL, JSPROP_ENUMERATE))) {
+    return REFLECT_FAILURE;
+  }
+
+  JSObject *counts_array = JS_NewArrayObject(cx, count, NULL);
+  if (!counts_array) {
+    return REFLECT_FAILURE;
+  }
+  JS::AutoObjectRooter croot(cx, counts_array);
+  if (!JS_DefineProperty(cx, obj, "counts", OBJECT_TO_JSVAL(counts_array),
+                         NULL, NULL, JSPROP_ENUMERATE)) {
     return REFLECT_FAILURE;
   }
   for (size_t i = 0; i < count; i++) {
-    if (!JS_DefineElement(cx, counts_array, i, INT_TO_JSVAL(ss.counts(i)), NULL, NULL, JSPROP_ENUMERATE)) {
+    if (!JS_DefineElement(cx, counts_array, i, INT_TO_JSVAL(ss.counts(i)),
+                          NULL, NULL, JSPROP_ENUMERATE)) {
       return REFLECT_FAILURE;
     }
   }
+ 
   return REFLECT_OK;
 }
 
@@ -271,7 +365,7 @@ ReflectHistogramSnapshot(JSContext *cx, JSObject *obj, Histogram *h)
 }
 
 JSBool
-JSHistogram_Add(JSContext *cx, uintN argc, jsval *vp)
+JSHistogram_Add(JSContext *cx, unsigned argc, jsval *vp)
 {
   if (!argc) {
     JS_ReportError(cx, "Expected one argument");
@@ -296,7 +390,7 @@ JSHistogram_Add(JSContext *cx, uintN argc, jsval *vp)
       return JS_FALSE;
     }
 
-    Histogram *h = static_cast<Histogram*>(JS_GetPrivate(cx, obj));
+    Histogram *h = static_cast<Histogram*>(JS_GetPrivate(obj));
     if (h->histogram_type() == Histogram::BOOLEAN_HISTOGRAM)
       h->Add(!!value);
     else
@@ -306,17 +400,18 @@ JSHistogram_Add(JSContext *cx, uintN argc, jsval *vp)
 }
 
 JSBool
-JSHistogram_Snapshot(JSContext *cx, uintN argc, jsval *vp)
+JSHistogram_Snapshot(JSContext *cx, unsigned argc, jsval *vp)
 {
   JSObject *obj = JS_THIS_OBJECT(cx, vp);
   if (!obj) {
     return JS_FALSE;
   }
 
-  Histogram *h = static_cast<Histogram*>(JS_GetPrivate(cx, obj));
-  JSObject *snapshot = JS_NewObject(cx, NULL, NULL, NULL);
+  Histogram *h = static_cast<Histogram*>(JS_GetPrivate(obj));
+  JSObject *snapshot = JS_NewObject(cx, nsnull, nsnull, nsnull);
   if (!snapshot)
     return JS_FALSE;
+  JS::AutoObjectRooter sroot(cx, snapshot);
 
   switch (ReflectHistogramSnapshot(cx, snapshot, h)) {
   case REFLECT_FAILURE:
@@ -347,13 +442,18 @@ WrapAndReturnHistogram(Histogram *h, JSContext *cx, jsval *ret)
   JSObject *obj = JS_NewObject(cx, &JSHistogram_class, NULL, NULL);
   if (!obj)
     return NS_ERROR_FAILURE;
+  JS::AutoObjectRooter root(cx, obj);
+  if (!(JS_DefineFunction (cx, obj, "add", JSHistogram_Add, 1, 0)
+        && JS_DefineFunction (cx, obj, "snapshot", JSHistogram_Snapshot, 1, 0))) {
+    return NS_ERROR_FAILURE;
+  }
   *ret = OBJECT_TO_JSVAL(obj);
-  return (JS_SetPrivate(cx, obj, h)
-          && JS_DefineFunction (cx, obj, "add", JSHistogram_Add, 1, 0)
-          && JS_DefineFunction (cx, obj, "snapshot", JSHistogram_Snapshot, 1, 0)) ? NS_OK : NS_ERROR_FAILURE;
+  JS_SetPrivate(obj, h);
+  return NS_OK;
 }
 
 TelemetryImpl::TelemetryImpl():
+mHistogramMap(Telemetry::HistogramCount),
 mCanRecord(XRE_GetProcessType() == GeckoProcessType_Default),
 mHashMutex("Telemetry::mHashMutex")
 {
@@ -374,16 +474,9 @@ mHashMutex("Telemetry::mHashMutex")
   // Mark immutable to prevent asserts on simultaneous access from multiple threads
   mTrackedDBs.MarkImmutable();
 #endif
-
-  mSlowSQLOnMainThread.Init();
-  mSlowSQLOnOtherThread.Init();
-  mHistogramMap.Init(Telemetry::HistogramCount);
 }
 
 TelemetryImpl::~TelemetryImpl() {
-  mSlowSQLOnMainThread.Clear();
-  mSlowSQLOnOtherThread.Clear();
-  mHistogramMap.Clear();
 }
 
 NS_IMETHODIMP
@@ -397,33 +490,25 @@ TelemetryImpl::NewHistogram(const nsACString &name, PRUint32 min, PRUint32 max, 
   return WrapAndReturnHistogram(h, cx, ret);
 }
 
-struct EnumeratorArgs {
-  JSContext *cx;
-  JSObject *statsObj;
-};
-
-PLDHashOperator
-StatementEnumerator(TelemetryImpl::SlowSQLEntryType *entry, void *arg)
+bool
+TelemetryImpl::StatementReflector(SlowSQLEntryType *entry, JSContext *cx,
+                                  JSObject *obj)
 {
-  EnumeratorArgs *args = static_cast<EnumeratorArgs *>(arg);
   const nsACString &sql = entry->GetKey();
   jsval hitCount = UINT_TO_JSVAL(entry->mData.hitCount);
   jsval totalTime = UINT_TO_JSVAL(entry->mData.totalTime);
 
-  JSObject *arrayObj = JS_NewArrayObject(args->cx, 2, nsnull);
-  if (!arrayObj ||
-      !JS_SetElement(args->cx, arrayObj, 0, &hitCount) ||
-      !JS_SetElement(args->cx, arrayObj, 1, &totalTime))
-    return PL_DHASH_STOP;
-
-  JSBool success = JS_DefineProperty(args->cx, args->statsObj,
-                                     sql.BeginReading(),
-                                     OBJECT_TO_JSVAL(arrayObj),
-                                     NULL, NULL, JSPROP_ENUMERATE);
-  if (!success)
-    return PL_DHASH_STOP;
-
-  return PL_DHASH_NEXT;
+  JSObject *arrayObj = JS_NewArrayObject(cx, 2, nsnull);
+  if (!arrayObj) {
+    return false;
+  }
+  JS::AutoObjectRooter root(cx, arrayObj);
+  return (JS_SetElement(cx, arrayObj, 0, &hitCount)
+          && JS_SetElement(cx, arrayObj, 1, &totalTime)
+          && JS_DefineProperty(cx, obj,
+                               sql.BeginReading(),
+                               OBJECT_TO_JSVAL(arrayObj),
+                               NULL, NULL, JSPROP_ENUMERATE));
 }
 
 bool
@@ -432,23 +517,19 @@ TelemetryImpl::AddSQLInfo(JSContext *cx, JSObject *rootObj, bool mainThread)
   JSObject *statsObj = JS_NewObject(cx, NULL, NULL, NULL);
   if (!statsObj)
     return false;
+  JS::AutoObjectRooter root(cx, statsObj);
 
-  JSBool ok = JS_DefineProperty(cx, rootObj,
-                                mainThread ? "mainThread" : "otherThreads",
-                                OBJECT_TO_JSVAL(statsObj),
-                                NULL, NULL, JSPROP_ENUMERATE);
-  if (!ok)
+  AutoHashtable<SlowSQLEntryType> &sqlMap = (mainThread
+                                             ? mSlowSQLOnMainThread
+                                             : mSlowSQLOnOtherThread);
+  if (!sqlMap.ReflectHashtable(StatementReflector, cx, statsObj)) {
     return false;
+  }
 
-  EnumeratorArgs args = { cx, statsObj };
-  nsTHashtable<SlowSQLEntryType> *sqlMap;
-  sqlMap = (mainThread ? &mSlowSQLOnMainThread : &mSlowSQLOnOtherThread);
-  PRUint32 num = sqlMap->EnumerateEntries(StatementEnumerator,
-                                          static_cast<void*>(&args));
-  if (num != sqlMap->Count())
-    return false;
-
-  return true;
+  return JS_DefineProperty(cx, rootObj,
+                           mainThread ? "mainThread" : "otherThreads",
+                           OBJECT_TO_JSVAL(statsObj),
+                           NULL, NULL, JSPROP_ENUMERATE);
 }
 
 nsresult
@@ -586,6 +667,111 @@ TelemetryImpl::ShouldReflectHistogram(Histogram *h)
   }
 }
 
+// Compute the name to pass into Histogram for the addon histogram
+// 'name' from the addon 'id'.  We can't use 'name' directly because it
+// might conflict with other histograms in other addons or even with our
+// own.
+void
+AddonHistogramName(const nsACString &id, const nsACString &name,
+                   nsACString &ret)
+{
+  ret.Append(id);
+  ret.Append(NS_LITERAL_CSTRING(":"));
+  ret.Append(name);
+}
+
+NS_IMETHODIMP
+TelemetryImpl::RegisterAddonHistogram(const nsACString &id,
+                                      const nsACString &name,
+                                      PRUint32 min, PRUint32 max,
+                                      PRUint32 bucketCount,
+                                      PRUint32 histogramType)
+{
+  AddonEntryType *addonEntry = mAddonMap.GetEntry(id);
+  if (!addonEntry) {
+    addonEntry = mAddonMap.PutEntry(id);
+    if (NS_UNLIKELY(!addonEntry)) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+    addonEntry->mData = new AddonHistogramMapType();
+  }
+
+  AddonHistogramMapType *histogramMap = addonEntry->mData;
+  AddonHistogramEntryType *histogramEntry = histogramMap->GetEntry(name);
+  // Can't re-register the same histogram.
+  if (histogramEntry) {
+    return NS_ERROR_FAILURE;
+  }
+
+  histogramEntry = histogramMap->PutEntry(name);
+  if (NS_UNLIKELY(!histogramEntry)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  AddonHistogramInfo &info = histogramEntry->mData;
+  info.min = min;
+  info.max = max;
+  info.bucketCount = bucketCount;
+  info.histogramType = histogramType;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GetAddonHistogram(const nsACString &id, const nsACString &name,
+                                 JSContext *cx, jsval *ret)
+{
+  AddonEntryType *addonEntry = mAddonMap.GetEntry(id);
+  // The given id has not been registered.
+  if (!addonEntry) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  AddonHistogramMapType *histogramMap = addonEntry->mData;
+  AddonHistogramEntryType *histogramEntry = histogramMap->GetEntry(name);
+  // The given histogram name has not been registered.
+  if (!histogramEntry) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  AddonHistogramInfo &info = histogramEntry->mData;
+  Histogram *h;
+  if (info.h) {
+    h = info.h;
+  } else {
+    nsCAutoString actualName;
+    AddonHistogramName(id, name, actualName);
+    nsresult rv = HistogramGet(PromiseFlatCString(actualName).get(),
+                               info.min, info.max, info.bucketCount,
+                               info.histogramType, &h);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    // Don't let this histogram be reported via the normal means
+    // (e.g. Telemetry.registeredHistograms); we'll make it available in
+    // other ways.
+    h->ClearFlags(Histogram::kUmaTargetedHistogramFlag);
+    info.h = h;
+  }
+  return WrapAndReturnHistogram(h, cx, ret);
+}
+
+NS_IMETHODIMP
+TelemetryImpl::UnregisterAddonHistograms(const nsACString &id)
+{
+  AddonEntryType *addonEntry = mAddonMap.GetEntry(id);
+  if (addonEntry) {
+    // Histogram's destructor is private, so this is the best we can do.
+    // The histograms the addon created *will* stick around, but they
+    // will be deleted if and when the addon registers histograms with
+    // the same names.
+    delete addonEntry->mData;
+    mAddonMap.RemoveEntry(id);
+  }
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 TelemetryImpl::GetHistogramSnapshots(JSContext *cx, jsval *ret)
 {
@@ -616,6 +802,7 @@ TelemetryImpl::GetHistogramSnapshots(JSContext *cx, jsval *ret)
     if (!hobj) {
       return NS_ERROR_FAILURE;
     }
+    JS::AutoObjectRooter root(cx, hobj);
     switch (ReflectHistogramSnapshot(cx, hobj, h)) {
     case REFLECT_CORRUPT:
       // We can still hit this case even if ShouldReflectHistograms
@@ -631,6 +818,77 @@ TelemetryImpl::GetHistogramSnapshots(JSContext *cx, jsval *ret)
       }
     }
   }
+  return NS_OK;
+}
+
+bool
+TelemetryImpl::AddonHistogramReflector(AddonHistogramEntryType *entry,
+                                       JSContext *cx, JSObject *obj)
+{
+  // Never even accessed the histogram.
+  if (!entry->mData.h) {
+    return true;
+  }
+
+  JSObject *snapshot = JS_NewObject(cx, NULL, NULL, NULL);
+  if (!snapshot) {
+    // Just consider this to be skippable.
+    return true;
+  }
+  JS::AutoObjectRooter r(cx, snapshot);
+  switch (ReflectHistogramSnapshot(cx, snapshot, entry->mData.h)) {
+  case REFLECT_FAILURE:
+  case REFLECT_CORRUPT:
+    return false;
+  case REFLECT_OK:
+    const nsACString &histogramName = entry->GetKey();
+    if (!JS_DefineProperty(cx, obj,
+                           PromiseFlatCString(histogramName).get(),
+                           OBJECT_TO_JSVAL(snapshot), NULL, NULL,
+                           JSPROP_ENUMERATE)) {
+      return false;
+    }
+    break;
+  }
+  return true;
+}
+
+bool
+TelemetryImpl::AddonReflector(AddonEntryType *entry,
+                              JSContext *cx, JSObject *obj)
+{
+  const nsACString &addonId = entry->GetKey();
+  JSObject *subobj = JS_NewObject(cx, NULL, NULL, NULL);
+  if (!subobj) {
+    return false;
+  }
+  JS::AutoObjectRooter r(cx, subobj);
+
+  AddonHistogramMapType *map = entry->mData;
+  if (!(map->ReflectHashtable(AddonHistogramReflector, cx, subobj)
+        && JS_DefineProperty(cx, obj,
+                             PromiseFlatCString(addonId).get(),
+                             OBJECT_TO_JSVAL(subobj), NULL, NULL,
+                             JSPROP_ENUMERATE))) {
+    return false;
+  }
+  return true;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GetAddonHistogramSnapshots(JSContext *cx, jsval *ret)
+{
+  *ret = JSVAL_VOID;
+  JSObject *obj = JS_NewObject(cx, NULL, NULL, NULL);
+  if (!obj) {
+    return NS_ERROR_FAILURE;
+  }
+  JS::AutoObjectRooter r(cx, obj);
+
+  if (!mAddonMap.ReflectHashtable(AddonReflector, cx, obj)) {
+    return NS_ERROR_FAILURE;
+  }
+  *ret = OBJECT_TO_JSVAL(obj);
   return NS_OK;
 }
 
@@ -660,6 +918,7 @@ TelemetryImpl::GetRegisteredHistograms(JSContext *cx, jsval *ret)
   JSObject *info = JS_NewObject(cx, NULL, NULL, NULL);
   if (!info)
     return NS_ERROR_FAILURE;
+  JS::AutoObjectRooter root(cx, info);
 
   for (size_t i = 0; i < count; ++i) {
     JSString *comment = JS_InternString(cx, gHistograms[i].comment);
@@ -700,13 +959,9 @@ public:
   ~TelemetrySessionData();
 
 private:
-  struct EnumeratorArgs {
-    JSContext *cx;
-    JSObject *snapshots;
-  };
   typedef nsBaseHashtableET<nsUint32HashKey, Histogram::SampleSet> EntryType;
-  typedef nsTHashtable<EntryType> SessionMapType;
-  static PLDHashOperator ReflectSamples(EntryType *entry, void *arg);
+  typedef AutoHashtable<EntryType> SessionMapType;
+  static bool SampleReflector(EntryType *entry, JSContext *cx, JSObject *obj);
   SessionMapType mSampleSetMap;
   nsCString mUUID;
 
@@ -723,12 +978,10 @@ NS_IMPL_THREADSAFE_ISUPPORTS1(TelemetrySessionData, nsITelemetrySessionData)
 TelemetrySessionData::TelemetrySessionData(const char *uuid)
   : mUUID(uuid)
 {
-  mSampleSetMap.Init();
 }
 
 TelemetrySessionData::~TelemetrySessionData()
 {
-  mSampleSetMap.Clear();
 }
 
 NS_IMETHODIMP
@@ -738,35 +991,34 @@ TelemetrySessionData::GetUuid(nsACString &uuid)
   return NS_OK;
 }
 
-PLDHashOperator
-TelemetrySessionData::ReflectSamples(EntryType *entry, void *arg)
+bool
+TelemetrySessionData::SampleReflector(EntryType *entry, JSContext *cx,
+                                      JSObject *snapshots)
 {
-  struct EnumeratorArgs *args = static_cast<struct EnumeratorArgs *>(arg);
+  // Don't reflect histograms with no data associated with them.
+  if (entry->mData.sum() == 0) {
+    return true;
+  }
+
   // This has the undesirable effect of creating a histogram for the
   // current session with the given ID.  But there's no good way to
   // compute the ranges and buckets from scratch.
   Histogram *h = nsnull;
   nsresult rv = GetHistogramByEnumId(Telemetry::ID(entry->GetKey()), &h);
   if (NS_FAILED(rv)) {
-    return PL_DHASH_STOP;
+    return true;
   }
 
-  // Don't reflect histograms with no data associated with them.
-  if (entry->mData.sum() == 0) {
-    return PL_DHASH_NEXT;
+  JSObject *snapshot = JS_NewObject(cx, NULL, NULL, NULL);
+  if (!snapshot) {
+    return false;
   }
-
-  JSObject *snapshot = JS_NewObject(args->cx, NULL, NULL, NULL);
-  if (!(snapshot
-        && ReflectHistogramAndSamples(args->cx, snapshot, h, entry->mData)
-        && JS_DefineProperty(args->cx, args->snapshots,
-                             h->histogram_name().c_str(),
-                             OBJECT_TO_JSVAL(snapshot), NULL, NULL,
-                             JSPROP_ENUMERATE))) {
-    return PL_DHASH_STOP;
-  }
-
-  return PL_DHASH_NEXT;
+  JS::AutoObjectRooter root(cx, snapshot);
+  return (ReflectHistogramAndSamples(cx, snapshot, h, entry->mData)
+          && JS_DefineProperty(cx, snapshots,
+                               h->histogram_name().c_str(),
+                               OBJECT_TO_JSVAL(snapshot), NULL, NULL,
+                               JSPROP_ENUMERATE));
 }
 
 NS_IMETHODIMP
@@ -776,11 +1028,9 @@ TelemetrySessionData::GetSnapshots(JSContext *cx, jsval *ret)
   if (!snapshots) {
     return NS_ERROR_FAILURE;
   }
+  JS::AutoObjectRooter root(cx, snapshots);
 
-  struct EnumeratorArgs args = { cx, snapshots };
-  PRUint32 count = mSampleSetMap.EnumerateEntries(ReflectSamples,
-                                                  static_cast<void*>(&args));
-  if (count != mSampleSetMap.Count()) {
+  if (!mSampleSetMap.ReflectHashtable(SampleReflector, cx, snapshots)) {
     return NS_ERROR_FAILURE;
   }
 
@@ -806,23 +1056,24 @@ TelemetrySessionData::DeserializeHistogramData(Pickle &pickle, void **iter)
     Telemetry::ID id;
     nsresult rv = TelemetryImpl::GetHistogramEnumId(name, &id);
     if (NS_FAILED(rv)) {
-      // We serialized a non-static histogram.  Just drop its data on
-      // the floor.  If we can't deserialize the data, though, we're in
-      // trouble.
+      // We serialized a non-static histogram or we serialized a
+      // histogram that is no longer defined in TelemetryHistograms.h.
+      // Just drop its data on the floor.  If we can't deserialize the
+      // data, though, we're in trouble.
       Histogram::SampleSet ss;
       if (!ss.Deserialize(iter, pickle)) {
         return false;
       }
-    }
-
-    EntryType *entry = mSampleSetMap.GetEntry(id);
-    if (!entry) {
-      entry = mSampleSetMap.PutEntry(id);
-      if (NS_UNLIKELY(!entry)) {
-        return false;
-      }
-      if (!entry->mData.Deserialize(iter, pickle)) {
-        return false;
+    } else {
+      EntryType *entry = mSampleSetMap.GetEntry(id);
+      if (!entry) {
+        entry = mSampleSetMap.PutEntry(id);
+        if (NS_UNLIKELY(!entry)) {
+          return false;
+        }
+        if (!entry->mData.Deserialize(iter, pickle)) {
+          return false;
+        }
       }
     }
   }
@@ -1031,6 +1282,16 @@ TelemetryImpl::CanRecord() {
   return !sTelemetry || sTelemetry->mCanRecord;
 }
 
+NS_IMETHODIMP
+TelemetryImpl::GetCanSend(bool *ret) {
+#if defined(MOZILLA_OFFICIAL) && defined(MOZ_TELEMETRY_REPORTING)
+  *ret = true;
+#else
+  *ret = false;
+#endif
+  return NS_OK;
+}
+
 already_AddRefed<nsITelemetry>
 TelemetryImpl::CreateTelemetryInstance()
 {
@@ -1058,7 +1319,7 @@ TelemetryImpl::RecordSlowStatement(const nsACString &statement,
   if (!sTelemetry->mCanRecord || !sTelemetry->mTrackedDBs.GetEntry(dbName))
     return;
 
-  nsTHashtable<SlowSQLEntryType> *slowSQLMap = NULL;
+  AutoHashtable<SlowSQLEntryType> *slowSQLMap = NULL;
   if (NS_IsMainThread())
     slowSQLMap = &(sTelemetry->mSlowSQLOnMainThread);
   else

@@ -52,7 +52,7 @@ static PerfMeasurement* GetPMFromThis(JSContext* cx, jsval* vp);
 // Constructor and destructor
 
 static JSBool
-pm_construct(JSContext* cx, uintN argc, jsval* vp)
+pm_construct(JSContext* cx, unsigned argc, jsval* vp)
 {
     uint32_t mask;
     if (!JS_ConvertArguments(cx, argc, JS_ARGV(cx, vp), "u", &mask))
@@ -71,7 +71,7 @@ pm_construct(JSContext* cx, uintN argc, jsval* vp)
         return JS_FALSE;
     }
 
-    JS_SetPrivate(cx, obj, p);
+    JS_SetPrivate(obj, p);
     *vp = OBJECT_TO_JSVAL(obj);
     return JS_TRUE;
 }
@@ -79,7 +79,7 @@ pm_construct(JSContext* cx, uintN argc, jsval* vp)
 static void
 pm_finalize(JSContext* cx, JSObject* obj)
 {
-    cx->delete_((PerfMeasurement*) JS_GetPrivate(cx, obj));
+    cx->delete_((PerfMeasurement*) JS_GetPrivate(obj));
 }
 
 // Property access
@@ -91,7 +91,7 @@ pm_finalize(JSContext* cx, JSObject* obj)
         PerfMeasurement* p = GetPM(cx, obj, #name);                     \
         if (!p)                                                         \
             return JS_FALSE;                                            \
-        return JS_NewNumberValue(cx, jsdouble(p->name), vp);            \
+        return JS_NewNumberValue(cx, double(p->name), vp);              \
     }
 
 GETTER(cpu_cycles)
@@ -112,7 +112,7 @@ GETTER(eventsMeasured)
 // Calls
 
 static JSBool
-pm_start(JSContext* cx, uintN /*unused*/, jsval* vp)
+pm_start(JSContext* cx, unsigned /*unused*/, jsval* vp)
 {
     PerfMeasurement* p = GetPMFromThis(cx, vp);
     if (!p)
@@ -123,7 +123,7 @@ pm_start(JSContext* cx, uintN /*unused*/, jsval* vp)
 }
 
 static JSBool
-pm_stop(JSContext* cx, uintN /*unused*/, jsval* vp)
+pm_stop(JSContext* cx, unsigned /*unused*/, jsval* vp)
 {
     PerfMeasurement* p = GetPMFromThis(cx, vp);
     if (!p)
@@ -134,7 +134,7 @@ pm_stop(JSContext* cx, uintN /*unused*/, jsval* vp)
 }
 
 static JSBool
-pm_reset(JSContext* cx, uintN /*unused*/, jsval* vp)
+pm_reset(JSContext* cx, unsigned /*unused*/, jsval* vp)
 {
     PerfMeasurement* p = GetPMFromThis(cx, vp);
     if (!p)
@@ -145,7 +145,7 @@ pm_reset(JSContext* cx, uintN /*unused*/, jsval* vp)
 }
 
 static JSBool
-pm_canMeasureSomething(JSContext* cx, uintN /*unused*/, jsval* vp)
+pm_canMeasureSomething(JSContext* cx, unsigned /*unused*/, jsval* vp)
 {
     PerfMeasurement* p = GetPMFromThis(cx, vp);
     if (!p)
@@ -236,7 +236,7 @@ GetPM(JSContext* cx, JSObject* obj, const char* fname)
     // JS_GetInstancePrivate only sets an exception if its last argument
     // is nonzero, so we have to do it by hand.
     JS_ReportErrorNumber(cx, js_GetErrorMessage, 0, JSMSG_INCOMPATIBLE_PROTO,
-                         pm_class.name, fname, JS_GET_CLASS(cx, obj)->name);
+                         pm_class.name, fname, JS_GetClass(obj)->name);
     return 0;
 }
 

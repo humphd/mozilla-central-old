@@ -1,48 +1,23 @@
-/* -*- Mode: Java; c-basic-offset: 4; tab-width: 20; indent-tabs-mode: nil; -*-
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1/GPL 2.0/LGPL 2.1
- *
- * The contents of this file are subject to the Mozilla Public License Version
- * 1.1 (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- * http://www.mozilla.org/MPL/
- *
- * Software distributed under the License is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
- * for the specific language governing rights and limitations under the
- * License.
- *
- * The Original Code is Mozilla Android code.
- *
- * The Initial Developer of the Original Code is Mozilla Foundation.
- * Portions created by the Initial Developer are Copyright (C) 2012
- * the Initial Developer. All Rights Reserved.
- *
- * Contributor(s):
- *   Gian-Carlo Pascutto <gpascutto@mozilla.com>
- *
- * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
- * in which case the provisions of the GPL or the LGPL are applicable instead
- * of those above. If you wish to allow use of your version of this file only
- * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the MPL, indicate your
- * decision by deleting the provisions above and replace them with the notice
- * and other provisions required by the GPL or the LGPL. If you do not delete
- * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the MPL, the GPL or the LGPL.
- *
- * ***** END LICENSE BLOCK ***** */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 package org.mozilla.gecko.sqlite;
 
 import org.mozilla.gecko.sqlite.SQLiteBridgeException;
+import org.mozilla.gecko.sqlite.MatrixBlobCursor;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.text.TextUtils;
 import android.util.Log;
 
 import java.lang.String;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.Set;
 
 /*
  * This class allows using the mozsqlite3 library included with Firefox
@@ -51,16 +26,20 @@ import java.util.HashMap;
  */
 public class SQLiteBridge {
     private static final String LOGTAG = "SQLiteBridge";
+
     // Path to the database. We reopen it every query.
     private String mDb;
-    // Remember column names from last query result.
-    private ArrayList<String> mColumns;
+
+    // Values remembered after a query.
+    private long[] mQueryResults;
+
+    private static final int RESULT_INSERT_ROW_ID = 0;
+    private static final int RESULT_ROWS_CHANGED = 1;
 
     // JNI code in $(topdir)/mozglue/android/..
-    private static native void sqliteCall(String aDb, String aQuery,
-                                          String[] aParams,
-                                          ArrayList<String> aColumns,
-                                          ArrayList<Object[]> aRes)
+    private static native MatrixBlobCursor sqliteCall(String aDb, String aQuery,
+                                                      String[] aParams,
+                                                      long[] aUpdateResult)
         throws SQLiteBridgeException;
 
     // Takes the path to the database we want to access.
@@ -68,34 +47,166 @@ public class SQLiteBridge {
         mDb = aDb;
     }
 
-    // Do an SQL query without parameters
-    public ArrayList<Object[]> query(String aQuery) throws SQLiteBridgeException {
-        String[] params = new String[0];
-        return query(aQuery, params);
+    // Executes a simple line of sql.
+    public void execSQL(String sql)
+                throws SQLiteBridgeException {
+        internalQuery(sql, null);
+    }
+
+    // Executes a simple line of sql. Allow you to bind arguments
+    public void execSQL(String sql, String[] bindArgs)
+                throws SQLiteBridgeException {
+        internalQuery(sql, bindArgs);
+    }
+
+    // Executes a DELETE statement on the database
+    public int delete(String table, String whereClause, String[] whereArgs)
+               throws SQLiteBridgeException {
+        StringBuilder sb = new StringBuilder("DELETE from ");
+        sb.append(table);
+        if (whereClause != null) {
+            sb.append(" WHERE " + whereClause);
+        }
+
+        internalQuery(sb.toString(), whereArgs);
+        return (int)mQueryResults[RESULT_ROWS_CHANGED];
+    }
+
+    public Cursor query(String table,
+                        String[] columns,
+                        String selection,
+                        String[] selectionArgs,
+                        String groupBy,
+                        String having,
+                        String orderBy,
+                        String limit)
+               throws SQLiteBridgeException {
+        StringBuilder sb = new StringBuilder("SELECT ");
+        if (columns != null)
+            sb.append(TextUtils.join(", ", columns));
+        else
+            sb.append(" * ");
+
+        sb.append(" FROM ");
+        sb.append(table);
+
+        if (selection != null) {
+            sb.append(" WHERE " + selection);
+        }
+
+        if (groupBy != null) {
+            sb.append(" GROUP BY " + groupBy);
+        }
+
+        if (having != null) {
+            sb.append(" HAVING " + having);
+        }
+
+        if (orderBy != null) {
+            sb.append(" ORDER BY " + orderBy);
+        }
+
+        if (limit != null) {
+            sb.append(" " + limit);
+        }
+
+        return rawQuery(sb.toString(), selectionArgs);
+    }
+
+    public Cursor rawQuery(String sql, String[] selectionArgs)
+        throws SQLiteBridgeException {
+        return internalQuery(sql, selectionArgs);
+    }
+
+    public long insert(String table, String nullColumnHack, ContentValues values)
+               throws SQLiteBridgeException {
+        Set<Entry<String, Object>> valueSet = values.valueSet();
+        Iterator<Entry<String, Object>> valueIterator = valueSet.iterator();
+        ArrayList<String> valueNames = new ArrayList<String>();
+        ArrayList<String> valueBinds = new ArrayList<String>();
+        ArrayList<String> keyNames = new ArrayList<String>();
+
+        while(valueIterator.hasNext()) {
+            Entry<String, Object> value = valueIterator.next();
+            keyNames.add(value.getKey());
+            valueNames.add("?");
+            valueBinds.add(value.getValue().toString());
+        }
+
+        StringBuilder sb = new StringBuilder("INSERT into ");
+        sb.append(table);
+
+        sb.append(" (");
+        sb.append(TextUtils.join(", ", keyNames));
+        sb.append(")");
+
+        // XXX - Do we need to bind these values?
+        sb.append(" VALUES (");
+        sb.append(TextUtils.join(", ", valueNames));
+        sb.append(") ");
+
+        String[] binds = new String[valueBinds.size()];
+        valueBinds.toArray(binds);
+        internalQuery(sb.toString(), binds);
+        return mQueryResults[RESULT_INSERT_ROW_ID];
+    }
+
+    public int update(String table, ContentValues values, String whereClause, String[] whereArgs)
+               throws SQLiteBridgeException {
+        Set<Entry<String, Object>> valueSet = values.valueSet();
+        Iterator<Entry<String, Object>> valueIterator = valueSet.iterator();
+        ArrayList<String> valueNames = new ArrayList<String>();
+
+        StringBuilder sb = new StringBuilder("UPDATE ");
+        sb.append(table);
+
+        sb.append(" SET ");
+        while(valueIterator.hasNext()) {
+            Entry<String, Object> value = valueIterator.next();
+            sb.append(value.getKey() + " = ?");
+            valueNames.add(value.getValue().toString());
+            if (valueIterator.hasNext())
+                sb.append(", ");
+            else
+                sb.append(" ");
+        }
+
+        if (whereClause != null) {
+            sb.append(" WHERE ");
+            sb.append(whereClause);
+            for (int i = 0; i < whereArgs.length; i++) {
+                valueNames.add(whereArgs[i]);
+            }
+        }
+
+        String[] binds = new String[valueNames.size()];
+        valueNames.toArray(binds);
+
+        internalQuery(sb.toString(), binds);
+        return (int)mQueryResults[RESULT_ROWS_CHANGED];
+    }
+
+    public int getVersion()
+               throws SQLiteBridgeException {
+        Cursor cursor = internalQuery("PRAGMA user_version", null);
+        int ret = -1;
+        if (cursor != null) {
+            cursor.moveToFirst();
+            String version = cursor.getString(0);
+            ret = Integer.parseInt(version);
+        }
+        return ret;
     }
 
     // Do an SQL query, substituting the parameters in the query with the passed
     // parameters. The parameters are subsituded in order, so named parameters
     // are not supported.
-    // The result is returned as an ArrayList<Object[]>, with each
-    // row being an entry in the ArrayList, and each column being one Object
-    // in the Object[] array. The columns are of type null,
-    // direct ByteBuffer (BLOB), or String (everything else).
-    public ArrayList<Object[]> query(String aQuery, String[] aParams)
+    private Cursor internalQuery(String aQuery, String[] aParams)
         throws SQLiteBridgeException {
-        ArrayList<Object[]> result = new ArrayList<Object[]>();
-        mColumns = new ArrayList<String>();
-        sqliteCall(mDb, aQuery, aParams, mColumns, result);
-        return result;
+        mQueryResults = new long[2];
+        return sqliteCall(mDb, aQuery, aParams, mQueryResults);
     }
 
-    // Gets the index in the row Object[] for the given column name.
-    // Returns -1 if not found.
-    public int getColumnIndex(String aColumnName) {
-        return mColumns.lastIndexOf(aColumnName);
-    }
-
-    public void close() {
-        // nop, provided for API compatibility with SQLiteDatabase.
-    }
+    // nop, provided for API compatibility with SQLiteDatabase.
+    public void close() { }
 }

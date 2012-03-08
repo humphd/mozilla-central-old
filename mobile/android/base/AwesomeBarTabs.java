@@ -20,6 +20,7 @@
  *
  * Contributor(s):
  *   Lucas Rocha <lucasr@mozilla.com>
+ *   Margaret Leibovic <margaret.leibovic@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -48,6 +49,7 @@ import android.graphics.LightingColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
 import android.os.SystemClock;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Pair;
@@ -78,6 +80,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import org.mozilla.gecko.db.BrowserContract.Bookmarks;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.BrowserDB.URLColumns;
 
@@ -95,9 +98,13 @@ public class AwesomeBarTabs extends TabHost {
     private OnUrlOpenListener mUrlOpenListener;
     private View.OnTouchListener mListTouchListener;
     private JSONArray mSearchEngines;
+    private ContentResolver mContentResolver;
 
+    private BookmarksQueryTask mBookmarksQueryTask;
+    private HistoryQueryTask mHistoryQueryTask;
+    
     private AwesomeBarCursorAdapter mAllPagesCursorAdapter;
-    private SimpleCursorAdapter mBookmarksAdapter;
+    private BookmarksListAdapter mBookmarksAdapter;
     private SimpleExpandableListAdapter mHistoryAdapter;
 
     // FIXME: This value should probably come from a
@@ -134,7 +141,7 @@ public class AwesomeBarTabs extends TabHost {
             ImageView favicon = (ImageView) childView.findViewById(R.id.favicon);
 
             if (b == null) {
-                favicon.setImageResource(R.drawable.favicon);
+                favicon.setImageDrawable(null);
             } else {
                 Bitmap bitmap = BitmapFactory.decodeByteArray(b, 0, b.length);
                 favicon.setImageBitmap(bitmap);
@@ -150,7 +157,7 @@ public class AwesomeBarTabs extends TabHost {
             ImageView favicon = (ImageView) view;
 
             if (b == null) {
-                favicon.setImageResource(R.drawable.favicon);
+                favicon.setImageDrawable(null);
             } else {
                 Bitmap bitmap = BitmapFactory.decodeByteArray(b, 0, b.length);
                 favicon.setImageBitmap(bitmap);
@@ -164,7 +171,7 @@ public class AwesomeBarTabs extends TabHost {
             TextView titleView = (TextView)view;
             // Use the URL instead of an empty title for consistency with the normal URL
             // bar view - this is the equivalent of getDisplayTitle() in Tab.java
-            if (title == null || title.length() == 0) {
+            if (TextUtils.isEmpty(title)) {
                 int urlIndex = cursor.getColumnIndexOrThrow(URLColumns.URL);
                 title = cursor.getString(urlIndex);
             }
@@ -189,15 +196,149 @@ public class AwesomeBarTabs extends TabHost {
         }
     }
 
+    private class BookmarksListAdapter extends SimpleCursorAdapter {
+        private static final int VIEW_TYPE_ITEM = 0;
+        private static final int VIEW_TYPE_FOLDER = 1;
+        private static final int VIEW_TYPE_COUNT = 2;
+
+        private LayoutInflater mInflater;
+        private LinkedList<Pair<Integer, String>> mParentStack;
+        private RefreshBookmarkCursorTask mRefreshTask = null;
+        private TextView mBookmarksTitleView;
+
+        public BookmarksListAdapter(Context context, int layout, Cursor c, String[] from, int[] to) {
+            super(context, layout, c, from, to);
+
+            mInflater = (LayoutInflater) mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+
+            // mParentStack holds folder id/title pairs that allow us to navigate
+            // back up the folder heirarchy
+            mParentStack = new LinkedList<Pair<Integer, String>>();
+
+            // Add the root folder to the stack
+            Pair<Integer, String> rootFolder = new Pair<Integer, String>(Bookmarks.FIXED_ROOT_ID, "");
+            mParentStack.addFirst(rootFolder);
+        }
+
+        public void refreshCurrentFolder() {
+            // Cancel any pre-existing async refresh tasks
+            if (mRefreshTask != null)
+                mRefreshTask.cancel(false);
+
+            Pair<Integer, String> folderPair = mParentStack.getFirst();
+            mRefreshTask = new RefreshBookmarkCursorTask(folderPair.first, folderPair.second);
+            mRefreshTask.execute();
+        }
+
+        // Returns false if there is no parent folder to move to
+        public boolean moveToParentFolder() {
+            // If we're already at the root, we can't move to a parent folder
+            if (mParentStack.size() == 1)
+                return false;
+
+            mParentStack.removeFirst();
+            refreshCurrentFolder();
+            return true;
+        }
+
+        public void moveToChildFolder(int folderId, String folderTitle) {
+            Pair<Integer, String> folderPair = new Pair<Integer, String>(folderId, folderTitle);
+            mParentStack.addFirst(folderPair);
+            refreshCurrentFolder();
+        }
+
+        public int getItemViewType(int position) {
+            Cursor c = getCursor();
+ 
+            if (c.moveToPosition(position) &&
+                c.getInt(c.getColumnIndexOrThrow(Bookmarks.IS_FOLDER)) == 1)
+                return VIEW_TYPE_FOLDER;
+
+            // Default to retuning normal item type
+            return VIEW_TYPE_ITEM;
+        }
+ 
+        @Override
+        public int getViewTypeCount() {
+            return VIEW_TYPE_COUNT;
+        }
+
+        public String getFolderTitle(int position) {
+            Cursor c = getCursor();
+            if (!c.moveToPosition(position))
+                return "";
+
+            return c.getString(c.getColumnIndexOrThrow(Bookmarks.TITLE));
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            int viewType = getItemViewType(position);
+
+            if (viewType == VIEW_TYPE_ITEM)
+                return super.getView(position, convertView, parent);
+
+            if (convertView == null)
+                convertView = mInflater.inflate(R.layout.awesomebar_folder_row, null);
+
+            TextView titleView = (TextView) convertView.findViewById(R.id.title);
+            titleView.setText(getFolderTitle(position));
+
+            return convertView;
+        }
+
+        public void setBookmarksTitleView(TextView titleView) {
+            mBookmarksTitleView = titleView;
+        }
+
+        private class RefreshBookmarkCursorTask extends AsyncTask<Void, Void, Cursor> {
+            private int mFolderId;
+            private String mFolderTitle;
+
+            public RefreshBookmarkCursorTask(int folderId, String folderTitle) {
+                mFolderId = folderId;
+                mFolderTitle = folderTitle;
+            }
+
+            protected Cursor doInBackground(Void... params) {
+                return BrowserDB.getBookmarksInFolder(mContentResolver, mFolderId);
+            }
+
+            protected void onPostExecute(Cursor cursor) {
+                mRefreshTask = null;
+                mBookmarksAdapter.changeCursor(cursor);
+
+                // Hide the header text if we're at the root folder
+                if (mFolderId == Bookmarks.FIXED_ROOT_ID) {
+                    mBookmarksTitleView.setVisibility(View.GONE);
+                } else {
+                    mBookmarksTitleView.setText(mFolderTitle);
+                    mBookmarksTitleView.setVisibility(View.VISIBLE);
+                }
+            }
+        }
+    }
+
+    // This method checks to see if we're in a bookmark sub-folder. If we are,
+    // it will go up a level and return true. Otherwise it will return false.
+    public boolean onBackPressed() {
+        // If we're not in the bookmarks tab, we have nothing to do. We should
+        // also return false if mBookmarksAdapter hasn't been initialized yet.
+        if (!getCurrentTabTag().equals(BOOKMARKS_TAB) ||
+                mBookmarksAdapter == null)
+            return false;
+
+        return mBookmarksAdapter.moveToParentFolder();
+    }
+
     private class BookmarksQueryTask extends AsyncTask<Void, Void, Cursor> {
         protected Cursor doInBackground(Void... arg0) {
-            ContentResolver resolver = mContext.getContentResolver();
-            return BrowserDB.getAllBookmarks(resolver);
+            return BrowserDB.getBookmarksInFolder(mContentResolver, Bookmarks.FIXED_ROOT_ID);
         }
 
         protected void onPostExecute(Cursor cursor) {
             // Load the list using a custom adapter so we can create the bitmaps
-            mBookmarksAdapter = new SimpleCursorAdapter(
+            mBookmarksAdapter = new BookmarksListAdapter(
                 mContext,
                 R.layout.awesomebar_row,
                 cursor,
@@ -209,26 +350,46 @@ public class AwesomeBarTabs extends TabHost {
 
             mBookmarksAdapter.setViewBinder(new AwesomeCursorViewBinder());
 
-            final ListView bookmarksList = (ListView) findViewById(R.id.bookmarks_list);
-
+            ListView bookmarksList = (ListView) findViewById(R.id.bookmarks_list);
             bookmarksList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                    handleItemClick(bookmarksList, position);
+                    handleBookmarkItemClick(position);
                 }
             });
 
+            // We need to add the header before we set the adapter
+            LayoutInflater inflater =
+                    (LayoutInflater) mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+            View headerView = inflater.inflate(R.layout.awesomebar_folder_header_row, null);
+
+            // Hide the header title view to begin with
+            TextView titleView = (TextView) headerView.findViewById(R.id.title);
+            titleView.setVisibility(View.GONE);
+            mBookmarksAdapter.setBookmarksTitleView(titleView);
+
+            bookmarksList.addHeaderView(headerView, null, true);
+
             bookmarksList.setAdapter(mBookmarksAdapter);
+
+            mBookmarksQueryTask = null;
         }
     }
 
-    private class HistoryQueryTask extends AsyncTask<Void, Void, Pair<List,List>> {
+    private static class GroupList extends LinkedList<Map<String,String>> {
+        private static final long serialVersionUID = 0L;
+    }
+
+    private static class ChildrenList extends LinkedList<Map<String,Object>> {
+        private static final long serialVersionUID = 0L;
+    }
+
+    private class HistoryQueryTask extends AsyncTask<Void, Void, Pair<GroupList,List<ChildrenList>>> {
         private static final long MS_PER_DAY = 86400000;
         private static final long MS_PER_WEEK = MS_PER_DAY * 7;
 
-        protected Pair<List,List> doInBackground(Void... arg0) {
-            Pair<List,List> result = null;
-            ContentResolver resolver = mContext.getContentResolver();
-            Cursor cursor = BrowserDB.getRecentHistory(resolver, MAX_RESULTS);
+        protected Pair<GroupList,List<ChildrenList>> doInBackground(Void... arg0) {
+            Pair<GroupList, List<ChildrenList>> result = null;
+            Cursor cursor = BrowserDB.getRecentHistory(mContentResolver, MAX_RESULTS);
 
             Date now = new Date();
             now.setHours(0);
@@ -239,9 +400,9 @@ public class AwesomeBarTabs extends TabHost {
 
             // Split the list of urls into separate date range groups
             // and show it in an expandable list view.
-            List<List<Map<String,?>>> childrenLists = null;
-            List<Map<String,?>> children = null;
-            List<Map<String,?>> groups = null;
+            List<ChildrenList> childrenLists = null;
+            ChildrenList children = null;
+            GroupList groups = null;
             HistorySection section = null;
 
             // Move cursor before the first row in preparation
@@ -257,10 +418,10 @@ public class AwesomeBarTabs extends TabHost {
                 HistorySection itemSection = getSectionForTime(time, today);
 
                 if (groups == null)
-                    groups = new LinkedList<Map<String,?>>();
+                    groups = new GroupList();
 
                 if (childrenLists == null)
-                    childrenLists = new LinkedList<List<Map<String,?>>>();
+                    childrenLists = new LinkedList<ChildrenList>();
 
                 if (section != itemSection) {
                     if (section != null) {
@@ -269,7 +430,7 @@ public class AwesomeBarTabs extends TabHost {
                     }
 
                     section = itemSection;
-                    children = new LinkedList<Map<String,?>>();
+                    children = new ChildrenList();
                 }
 
                 children.add(createHistoryItem(cursor));
@@ -286,13 +447,13 @@ public class AwesomeBarTabs extends TabHost {
             cursor.close();
 
             if (groups != null && childrenLists != null) {
-                result = Pair.create((List) groups, (List) childrenLists);
+                result = Pair.<GroupList,List<ChildrenList>>create(groups, childrenLists);
             }
 
             return result;
         }
 
-        public Map<String,?> createHistoryItem(Cursor cursor) {
+        public Map<String,Object> createHistoryItem(Cursor cursor) {
             Map<String,Object> historyItem = new HashMap<String,Object>();
 
             String url = cursor.getString(cursor.getColumnIndexOrThrow(URLColumns.URL));
@@ -313,7 +474,7 @@ public class AwesomeBarTabs extends TabHost {
             return historyItem;
         }
 
-        public Map<String,?> createGroupItem(HistorySection section) {
+        public Map<String,String> createGroupItem(HistorySection section) {
             Map<String,String> groupItem = new HashMap<String,String>();
 
             groupItem.put(URLColumns.TITLE, getSectionName(section));
@@ -364,8 +525,7 @@ public class AwesomeBarTabs extends TabHost {
             return HistorySection.OLDER;
         }
 
-        @SuppressWarnings("unchecked")
-        protected void onPostExecute(Pair<List,List> result) {
+        protected void onPostExecute(Pair<GroupList,List<ChildrenList>> result) {
             // FIXME: display some sort of message when there's no history
             if (result == null)
                 return;
@@ -406,6 +566,8 @@ public class AwesomeBarTabs extends TabHost {
             historyList.setAdapter(mHistoryAdapter);
 
             expandAllGroups(historyList);
+
+            mHistoryQueryTask = null;
         }
     }
 
@@ -474,7 +636,7 @@ public class AwesomeBarTabs extends TabHost {
             String base64 = dataURI.substring(dataURI.indexOf(',') + 1);
             Drawable drawable = null;
             try {
-                byte[] bytes = GeckoAppShell.decodeBase64(base64);
+                byte[] bytes = GeckoAppShell.decodeBase64(base64, GeckoAppShell.BASE64_DEFAULT);
                 ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
                 drawable = Drawable.createFromStream(stream, "src");
                 stream.close();
@@ -517,6 +679,7 @@ public class AwesomeBarTabs extends TabHost {
         mContext = context;
         mInflated = false;
         mSearchEngines = new JSONArray();
+        mContentResolver = context.getContentResolver();
     }
 
     @Override
@@ -552,10 +715,14 @@ public class AwesomeBarTabs extends TabHost {
 
                 // Lazy load bookmarks and history lists. Only query the database
                 // if those lists requested by user.
-                if (tabId.equals(BOOKMARKS_TAB) && mBookmarksAdapter == null) {
-                    new BookmarksQueryTask().execute();
-                } else if (tabId.equals(HISTORY_TAB) && mHistoryAdapter == null) {
-                    new HistoryQueryTask().execute();
+                if (tabId.equals(BOOKMARKS_TAB) && mBookmarksAdapter == null
+                        && mBookmarksQueryTask == null) {
+                    mBookmarksQueryTask = new BookmarksQueryTask();
+                    mBookmarksQueryTask.execute();
+                } else if (tabId.equals(HISTORY_TAB) && mHistoryAdapter == null
+                        && mHistoryQueryTask == null) {
+                    mHistoryQueryTask = new HistoryQueryTask();
+                    mHistoryQueryTask.execute();
                 } else {
                     hideSoftInput = false;
                 }
@@ -618,10 +785,9 @@ public class AwesomeBarTabs extends TabHost {
 
         mAllPagesCursorAdapter.setFilterQueryProvider(new FilterQueryProvider() {
             public Cursor runQuery(CharSequence constraint) {
-                ContentResolver resolver = mContext.getContentResolver();
                 long start = SystemClock.uptimeMillis();
 
-                Cursor c = BrowserDB.filter(resolver, constraint, MAX_RESULTS);
+                Cursor c = BrowserDB.filter(mContentResolver, constraint, MAX_RESULTS);
                 c.getCount(); // ensure the query runs at least once
 
                 long end = SystemClock.uptimeMillis();
@@ -676,6 +842,33 @@ public class AwesomeBarTabs extends TabHost {
                 (InputMethodManager) mContext.getSystemService(Context.INPUT_METHOD_SERVICE);
 
         imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+    }
+
+    private void handleBookmarkItemClick(int position) {
+        // If we tap on the header view, go up a level
+        if (position == 0) {
+            mBookmarksAdapter.moveToParentFolder();
+            return;
+        }
+
+        Cursor cursor = mBookmarksAdapter.getCursor();
+        // The header view takes up a spot in the list
+        cursor.moveToPosition(position - 1);
+
+        int isFolder = cursor.getInt(cursor.getColumnIndexOrThrow(Bookmarks.IS_FOLDER));
+        if (isFolder == 1) {
+            // If we're clicking on a folder, update mBookmarksAdapter to move to that folder
+            int folderId = cursor.getInt(cursor.getColumnIndexOrThrow(Bookmarks._ID));
+            String folderTitle = mBookmarksAdapter.getFolderTitle(position - 1);
+
+            mBookmarksAdapter.moveToChildFolder(folderId, folderTitle);
+            return;
+        }
+
+        // Otherwise, just open the URL
+        String url = cursor.getString(cursor.getColumnIndexOrThrow(URLColumns.URL));
+        if (mUrlOpenListener != null)
+            mUrlOpenListener.onUrlOpen(url);
     }
 
     private void handleHistoryItemClick(int groupPosition, int childPosition) {
@@ -739,10 +932,10 @@ public class AwesomeBarTabs extends TabHost {
         mAllPagesCursorAdapter.filter(searchTerm);
     }
 
-    public void setSearchEngines(JSONArray engines) {
-        mSearchEngines = engines;
+    public void setSearchEngines(final JSONArray engines) {
         GeckoAppShell.getMainHandler().post(new Runnable() {
             public void run() {
+                mSearchEngines = engines;
                 mAllPagesCursorAdapter.notifyDataSetChanged();
             }
         });

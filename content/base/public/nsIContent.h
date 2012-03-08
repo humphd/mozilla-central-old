@@ -43,7 +43,6 @@
 #include "nsChangeHint.h"
 #include "nsINode.h"
 #include "nsIDocument.h" // for IsInHTMLDocument
-#include "nsDOMMemoryReporter.h"
 
 // Forward declarations
 class nsIAtom;
@@ -103,8 +102,6 @@ public:
 #endif // MOZILLA_INTERNAL_API
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICONTENT_IID)
-
-  NS_DECL_AND_IMPL_DOM_MEMORY_REPORTER_SIZEOF(nsIContent, nsINode);
 
   /**
    * Bind this content node to a tree.  If this method throws, the caller must
@@ -920,7 +917,7 @@ public:
 
   /**
    * Determing language. Look at the nearest ancestor element that has a lang
-   * attribute in the XML namespace or is an HTML element and has a lang in
+   * attribute in the XML namespace or is an HTML/SVG element and has a lang in
    * no namespace attribute.
    */
   void GetLang(nsAString& aResult) const {
@@ -930,7 +927,7 @@ public:
         // XHTML1 section C.7).
         bool hasAttr = content->GetAttr(kNameSpaceID_XML, nsGkAtoms::lang,
                                           aResult);
-        if (!hasAttr && content->IsHTML()) {
+        if (!hasAttr && (content->IsHTML() || content->IsSVG())) {
           hasAttr = content->GetAttr(kNameSpaceID_None, nsGkAtoms::lang,
                                      aResult);
         }
@@ -999,7 +996,6 @@ public:
   // accessibility.tabfocus_applies_to_xul pref - if it is set to true,
   // the tabfocus bit field applies to xul elements.
   static bool sTabFocusModelAppliesToXUL;
-
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIContent, NS_ICONTENT_IID)

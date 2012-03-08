@@ -390,6 +390,8 @@ class BaseShape : public js::gc::Cell
 
     static inline ThingRootKind rootKind() { return THING_ROOT_BASE_SHAPE; }
 
+    inline void markChildren(JSTracer *trc);
+
   private:
     static void staticAsserts() {
         JS_STATIC_ASSERT(offsetof(BaseShape, clasp) == offsetof(js::shadow::BaseShape, clasp));
@@ -461,12 +463,12 @@ struct Shape : public js::gc::Cell
 {
     friend struct ::JSObject;
     friend struct ::JSFunction;
-    friend class js::StaticBlockObject;
-    friend class js::PropertyTree;
     friend class js::Bindings;
+    friend class js::ObjectImpl;
+    friend class js::PropertyTree;
+    friend class js::StaticBlockObject;
     friend struct js::StackShape;
     friend struct js::StackBaseShape;
-    friend bool IsShapeAboutToBeFinalized(JSContext *cx, const js::Shape *shape);
 
   protected:
     HeapPtrBaseShape    base_;
@@ -652,7 +654,7 @@ struct Shape : public js::gc::Cell
     };
 
     bool inDictionary() const   { return (flags & IN_DICTIONARY) != 0; }
-    uintN getFlags() const  { return flags & PUBLIC_FLAGS; }
+    unsigned getFlags() const  { return flags & PUBLIC_FLAGS; }
     bool hasShortID() const { return (flags & HAS_SHORTID) != 0; }
 
     /*
@@ -721,8 +723,8 @@ struct Shape : public js::gc::Cell
     inline bool matches(const Shape *other) const;
     inline bool matches(const StackShape &other) const;
     inline bool matchesParamsAfterId(BaseShape *base,
-                                     uint32_t aslot, uintN aattrs, uintN aflags,
-                                     intN ashortid) const;
+                                     uint32_t aslot, unsigned aattrs, unsigned aflags,
+                                     int ashortid) const;
 
     bool get(JSContext* cx, JSObject *receiver, JSObject *obj, JSObject *pobj, js::Value* vp) const;
     bool set(JSContext* cx, JSObject *obj, bool strict, js::Value* vp) const;
@@ -771,8 +773,12 @@ struct Shape : public js::gc::Cell
         slotInfo = slotInfo | ((count + 1) << LINEAR_SEARCHES_SHIFT);
     }
 
-    jsid propid() const { JS_ASSERT(!isEmptyShape()); return maybePropid(); }
-    jsid maybePropid() const { JS_ASSERT(!JSID_IS_VOID(propid_)); return propid_; }
+    const HeapId &propid() const {
+        JS_ASSERT(!isEmptyShape());
+        JS_ASSERT(!JSID_IS_VOID(propid_));
+        return propid_;
+    }
+    HeapId &propidRef() { JS_ASSERT(!JSID_IS_VOID(propid_)); return propid_; }
 
     int16_t shortid() const { JS_ASSERT(hasShortID()); return maybeShortid(); }
     int16_t maybeShortid() const { return shortid_; }
@@ -902,6 +908,8 @@ struct Shape : public js::gc::Cell
 
     static inline ThingRootKind rootKind() { return THING_ROOT_SHAPE; }
 
+    inline void markChildren(JSTracer *trc);
+
     /* For JIT usage */
     static inline size_t offsetOfBase() { return offsetof(Shape, base_); }
 
@@ -981,7 +989,7 @@ struct StackShape
     int16_t          shortid;
 
     StackShape(UnownedBaseShape *base, jsid propid, uint32_t slot,
-               uint32_t nfixed, uintN attrs, uintN flags, intN shortid)
+               uint32_t nfixed, unsigned attrs, unsigned flags, int shortid)
       : base(base),
         propid(propid),
         slot_(slot),
@@ -996,7 +1004,7 @@ struct StackShape
 
     StackShape(const Shape *shape)
       : base(shape->base()->unowned()),
-        propid(shape->maybePropid()),
+        propid(const_cast<Shape *>(shape)->propidRef()),
         slot_(shape->slotInfo & Shape::SLOT_MASK),
         attrs(shape->attrs),
         flags(shape->flags),
@@ -1082,7 +1090,7 @@ Shape::search(JSContext *cx, Shape *start, jsid id, Shape ***pspp, bool adding)
                 return SHAPE_FETCH(spp);
             }
         }
-        /* 
+        /*
          * No table built -- there weren't enough entries, or OOM occurred.
          * Don't increment numLinearSearches, to keep hasTable() false.
          */
@@ -1092,7 +1100,7 @@ Shape::search(JSContext *cx, Shape *start, jsid id, Shape ***pspp, bool adding)
     }
 
     for (Shape *shape = start; shape; shape = shape->parent) {
-        if (shape->maybePropid() == id)
+        if (shape->propidRef() == id)
             return shape;
     }
 
@@ -1105,30 +1113,6 @@ Shape::search(JSContext *cx, Shape *start, jsid id, Shape ***pspp, bool adding)
 #pragma warning(pop)
 #pragma warning(pop)
 #endif
-
-inline js::Class *
-JSObject::getClass() const
-{
-    return lastProperty()->getObjectClass();
-}
-
-inline JSClass *
-JSObject::getJSClass() const
-{
-    return Jsvalify(getClass());
-}
-
-inline bool
-JSObject::hasClass(const js::Class *c) const
-{
-    return getClass() == c;
-}
-
-inline const js::ObjectOps *
-JSObject::getOps() const
-{
-    return &getClass()->ops;
-}
 
 namespace JS {
     template<> class AnchorPermitted<js::Shape *> { };

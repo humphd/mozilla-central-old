@@ -110,7 +110,15 @@
 
           <tr>
             <th class="column">
+#ifdef XP_WIN
+              &aboutSupport.appBasicsProfileDirWinMac;
+#else
+#ifdef XP_MACOSX
+              &aboutSupport.appBasicsProfileDirWinMac;
+#else
               &aboutSupport.appBasicsProfileDir;
+#endif
+#endif
             </th>
 
             <td>
@@ -233,6 +241,24 @@
 
         <tbody id="graphics-failures-tbody">
         </tbody>
+      </table>
+
+      <!-- - - - - - - - - - - - - - - - - - - - - -->
+      <h2 class="major-section">
+        &aboutSupport.jsTitle;
+      </h2>
+
+      <table>
+        <tbody>
+          <tr>
+            <th class="column">
+              &aboutSupport.jsIncrementalGC;
+            </th>
+
+            <td id="javascript-incremental-gc">
+            </td>
+          </tr>
+	</tbody>
       </table>
 
     </div>

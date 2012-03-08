@@ -180,7 +180,7 @@ CopyContext(gfxContext* dest, gfxContext* src)
  **/
 #define NS_CANVASGRADIENT_PRIVATE_IID \
     { 0x491d39d8, 0x4058, 0x42bd, { 0xac, 0x76, 0x70, 0xd5, 0x62, 0x7f, 0x02, 0x10 } }
-class nsCanvasGradient : public nsIDOMCanvasGradient
+class nsCanvasGradient MOZ_FINAL : public nsIDOMCanvasGradient
 {
 public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_CANVASGRADIENT_PRIVATE_IID)
@@ -238,7 +238,7 @@ NS_INTERFACE_MAP_END
  **/
 #define NS_CANVASPATTERN_PRIVATE_IID \
     { 0xb85c6c8a, 0x0624, 0x4530, { 0xb8, 0xee, 0xff, 0xdf, 0x42, 0xe8, 0x21, 0x6d } }
-class nsCanvasPattern : public nsIDOMCanvasPattern
+class nsCanvasPattern MOZ_FINAL : public nsIDOMCanvasPattern
 {
 public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_CANVASPATTERN_PRIVATE_IID)
@@ -1754,8 +1754,6 @@ nsCanvasRenderingContext2D::GetMozFillRule(nsAString& aString)
         aString.AssignLiteral("nonzero"); break;
     case gfxContext::FILL_RULE_EVEN_ODD:
         aString.AssignLiteral("evenodd"); break;
-    default:
-        return NS_ERROR_FAILURE;
     }
     return NS_OK;
 }
@@ -2631,9 +2629,6 @@ nsCanvasRenderingContext2D::GetTextAlign(nsAString& ta)
     case TEXT_ALIGN_CENTER:
         ta.AssignLiteral("center");
         break;
-    default:
-        NS_ERROR("textAlign holds invalid value");
-        return NS_ERROR_FAILURE;
     }
 
     return NS_OK;
@@ -2681,9 +2676,6 @@ nsCanvasRenderingContext2D::GetTextBaseline(nsAString& tb)
     case TEXT_BASELINE_BOTTOM:
         tb.AssignLiteral("bottom");
         break;
-    default:
-        NS_ERROR("textBaseline holds invalid value");
-        return NS_ERROR_FAILURE;
     }
 
     return NS_OK;
@@ -2801,6 +2793,7 @@ struct NS_STACK_CLASS nsCanvasBidiProcessor : public nsBidiPresUtils::BidiProces
                                     gfxFont::GLYPH_STROKE : gfxFont::GLYPH_FILL,
                        0,
                        mTextRun->GetLength(),
+                       nsnull,
                        nsnull,
                        nsnull);
     }
@@ -2981,9 +2974,6 @@ nsCanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
     case TEXT_BASELINE_BOTTOM:
         anchorY = -fontMetrics.emDescent;
         break;
-    default:
-        NS_ERROR("mTextBaseline holds invalid value");
-        return NS_ERROR_FAILURE;
     }
 
     processor.mPt.y += anchorY;

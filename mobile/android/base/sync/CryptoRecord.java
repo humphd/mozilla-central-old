@@ -46,7 +46,6 @@ import org.json.simple.parser.ParseException;
 import org.mozilla.apache.commons.codec.binary.Base64;
 import org.mozilla.gecko.sync.crypto.CryptoException;
 import org.mozilla.gecko.sync.crypto.CryptoInfo;
-import org.mozilla.gecko.sync.crypto.Cryptographer;
 import org.mozilla.gecko.sync.crypto.KeyBundle;
 import org.mozilla.gecko.sync.crypto.MissingCryptoInputException;
 import org.mozilla.gecko.sync.crypto.NoKeyBundleException;
@@ -64,6 +63,8 @@ import org.mozilla.gecko.sync.repositories.domain.Record;
  *
  * Until there's some benefit to the abstraction, we're simply going to
  * call this CryptoRecord.
+ *
+ * CryptoRecord uses CryptoInfo to do the actual encryption and decryption.
  *
  * @author rnewman
  *
@@ -92,7 +93,8 @@ public class CryptoRecord extends Record {
     byte[] ciphertext = Base64.decodeBase64(((String) payload.get(KEY_CIPHERTEXT)).getBytes("UTF-8"));
     byte[] iv         = Base64.decodeBase64(((String) payload.get(KEY_IV)).getBytes("UTF-8"));
     byte[] hmac       = Utils.hex2Byte((String) payload.get(KEY_HMAC));
-    return Cryptographer.decrypt(new CryptoInfo(ciphertext, iv, hmac, keybundle));
+
+    return CryptoInfo.decrypt(ciphertext, iv, hmac, keybundle).getMessage();
   }
 
   // The encrypted JSON body object.
@@ -130,6 +132,17 @@ public class CryptoRecord extends Record {
     super(source.guid, source.collection, source.lastModified, source.deleted);
   }
 
+  @Override
+  public Record copyWithIDs(String guid, long androidID) {
+    CryptoRecord out = new CryptoRecord(this);
+    out.guid         = guid;
+    out.androidID    = androidID;
+    out.sortIndex    = this.sortIndex;
+    out.payload      = (this.payload == null) ? null : new ExtendedJSONObject(this.payload.object);
+    out.keyBundle    = this.keyBundle;    // TODO: copy me?
+    return out;
+  }
+
   /**
    * Take a whole record as JSON -- i.e., something like
    *
@@ -139,6 +152,8 @@ public class CryptoRecord extends Record {
    *
    * @param jsonRecord
    * @return
+   *        A CryptoRecord that encapsulates the provided record.
+   *
    * @throws NonObjectJSONException
    * @throws ParseException
    * @throws IOException
@@ -163,7 +178,7 @@ public class CryptoRecord extends Record {
     if (jsonRecord.containsKey(KEY_MODIFIED)) {
       record.lastModified = jsonRecord.getTimestamp(KEY_MODIFIED);
     }
-    if (jsonRecord.containsKey(KEY_SORTINDEX )) {
+    if (jsonRecord.containsKey(KEY_SORTINDEX)) {
       record.sortIndex = jsonRecord.getLong(KEY_SORTINDEX);
     }
     // TODO: deleted?
@@ -210,8 +225,7 @@ public class CryptoRecord extends Record {
     }
     String cleartext = payload.toJSONString();
     byte[] cleartextBytes = cleartext.getBytes("UTF-8");
-    CryptoInfo info = new CryptoInfo(cleartextBytes, keyBundle);
-    Cryptographer.encrypt(info);
+    CryptoInfo info = CryptoInfo.encrypt(cleartextBytes, keyBundle);
     String message = new String(Base64.encodeBase64(info.getMessage()));
     String iv      = new String(Base64.encodeBase64(info.getIV()));
     String hmac    = Utils.byte2hex(info.getHMAC());
@@ -224,12 +238,22 @@ public class CryptoRecord extends Record {
   }
 
   @Override
-  public void initFromPayload(CryptoRecord payload) {
+  public void initFromEnvelope(CryptoRecord payload) {
     throw new IllegalStateException("Can't do this with a CryptoRecord.");
   }
 
   @Override
-  public CryptoRecord getPayload() {
+  public CryptoRecord getEnvelope() {
+    throw new IllegalStateException("Can't do this with a CryptoRecord.");
+  }
+
+  @Override
+  protected void populatePayload(ExtendedJSONObject payload) {
+    throw new IllegalStateException("Can't do this with a CryptoRecord.");
+  }
+
+  @Override
+  protected void initFromPayload(ExtendedJSONObject payload) {
     throw new IllegalStateException("Can't do this with a CryptoRecord.");
   }
 

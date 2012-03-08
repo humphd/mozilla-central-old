@@ -282,6 +282,7 @@ pref("browser.urlbar.doubleClickSelectsAll", true);
 pref("browser.urlbar.doubleClickSelectsAll", false);
 #endif
 pref("browser.urlbar.autoFill", false);
+pref("browser.urlbar.autoFill.typed", true);
 // 0: Match anywhere (e.g., middle of words)
 // 1: Match on word boundaries and then try matching anywhere
 // 2: Match only on word boundaries (e.g., after / or .)
@@ -318,6 +319,8 @@ pref("browser.urlbar.default.behavior", 0);
 
 pref("browser.urlbar.formatting.enabled", true);
 pref("browser.urlbar.trimURLs", true);
+
+pref("browser.altClickSave", false);
 
 // Number of milliseconds to wait for the http headers (and thus
 // the Content-Disposition filename) before giving up and falling back to 
@@ -356,6 +359,9 @@ pref("browser.search.order.3",                "chrome://browser-region/locale/re
 
 // search bar results always open in a new tab
 pref("browser.search.openintab", false);
+
+// context menu searches open in the foreground
+pref("browser.search.context.loadInBackground", false);
 
 // send ping to the server to update
 pref("browser.search.update", true);
@@ -755,12 +761,6 @@ pref("urlclassifier.gethashtables", "goog-phish-shavar,goog-malware-shavar");
 // the database.
 pref("urlclassifier.confirm-age", 2700);
 
-// Maximum size of the sqlite3 cache during an update, in bytes
-pref("urlclassifier.updatecachemax", 41943040);
-
-// Maximum size of the sqlite3 cache for lookups, in bytes
-pref("urlclassifier.lookupcachemax", 1048576);
-
 // URL for checking the reason for a malware warning.
 pref("browser.safebrowsing.malware.reportURL", "http://safebrowsing.clients.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
 
@@ -801,7 +801,7 @@ pref("browser.sessionstore.max_resumed_crashes", 1);
 // focused (also applies to tabs that aren't visible). When false, the values
 // for MAX_CONCURRENT_TAB_RESTORES and restore_hidden_tabs are respected.
 // Selected tabs are always restored regardless of this pref.
-pref("browser.sessionstore.restore_on_demand", false);
+pref("browser.sessionstore.restore_on_demand", true);
 // Whether to automatically restore hidden tabs (i.e., tabs in other tab groups) or not
 pref("browser.sessionstore.restore_hidden_tabs", false);
 // If restore_on_demand is set, pinned tabs are restored on startup by default.
@@ -960,6 +960,7 @@ pref("services.sync.prefs.sync.browser.download.manager.scanWhenDone", true);
 pref("services.sync.prefs.sync.browser.download.manager.showWhenStarting", true);
 pref("services.sync.prefs.sync.browser.formfill.enable", true);
 pref("services.sync.prefs.sync.browser.link.open_newwindow", true);
+pref("services.sync.prefs.sync.browser.newtabpage.enabled", true);
 pref("services.sync.prefs.sync.browser.offline-apps.notify", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.enabled", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.malware.enabled", true);
@@ -1030,6 +1031,15 @@ pref("devtools.errorconsole.enabled", false);
 // Enable the Inspector
 pref("devtools.inspector.enabled", true);
 pref("devtools.inspector.htmlHeight", 112);
+pref("devtools.inspector.htmlPanelOpen", false);
+pref("devtools.inspector.sidebarOpen", false);
+pref("devtools.inspector.activeSidebar", "ruleview");
+
+// Enable the Debugger
+pref("devtools.debugger.enabled", false);
+
+// The default Debugger UI height
+pref("devtools.debugger.ui.height", 250);
 
 // Enable the style inspector
 pref("devtools.styleinspector.enabled", true);
@@ -1094,12 +1104,9 @@ pref("devtools.editor.expandtab", true);
 // Tells which component you want to use for source editing in developer tools.
 //
 // Available components:
-//   "textarea" - this is a basic text editor, like an HTML <textarea>.
-//
 //   "orion" - this is the Orion source code editor from the Eclipse project. It
 //   provides programmer-specific editor features such as syntax highlighting,
-//   indenting and bracket recognition. It may not be appropriate for all
-//   locales (esp. RTL) or a11y situations.
+//   indenting and bracket recognition.
 pref("devtools.editor.component", "orion");
 
 // Whether the character encoding menu is under the main Firefox button. This
@@ -1119,3 +1126,8 @@ pref("browser.newtabpage.enabled", true);
 
 // Enable the DOM full-screen API.
 pref("full-screen-api.enabled", true);
+
+// Startup Crash Tracking
+// number of startup crashes that can occur before starting into safe mode automatically
+// (this pref has no effect if more than 6 hours have passed since the last crash)
+pref("toolkit.startup.max_resumed_crashes", 2);

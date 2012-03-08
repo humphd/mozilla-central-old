@@ -42,7 +42,6 @@
 
 #include "nsIContent.h"
 #include "nsEventStates.h"
-#include "nsDOMMemoryReporter.h"
 
 class nsEventStateManager;
 class nsGlobalWindow;
@@ -105,8 +104,6 @@ public:
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ELEMENT_IID)
 
-  NS_DECL_AND_IMPL_DOM_MEMORY_REPORTER_SIZEOF(Element, nsIContent)
-
   /**
    * Method to get the full state of this element.  See nsEventStates.h for
    * the possible bits that could be set here.
@@ -142,6 +139,44 @@ public:
     return mState.HasAtLeastOneOfStates(NS_EVENT_STATE_FULL_SCREEN_ANCESTOR |
                                         NS_EVENT_STATE_FULL_SCREEN);
   }
+
+  /**
+   * Returns true if the element has the pointer locked
+   */
+  bool IsPointerLock() const {
+    return mState.HasState(NS_EVENT_STATE_POINTER_LOCK);
+  }
+
+  /**
+   * The style state of this element. This is the real state of the element
+   * with any style locks applied for pseudo-class inspecting.
+   */
+  nsEventStates StyleState() const {
+    if (!HasLockedStyleStates()) {
+      return mState;
+    }
+    return StyleStateFromLocks();
+  };
+
+  /**
+   * The style state locks applied to this element.
+   */
+  nsEventStates LockedStyleStates() const;
+
+  /**
+   * Add a style state lock on this element.
+   */
+  void LockStyleStates(nsEventStates aStates);
+
+  /**
+   * Remove a style state lock on this element.
+   */
+  void UnlockStyleStates(nsEventStates aStates);
+
+  /**
+   * Clear all style state locks on this element.
+   */
+  void ClearStyleStateLocks();
 
 protected:
   /**
@@ -183,6 +218,11 @@ private:
   friend class Link;
 
   void NotifyStateChange(nsEventStates aStates);
+
+  void NotifyStyleStateChange(nsEventStates aStates);
+
+  // Style state computed from element's state and style locks.
+  nsEventStates StyleStateFromLocks() const;
 
   // Methods for the ESM to manage state bits.  These will handle
   // setting up script blockers when they notify, so no need to do it

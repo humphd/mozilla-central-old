@@ -51,7 +51,6 @@
 #include "nsICharsetConverterManager.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
-#include "nsIPrefBranch2.h"
 #include "nsIIDNService.h"
 #include "nsNetUtil.h"
 #include "prlog.h"
@@ -342,7 +341,7 @@ DumpLeakedURLs::~DumpLeakedURLs()
 void
 nsStandardURL::InitGlobalObjects()
 {
-    nsCOMPtr<nsIPrefBranch2> prefBranch( do_GetService(NS_PREFSERVICE_CONTRACTID) );
+    nsCOMPtr<nsIPrefBranch> prefBranch( do_GetService(NS_PREFSERVICE_CONTRACTID) );
     if (prefBranch) {
         nsCOMPtr<nsIObserver> obs( new nsPrefObserver() );
         prefBranch->AddObserver(NS_NET_PREF_ESCAPEUTF8, obs.get(), false);
@@ -979,6 +978,7 @@ NS_INTERFACE_MAP_BEGIN(nsStandardURL)
     if (aIID.Equals(kThisImplCID))
         foundInterface = static_cast<nsIURI *>(this);
     else
+    NS_INTERFACE_MAP_ENTRY(nsISizeOf)
 NS_INTERFACE_MAP_END
 
 //----------------------------------------------------------------------------
@@ -3069,3 +3069,26 @@ nsStandardURL::GetClassIDNoAlloc(nsCID *aClassIDNoAlloc)
     *aClassIDNoAlloc = kStandardURLCID;
     return NS_OK;
 }
+
+//----------------------------------------------------------------------------
+// nsStandardURL::nsISizeOf
+//----------------------------------------------------------------------------
+
+size_t
+nsStandardURL::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
+{
+  return mSpec.SizeOfExcludingThisIfUnshared(aMallocSizeOf) +
+         mOriginCharset.SizeOfExcludingThisIfUnshared(aMallocSizeOf) +
+         aMallocSizeOf(mHostA);
+
+  // Measurement of the following members may be added later if DMD finds it is
+  // worthwhile:
+  // - mParser
+  // - mFile
+}
+
+size_t
+nsStandardURL::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const {
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
+}
+

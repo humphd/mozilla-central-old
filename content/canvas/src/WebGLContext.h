@@ -55,14 +55,19 @@
 #include "nsHTMLCanvasElement.h"
 #include "nsWeakReference.h"
 #include "nsIDOMHTMLElement.h"
-#include "nsIJSNativeInitializer.h"
 #include "nsIMemoryReporter.h"
+#include "nsIJSNativeInitializer.h"
 #include "nsContentUtils.h"
 
 #include "GLContextProvider.h"
 #include "Layers.h"
 
 #include "CheckedInt.h"
+#include "nsDataHashtable.h"
+
+#ifdef XP_MACOSX
+#include "ForceDiscreteGPUHelperCGL.h"
+#endif
 
 /* 
  * Minimum value constants defined in 6.2 State Tables of OpenGL ES - 2.0.25
@@ -514,7 +519,7 @@ class WebGLContext :
     public nsITimerCallback,
     public WebGLRectangleObject
 {
-    friend class WebGLMemoryReporter;
+    friend class WebGLMemoryMultiReporterWrapper;
     friend class WebGLExtensionLoseContext;
     friend class WebGLContextUserData;
 
@@ -745,6 +750,7 @@ protected:
     enum WebGLExtensionID {
         WebGL_OES_texture_float,
         WebGL_OES_standard_derivatives,
+        WebGL_EXT_texture_filter_anisotropic,
         WebGL_MOZ_WEBGL_lose_context,
         WebGLExtensionID_Max
     };
@@ -942,6 +948,16 @@ protected:
     bool mContextLostErrorSet;
     bool mContextLostDueToTest;
 
+#ifdef XP_MACOSX
+    // see bug 713305. This RAII helper guarantees that we're on the discrete GPU, during its lifetime
+    // Debouncing note: we don't want to switch GPUs too frequently, so try to not create and destroy
+    // these objects at high frequency. Having WebGLContext's hold one such object seems fine,
+    // because WebGLContext objects only go away during GC, which shouldn't happen too frequently.
+    // If in the future GC becomes much more frequent, we may have to revisit then (maybe use a timer).
+    ForceDiscreteGPUHelperCGL mForceDiscreteGPUHelper;
+#endif
+
+
 public:
     // console logging helpers
     static void LogMessage(const char *fmt, ...);
@@ -1024,7 +1040,7 @@ struct WebGLVertexAttribData {
     }
 };
 
-class WebGLBuffer
+class WebGLBuffer MOZ_FINAL
     : public nsIWebGLBuffer
     , public WebGLRefCountedObject<WebGLBuffer>
     , public WebGLContextBoundObject
@@ -1055,6 +1071,10 @@ public:
         mContext->mBuffers.RemoveElement(mMonotonicHandle);
     }
 
+    size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const {
+        return aMallocSizeOf(this) + aMallocSizeOf(mData);
+    }
+   
     bool HasEverBeenBound() { return mHasEverBeenBound; }
     void SetHasEverBeenBound(bool x) { mHasEverBeenBound = x; }
     GLuint GLName() const { return mGLName; }
@@ -1158,7 +1178,7 @@ protected:
     void* mData; // in the case of an Element Array Buffer, we keep a copy.
 };
 
-class WebGLTexture
+class WebGLTexture MOZ_FINAL
     : public nsIWebGLTexture
     , public WebGLRefCountedObject<WebGLTexture>
     , public WebGLContextBoundObject
@@ -1608,16 +1628,25 @@ public:
     }
 };
 
-class WebGLShader
+struct WebGLMappedIdentifier {
+    nsCString original, mapped; // ASCII strings
+    WebGLMappedIdentifier(const nsACString& o, const nsACString& m) : original(o), mapped(m) {}
+};
+
+class WebGLShader MOZ_FINAL
     : public nsIWebGLShader
     , public WebGLRefCountedObject<WebGLShader>
     , public WebGLContextBoundObject
 {
+    friend class WebGLContext;
+    friend class WebGLProgram;
+
 public:
     WebGLShader(WebGLContext *context, WebGLenum stype)
         : WebGLContextBoundObject(context)
         , mType(stype)
         , mNeedsTranslation(true)
+        , mAttribMaxNameLength(0)
     {
         mContext->MakeContextCurrent();
         mGLName = mContext->gl->fCreateShader(mType);
@@ -1626,6 +1655,12 @@ public:
 
     ~WebGLShader() {
         DeleteOnce();
+    }
+    
+    size_t SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) {
+        return aMallocSizeOf(this) +
+               mSource.SizeOfExcludingThisIfUnshared(aMallocSizeOf) +
+               mTranslationLog.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
     }
 
     void Delete() {
@@ -1668,12 +1703,46 @@ protected:
     WebGLuint mGLName;
     WebGLenum mType;
     nsString mSource;
-    nsCString mTranslationLog;
+    nsCString mTranslationLog; // The translation log should contain only ASCII characters
     bool mNeedsTranslation;
     WebGLMonotonicHandle mMonotonicHandle;
+    nsTArray<WebGLMappedIdentifier> mAttributes;
+    nsTArray<WebGLMappedIdentifier> mUniforms;
+    int mAttribMaxNameLength;
 };
 
-class WebGLProgram
+/** Takes an ASCII string like "foo[i]", turns it into "foo" and returns "[i]" in bracketPart
+  * 
+  * \param string input/output: the string to split, becomes the string without the bracket part
+  * \param bracketPart output: gets the bracket part.
+  * 
+  * Notice that if there are multiple brackets like "foo[i].bar[j]", only the last bracket is split.
+  */
+static bool SplitLastSquareBracket(nsACString& string, nsCString& bracketPart)
+{
+    NS_ABORT_IF_FALSE(bracketPart.Length() == 0, "SplitLastSquareBracket must be called with empty bracketPart string");
+    char *string_start = string.BeginWriting();
+    char *s = string_start + string.Length() - 1;
+
+    if (*s != ']')
+        return false;
+
+    while (*s != '[' && s != string_start)
+        s--;
+
+    if (*s != '[')
+        return false;
+
+    bracketPart.Assign(s);
+    *s = 0;
+    string.EndWriting();
+    string.SetLength(s - string_start);
+    return true;
+}
+
+typedef nsDataHashtable<nsCStringHashKey, nsCString> CStringHash;
+
+class WebGLProgram MOZ_FINAL
     : public nsIWebGLProgram
     , public WebGLRefCountedObject<WebGLProgram>
     , public WebGLContextBoundObject
@@ -1683,10 +1752,7 @@ public:
         : WebGLContextBoundObject(context)
         , mLinkStatus(false)
         , mGeneration(0)
-        , mUniformMaxNameLength(0)
         , mAttribMaxNameLength(0)
-        , mUniformCount(0)
-        , mAttribCount(0)
     {
         mContext->MakeContextCurrent();
         mGLName = mContext->gl->fCreateProgram();
@@ -1765,14 +1831,106 @@ public:
     }
 
     /* Called only after LinkProgram */
-    bool UpdateInfo(gl::GLContext *gl);
+    bool UpdateInfo();
 
     /* Getters for cached program info */
-    WebGLint UniformMaxNameLength() const { return mUniformMaxNameLength; }
-    WebGLint AttribMaxNameLength() const { return mAttribMaxNameLength; }
-    WebGLint UniformCount() const { return mUniformCount; }
-    WebGLint AttribCount() const { return mAttribCount; }
     bool IsAttribInUse(unsigned i) const { return mAttribsInUse[i]; }
+
+    /* Maps identifier |name| to the mapped identifier |*mappedName|
+     * Both are ASCII strings.
+     */
+    void MapIdentifier(const nsACString& name, nsCString *mappedName) {
+        if (!mIdentifierMap) {
+            // if the identifier map doesn't exist yet, build it now
+            mIdentifierMap = new CStringHash;
+            mIdentifierMap->Init();
+            for (size_t i = 0; i < mAttachedShaders.Length(); i++) {
+                for (size_t j = 0; j < mAttachedShaders[i]->mAttributes.Length(); j++) {
+                    const WebGLMappedIdentifier& attrib = mAttachedShaders[i]->mAttributes[j];
+                    mIdentifierMap->Put(attrib.original, attrib.mapped);
+                }
+                for (size_t j = 0; j < mAttachedShaders[i]->mUniforms.Length(); j++) {
+                    const WebGLMappedIdentifier& uniform = mAttachedShaders[i]->mUniforms[j];
+                    mIdentifierMap->Put(uniform.original, uniform.mapped);
+                }
+            }
+        }
+
+        nsCString mutableName(name);
+        nsCString bracketPart;
+        bool hadBracketPart = SplitLastSquareBracket(mutableName, bracketPart);
+        if (hadBracketPart)
+            mutableName.AppendLiteral("[0]");
+
+        if (mIdentifierMap->Get(mutableName, mappedName)) {
+            if (hadBracketPart) {
+                nsCString mappedBracketPart;
+                bool mappedHadBracketPart = SplitLastSquareBracket(*mappedName, mappedBracketPart);
+                if (mappedHadBracketPart)
+                    mappedName->Append(bracketPart);
+            }
+            return;
+        }
+
+        // not found? We might be in the situation we have a uniform array name and the GL's glGetActiveUniform
+        // returned its name without [0], as is allowed by desktop GL but not in ES. Let's then try with [0].
+        mutableName.AppendLiteral("[0]");
+        if (mIdentifierMap->Get(mutableName, mappedName))
+            return;
+
+        // not found? return name unchanged. This case happens e.g. on bad user input, or when
+        // we're not using identifier mapping, or if we didn't store an identifier in the map because
+        // e.g. its mapping is trivial (as happens for short identifiers)
+        mappedName->Assign(name);
+    }
+
+    /* Un-maps mapped identifier |name| to the original identifier |*reverseMappedName|
+     * Both are ASCII strings.
+     */
+    void ReverseMapIdentifier(const nsACString& name, nsCString *reverseMappedName) {
+        if (!mIdentifierReverseMap) {
+            // if the identifier reverse map doesn't exist yet, build it now
+            mIdentifierReverseMap = new CStringHash;
+            mIdentifierReverseMap->Init();
+            for (size_t i = 0; i < mAttachedShaders.Length(); i++) {
+                for (size_t j = 0; j < mAttachedShaders[i]->mAttributes.Length(); j++) {
+                    const WebGLMappedIdentifier& attrib = mAttachedShaders[i]->mAttributes[j];
+                    mIdentifierReverseMap->Put(attrib.mapped, attrib.original);
+                }
+                for (size_t j = 0; j < mAttachedShaders[i]->mUniforms.Length(); j++) {
+                    const WebGLMappedIdentifier& uniform = mAttachedShaders[i]->mUniforms[j];
+                    mIdentifierReverseMap->Put(uniform.mapped, uniform.original);
+                }
+            }
+        }
+
+        nsCString mutableName(name);
+        nsCString bracketPart;
+        bool hadBracketPart = SplitLastSquareBracket(mutableName, bracketPart);
+        if (hadBracketPart)
+            mutableName.AppendLiteral("[0]");
+
+        if (mIdentifierReverseMap->Get(mutableName, reverseMappedName)) {
+            if (hadBracketPart) {
+                nsCString reverseMappedBracketPart;
+                bool reverseMappedHadBracketPart = SplitLastSquareBracket(*reverseMappedName, reverseMappedBracketPart);
+                if (reverseMappedHadBracketPart)
+                    reverseMappedName->Append(bracketPart);
+            }
+            return;
+        }
+
+        // not found? We might be in the situation we have a uniform array name and the GL's glGetActiveUniform
+        // returned its name without [0], as is allowed by desktop GL but not in ES. Let's then try with [0].
+        mutableName.AppendLiteral("[0]");
+        if (mIdentifierReverseMap->Get(mutableName, reverseMappedName))
+            return;
+
+        // not found? return name unchanged. This case happens e.g. on bad user input, or when
+        // we're not using identifier mapping, or if we didn't store an identifier in the map because
+        // e.g. its mapping is trivial (as happens for short identifiers)
+        reverseMappedName->Assign(name);
+    }
 
     NS_DECL_ISUPPORTS
     NS_DECL_NSIWEBGLPROGRAM
@@ -1786,16 +1944,13 @@ protected:
     CheckedUint32 mGeneration;
 
     // post-link data
-
-    GLint mUniformMaxNameLength;
-    GLint mAttribMaxNameLength;
-    GLint mUniformCount;
-    GLint mAttribCount;
     std::vector<bool> mAttribsInUse;
     WebGLMonotonicHandle mMonotonicHandle;
+    nsAutoPtr<CStringHash> mIdentifierMap, mIdentifierReverseMap;
+    int mAttribMaxNameLength;
 };
 
-class WebGLRenderbuffer
+class WebGLRenderbuffer MOZ_FINAL
     : public nsIWebGLRenderbuffer
     , public WebGLRefCountedObject<WebGLRenderbuffer>
     , public WebGLRectangleObject
@@ -2001,7 +2156,7 @@ public:
     }
 };
 
-class WebGLFramebuffer
+class WebGLFramebuffer MOZ_FINAL
     : public nsIWebGLFramebuffer
     , public WebGLRefCountedObject<WebGLFramebuffer>
     , public WebGLContextBoundObject
@@ -2296,7 +2451,7 @@ public:
     WebGLMonotonicHandle mMonotonicHandle;
 };
 
-class WebGLUniformLocation
+class WebGLUniformLocation MOZ_FINAL
     : public nsIWebGLUniformLocation
     , public WebGLContextBoundObject
     , public WebGLRefCountedObject<WebGLUniformLocation>
@@ -2337,16 +2492,15 @@ protected:
     friend class WebGLProgram;
 };
 
-class WebGLActiveInfo
+class WebGLActiveInfo MOZ_FINAL
     : public nsIWebGLActiveInfo
 {
 public:
-    WebGLActiveInfo(WebGLint size, WebGLenum type, const char *nameptr, PRUint32 namelength) :
+    WebGLActiveInfo(WebGLint size, WebGLenum type, const nsACString& name) :
         mSize(size),
-        mType(type)
-    {
-        mName.AssignASCII(nameptr, namelength);
-    }
+        mType(type),
+        mName(NS_ConvertASCIItoUTF16(name))
+    {}
 
     NS_DECL_ISUPPORTS
     NS_DECL_NSIWEBGLACTIVEINFO
@@ -2356,7 +2510,7 @@ protected:
     nsString mName;
 };
 
-class WebGLShaderPrecisionFormat
+class WebGLShaderPrecisionFormat MOZ_FINAL
     : public nsIWebGLShaderPrecisionFormat
 {
 public:
@@ -2388,6 +2542,7 @@ public:
 
     NS_DECL_ISUPPORTS
     NS_DECL_NSIWEBGLEXTENSION
+    virtual ~WebGLExtension() {}
 };
 
 inline const WebGLRectangleObject *WebGLContext::FramebufferRectangleObject() const {
@@ -2514,30 +2669,21 @@ WebGLContext::CanGetConcreteObject(const char *info,
     return GetConcreteObject(info, aInterface, &aConcreteObject, isNull, isDeleted, false);
 }
 
-class WebGLMemoryReporter
+class WebGLMemoryMultiReporterWrapper
 {
-    WebGLMemoryReporter();
-    ~WebGLMemoryReporter();
-    static WebGLMemoryReporter* sUniqueInstance;
+    WebGLMemoryMultiReporterWrapper();
+    ~WebGLMemoryMultiReporterWrapper();
+    static WebGLMemoryMultiReporterWrapper* sUniqueInstance;
 
-    // here we store plain pointers, not RefPtrs: we don't want the WebGLMemoryReporter unique instance to keep alive all
+    // here we store plain pointers, not RefPtrs: we don't want the 
+    // WebGLMemoryMultiReporterWrapper unique instance to keep alive all		
     // WebGLContexts ever created.
     typedef nsTArray<const WebGLContext*> ContextsArrayType;
     ContextsArrayType mContexts;
     
-    nsCOMPtr<nsIMemoryReporter> mTextureMemoryUsageReporter;
-    nsCOMPtr<nsIMemoryReporter> mTextureCountReporter;
-    nsCOMPtr<nsIMemoryReporter> mBufferMemoryUsageReporter;
-    nsCOMPtr<nsIMemoryReporter> mBufferCacheMemoryUsageReporter;
-    nsCOMPtr<nsIMemoryReporter> mBufferCountReporter;
-    nsCOMPtr<nsIMemoryReporter> mRenderbufferMemoryUsageReporter;
-    nsCOMPtr<nsIMemoryReporter> mRenderbufferCountReporter;
-    nsCOMPtr<nsIMemoryReporter> mShaderSourcesSizeReporter;
-    nsCOMPtr<nsIMemoryReporter> mShaderTranslationLogsSizeReporter;
-    nsCOMPtr<nsIMemoryReporter> mShaderCountReporter;
-    nsCOMPtr<nsIMemoryReporter> mContextCountReporter;
+    nsCOMPtr<nsIMemoryMultiReporter> mReporter;
 
-    static WebGLMemoryReporter* UniqueInstance();
+    static WebGLMemoryMultiReporterWrapper* UniqueInstance();
 
     static ContextsArrayType & Contexts() { return UniqueInstance()->mContexts; }
 
@@ -2551,7 +2697,7 @@ class WebGLMemoryReporter
         ContextsArrayType & contexts = Contexts();
         contexts.RemoveElement(c);
         if (contexts.IsEmpty()) {
-            delete sUniqueInstance;
+            delete sUniqueInstance; 
             sUniqueInstance = nsnull;
         }
     }
@@ -2560,8 +2706,8 @@ class WebGLMemoryReporter
         const ContextsArrayType & contexts = Contexts();
         PRInt64 result = 0;
         for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t t = 0; t < contexts[i]->mTextures.Length(); ++t)
-              result += contexts[i]->mTextures[t]->MemoryUsage();
+            for (size_t j = 0; j < contexts[i]->mTextures.Length(); ++j)
+              result += contexts[i]->mTextures[j]->MemoryUsage();
         return result;
     }
 
@@ -2577,20 +2723,12 @@ class WebGLMemoryReporter
         const ContextsArrayType & contexts = Contexts();
         PRInt64 result = 0;
         for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t b = 0; b < contexts[i]->mBuffers.Length(); ++b)
-                result += contexts[i]->mBuffers[b]->ByteLength();
+            for (size_t j = 0; j < contexts[i]->mBuffers.Length(); ++j)
+                result += contexts[i]->mBuffers[j]->ByteLength();
         return result;
     }
 
-    static PRInt64 GetBufferCacheMemoryUsed() {
-        const ContextsArrayType & contexts = Contexts();
-        PRInt64 result = 0;
-        for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t b = 0; b < contexts[i]->mBuffers.Length(); ++b)
-                if (contexts[i]->mBuffers[b]->Target() == LOCAL_GL_ELEMENT_ARRAY_BUFFER)
-                    result += contexts[i]->mBuffers[b]->ByteLength();
-        return result;
-    }
+    static PRInt64 GetBufferCacheMemoryUsed();
 
     static PRInt64 GetBufferCount() {
         const ContextsArrayType & contexts = Contexts();
@@ -2604,8 +2742,8 @@ class WebGLMemoryReporter
         const ContextsArrayType & contexts = Contexts();
         PRInt64 result = 0;
         for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t r = 0; r < contexts[i]->mRenderbuffers.Length(); ++r)
-              result += contexts[i]->mRenderbuffers[r]->MemoryUsage();
+            for (size_t j = 0; j < contexts[i]->mRenderbuffers.Length(); ++j)
+              result += contexts[i]->mRenderbuffers[j]->MemoryUsage();
         return result;
     }
 
@@ -2617,23 +2755,7 @@ class WebGLMemoryReporter
         return result;
     }
 
-    static PRInt64 GetShaderSourcesSize() {
-        const ContextsArrayType & contexts = Contexts();
-        PRInt64 result = 0;
-        for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t s = 0; s < contexts[i]->mShaders.Length(); ++s)
-                result += contexts[i]->mShaders[s]->Source().Length();
-        return result;
-    }
-
-    static PRInt64 GetShaderTranslationLogsSize() {
-        const ContextsArrayType & contexts = Contexts();
-        PRInt64 result = 0;
-        for(size_t i = 0; i < contexts.Length(); ++i)
-            for (size_t s = 0; s < contexts[i]->mShaders.Length(); ++s)
-                result += contexts[i]->mShaders[s]->TranslationLog().Length();
-        return result;
-    }
+    static PRInt64 GetShaderSize();
 
     static PRInt64 GetShaderCount() {
         const ContextsArrayType & contexts = Contexts();

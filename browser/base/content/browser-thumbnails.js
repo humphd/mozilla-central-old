@@ -44,9 +44,6 @@ let gBrowserThumbnails = {
     this._tabEvents.forEach(function (aEvent) {
       gBrowser.tabContainer.removeEventListener(aEvent, this, false);
     }, this);
-
-    this._timeouts = null;
-    this._pageThumbs = null;
   },
 
   handleEvent: function Thumbnails_handleEvent(aEvent) {
@@ -77,10 +74,8 @@ let gBrowserThumbnails = {
   },
 
   _capture: function Thumbnails_capture(aBrowser) {
-    if (this._shouldCapture(aBrowser)) {
-      let canvas = this._pageThumbs.capture(aBrowser.contentWindow);
-      this._pageThumbs.store(aBrowser.currentURI.spec, canvas);
-    }
+    if (this._shouldCapture(aBrowser))
+      this._pageThumbs.captureAndStore(aBrowser);
   },
 
   _delayedCapture: function Thumbnails_delayedCapture(aBrowser) {

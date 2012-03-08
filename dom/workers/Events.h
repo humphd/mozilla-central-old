@@ -69,19 +69,19 @@ CreateErrorEvent(JSContext* aCx, JSString* aMessage, JSString* aFilename,
 
 JSObject*
 CreateProgressEvent(JSContext* aCx, JSString* aType, bool aLengthComputable,
-                    jsdouble aLoaded, jsdouble aTotal);
+                    double aLoaded, double aTotal);
 
 bool
-IsSupportedEventClass(JSContext* aCx, JSObject* aEvent);
+IsSupportedEventClass(JSObject* aEvent);
+
+void
+SetEventTarget(JSObject* aEvent, JSObject* aTarget);
 
 bool
-SetEventTarget(JSContext* aCx, JSObject* aEvent, JSObject* aTarget);
+EventWasCanceled(JSObject* aEvent);
 
 bool
-EventWasCanceled(JSContext* aCx, JSObject* aEvent);
-
-bool
-EventImmediatePropagationStopped(JSContext* aCx, JSObject* aEvent);
+EventImmediatePropagationStopped(JSObject* aEvent);
 
 bool
 DispatchEventToTarget(JSContext* aCx, JSObject* aTarget, JSObject* aEvent,

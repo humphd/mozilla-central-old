@@ -80,7 +80,6 @@ mMimeTypes(aPluginTag->mMimeTypes),
 mMimeDescriptions(aPluginTag->mMimeDescriptions),
 mExtensions(aPluginTag->mExtensions),
 mLibrary(nsnull),
-mCanUnloadLibrary(true),
 mIsJavaPlugin(aPluginTag->mIsJavaPlugin),
 mIsNPRuntimeEnabledJavaPlugin(aPluginTag->mIsNPRuntimeEnabledJavaPlugin),
 mIsFlashPlugin(aPluginTag->mIsFlashPlugin),
@@ -97,11 +96,6 @@ nsPluginTag::nsPluginTag(nsPluginInfo* aPluginInfo)
 mName(aPluginInfo->fName),
 mDescription(aPluginInfo->fDescription),
 mLibrary(nsnull),
-#ifdef XP_MACOSX
-mCanUnloadLibrary(false),
-#else
-mCanUnloadLibrary(true),
-#endif
 mIsJavaPlugin(false),
 mIsNPRuntimeEnabledJavaPlugin(false),
 mIsFlashPlugin(false),
@@ -111,72 +105,10 @@ mVersion(aPluginInfo->fVersion),
 mLastModifiedTime(0),
 mFlags(NS_PLUGIN_FLAG_ENABLED)
 {
-  if (!aPluginInfo->fMimeTypeArray) {
-    return;
-  }
-
-  for (PRUint32 i = 0; i < aPluginInfo->fVariantCount; i++) {
-    // First fill in the MIME types.
-    char* currentMIMEType = aPluginInfo->fMimeTypeArray[i];
-    if (currentMIMEType) {
-      if (mIsJavaPlugin) {
-        if (strcmp(currentMIMEType, "application/x-java-vm-npruntime") == 0) {
-          // This "magic MIME type" should not be exposed, but is just a signal
-          // to the browser that this is new-style java.
-          // Don't add it or its associated information to our arrays.
-          mIsNPRuntimeEnabledJavaPlugin = true;
-          continue;
-        }
-      }
-      mMimeTypes.AppendElement(nsCString(currentMIMEType));
-      if (nsPluginHost::IsJavaMIMEType(currentMIMEType)) {
-        mIsJavaPlugin = true;
-      }
-      else if (strcmp(currentMIMEType, "application/x-shockwave-flash") == 0) {
-        mIsFlashPlugin = true;
-      }
-    } else {
-      continue;
-    }
-
-    // Now fill in the MIME descriptions.
-    if (aPluginInfo->fMimeDescriptionArray &&
-        aPluginInfo->fMimeDescriptionArray[i]) {
-      // we should cut off the list of suffixes which the mime
-      // description string may have, see bug 53895
-      // it is usually in form "some description (*.sf1, *.sf2)"
-      // so we can search for the opening round bracket
-      char cur = '\0';
-      char pre = '\0';
-      char * p = PL_strrchr(aPluginInfo->fMimeDescriptionArray[i], '(');
-      if (p && (p != aPluginInfo->fMimeDescriptionArray[i])) {
-        if ((p - 1) && *(p - 1) == ' ') {
-          pre = *(p - 1);
-          *(p - 1) = '\0';
-        } else {
-          cur = *p;
-          *p = '\0';
-        }
-      }
-      mMimeDescriptions.AppendElement(nsCString(aPluginInfo->fMimeDescriptionArray[i]));
-      // restore the original string
-      if (cur != '\0')
-        *p = cur;
-      if (pre != '\0')
-        *(p - 1) = pre;      
-    } else {
-      mMimeDescriptions.AppendElement(nsCString());
-    }
-
-    // Now fill in the extensions.
-    if (aPluginInfo->fExtensionArray &&
-        aPluginInfo->fExtensionArray[i]) {
-      mExtensions.AppendElement(nsCString(aPluginInfo->fExtensionArray[i]));
-    } else {
-      mExtensions.AppendElement(nsCString());
-    }
-  }
-
+  InitMime(aPluginInfo->fMimeTypeArray,
+           aPluginInfo->fMimeDescriptionArray,
+           aPluginInfo->fExtensionArray,
+           aPluginInfo->fVariantCount);
   EnsureMembersAreUTF8();
 }
 
@@ -190,35 +122,21 @@ nsPluginTag::nsPluginTag(const char* aName,
                          const char* const* aExtensions,
                          PRInt32 aVariants,
                          PRInt64 aLastModifiedTime,
-                         bool aCanUnload,
                          bool aArgsAreUTF8)
 : mPluginHost(nsnull),
 mName(aName),
 mDescription(aDescription),
 mLibrary(nsnull),
-mCanUnloadLibrary(aCanUnload),
 mIsJavaPlugin(false),
 mIsNPRuntimeEnabledJavaPlugin(false),
+mIsFlashPlugin(false),
 mFileName(aFileName),
 mFullPath(aFullPath),
 mVersion(aVersion),
 mLastModifiedTime(aLastModifiedTime),
 mFlags(0) // Caller will read in our flags from cache
 {
-  for (PRInt32 i = 0; i < aVariants; i++) {
-    if (mIsJavaPlugin && aMimeTypes[i] &&
-        strcmp(aMimeTypes[i], "application/x-java-vm-npruntime") == 0) {
-      mIsNPRuntimeEnabledJavaPlugin = true;
-      continue;
-    }
-    mMimeTypes.AppendElement(nsCString(aMimeTypes[i]));
-    mMimeDescriptions.AppendElement(nsCString(aMimeDescriptions[i]));
-    mExtensions.AppendElement(nsCString(aExtensions[i]));
-    if (nsPluginHost::IsJavaMIMEType(mMimeTypes[i].get())) {
-      mIsJavaPlugin = true;
-    }
-  }
-
+  InitMime(aMimeTypes, aMimeDescriptions, aExtensions, static_cast<PRUint32>(aVariants));
   if (!aArgsAreUTF8)
     EnsureMembersAreUTF8();
 }
@@ -230,6 +148,82 @@ nsPluginTag::~nsPluginTag()
 
 NS_IMPL_ISUPPORTS1(nsPluginTag, nsIPluginTag)
 
+void nsPluginTag::InitMime(const char* const* aMimeTypes,
+                           const char* const* aMimeDescriptions,
+                           const char* const* aExtensions,
+                           PRUint32 aVariantCount)
+{
+  if (!aMimeTypes) {
+    return;
+  }
+
+  for (PRUint32 i = 0; i < aVariantCount; i++) {
+    if (!aMimeTypes[i]) {
+      continue;
+    }
+
+    // If we already marked this as a Java plugin, a later MIME type will tell
+    // us if it is npruntime-enabled.
+    if (mIsJavaPlugin) {
+      if (strcmp(aMimeTypes[i], "application/x-java-vm-npruntime") == 0) {
+        // This "magic MIME type" should not be exposed, but is just a signal
+        // to the browser that this is new-style java.
+        // Don't add it or its associated information to our arrays.
+        mIsNPRuntimeEnabledJavaPlugin = true;
+        continue;
+      }
+    }
+
+    // Look for certain special plugins.
+    if (nsPluginHost::IsJavaMIMEType(aMimeTypes[i])) {
+      mIsJavaPlugin = true;
+    } else if (strcmp(aMimeTypes[i], "application/x-shockwave-flash") == 0) {
+      mIsFlashPlugin = true;
+    }
+
+    // Fill in our MIME type array.
+    mMimeTypes.AppendElement(nsCString(aMimeTypes[i]));
+
+    // Now fill in the MIME descriptions.
+    if (aMimeDescriptions && aMimeDescriptions[i]) {
+      // we should cut off the list of suffixes which the mime
+      // description string may have, see bug 53895
+      // it is usually in form "some description (*.sf1, *.sf2)"
+      // so we can search for the opening round bracket
+      char cur = '\0';
+      char pre = '\0';
+      char * p = PL_strrchr(aMimeDescriptions[i], '(');
+      if (p && (p != aMimeDescriptions[i])) {
+        if ((p - 1) && *(p - 1) == ' ') {
+          pre = *(p - 1);
+          *(p - 1) = '\0';
+        } else {
+          cur = *p;
+          *p = '\0';
+        }
+      }
+      mMimeDescriptions.AppendElement(nsCString(aMimeDescriptions[i]));
+      // restore the original string
+      if (cur != '\0') {
+        *p = cur;
+      }
+      if (pre != '\0') {
+        *(p - 1) = pre;
+      }
+    } else {
+      mMimeDescriptions.AppendElement(nsCString());
+    }
+
+    // Now fill in the extensions.
+    if (aExtensions && aExtensions[i]) {
+      mExtensions.AppendElement(nsCString(aExtensions[i]));
+    } else {
+      mExtensions.AppendElement(nsCString());
+    }
+  }
+}
+
+#if !defined(XP_WIN) && !defined(XP_MACOSX)
 static nsresult ConvertToUTF8(nsIUnicodeDecoder *aUnicodeDecoder,
                               nsAFlatCString& aString)
 {
@@ -249,6 +243,7 @@ static nsresult ConvertToUTF8(nsIUnicodeDecoder *aUnicodeDecoder,
   
   return NS_OK;
 }
+#endif
 
 nsresult nsPluginTag::EnsureMembersAreUTF8()
 {
@@ -511,28 +506,16 @@ bool nsPluginTag::Equals(nsPluginTag *aPluginTag)
   return true;
 }
 
-void nsPluginTag::TryUnloadPlugin()
+void nsPluginTag::TryUnloadPlugin(bool inShutdown)
 {
+  // We never want to send NPP_Shutdown to an in-process plugin unless
+  // this process is shutting down.
+  if (mLibrary && !inShutdown) {
+    return;
+  }
+
   if (mEntryPoint) {
     mEntryPoint->Shutdown();
     mEntryPoint = nsnull;
-  }
-  
-  // before we unload check if we are allowed to, see bug #61388
-  if (mLibrary && mCanUnloadLibrary) {
-    // unload the plugin asynchronously by posting a PLEvent
-    nsPluginHost::PostPluginUnloadEvent(mLibrary);
-  }
-  
-  // we should zero it anyway, it is going to be unloaded by
-  // CleanUnsedLibraries before we need to call the library
-  // again so the calling code should not be fooled and reload
-  // the library fresh
-  mLibrary = nsnull;
-  
-  // Remove mime types added to the category manager
-  // only if we were made 'active' by setting the host
-  if (mPluginHost) {
-    RegisterWithCategoryManager(false, nsPluginTag::ePluginUnregister);
   }
 }

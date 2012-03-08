@@ -67,7 +67,6 @@
 #include "prlog.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
-#include "nsIPrefBranch2.h"
 #include "nsIDateTimeFormat.h"
 #include "nsDateTimeFormatCID.h"
 #include "nsIDOMEvent.h"
@@ -1366,8 +1365,6 @@ nsresult nsNSSComponent::getParamsForNextCrlToDownload(nsAutoString *url, PRTime
 NS_IMETHODIMP
 nsNSSComponent::Notify(nsITimer *timer)
 {
-  nsresult rv;
-
   //Timer has fired. So set the flag accordingly
   {
     MutexAutoLock lock(mCrlTimerLock);
@@ -1375,7 +1372,7 @@ nsNSSComponent::Notify(nsITimer *timer)
   }
 
   //First, handle this download
-  rv = DownloadCrlSilently();
+  DownloadCrlSilently();
 
   //Dont Worry if successful or not
   //Set the next timer
@@ -1782,8 +1779,7 @@ nsNSSComponent::InitializeNSS(bool showWarningBox)
       PK11_SetPasswordFunc(PK11PasswordPrompt);
 
       // Register an observer so we can inform NSS when these prefs change
-      nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(mPrefBranch);
-      pbi->AddObserver("security.", this, false);
+      mPrefBranch->AddObserver("security.", this, false);
 
       SSL_OptionSetDefault(SSL_ENABLE_SSL2, false);
       SSL_OptionSetDefault(SSL_V2_COMPATIBLE_HELLO, false);
@@ -1907,8 +1903,7 @@ nsNSSComponent::ShutdownNSS()
     UnregisterMyOCSPAIAInfoCallback();
 
     if (mPrefBranch) {
-      nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(mPrefBranch);
-      pbi->RemoveObserver("security.", this);
+      mPrefBranch->RemoveObserver("security.", this);
     }
 
     ShutdownSmartCardThreads();
@@ -2283,11 +2278,9 @@ nsNSSComponent::Observe(nsISupports *aSubject, const char *aTopic,
     // Cleanup code that requires services, it's too late in destructor.
 
     if (mPSMContentListener) {
-      nsresult rv = NS_ERROR_FAILURE;
-
       nsCOMPtr<nsIURILoader> dispatcher(do_GetService(NS_URI_LOADER_CONTRACTID));
       if (dispatcher) {
-        rv = dispatcher->UnRegisterContentListener(mPSMContentListener);
+        dispatcher->UnRegisterContentListener(mPSMContentListener);
       }
       mPSMContentListener = nsnull;
     }

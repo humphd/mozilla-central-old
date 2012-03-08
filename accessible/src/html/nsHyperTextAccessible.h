@@ -46,7 +46,6 @@
 
 #include "AccCollector.h"
 #include "nsAccessibleWrap.h"
-#include "nsTextAttrs.h"
 
 #include "nsFrameSelection.h"
 #include "nsISelectionController.h"
@@ -76,7 +75,9 @@ class nsHyperTextAccessible : public nsAccessibleWrap,
                               public nsIAccessibleEditableText
 {
 public:
-  nsHyperTextAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHyperTextAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
+  virtual ~nsHyperTextAccessible() { }
+
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIACCESSIBLETEXT
   NS_DECL_NSIACCESSIBLEHYPERTEXT
@@ -408,7 +409,7 @@ protected:
    * @param aEndOffset        [in, out] the end offset
    * @param aAttributes       [out, optional] result attributes
    */
-  nsresult GetSpellTextAttribute(nsIDOMNode *aNode, PRInt32 aNodeOffset,
+  nsresult GetSpellTextAttribute(nsINode* aNode, PRInt32 aNodeOffset,
                                  PRInt32 *aStartOffset,
                                  PRInt32 *aEndOffset,
                                  nsIPersistentProperties *aAttributes);

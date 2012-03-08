@@ -262,6 +262,7 @@ double nsCSSValue::GetAngleValueInRadians() const
 
   switch (GetUnit()) {
   case eCSSUnit_Radian: return angle;
+  case eCSSUnit_Turn:   return angle * 2 * M_PI;
   case eCSSUnit_Degree: return angle * M_PI / 180.0;
   case eCSSUnit_Grad:   return angle * M_PI / 200.0;
 
@@ -860,7 +861,8 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
       }
     }
     else if (eCSSProperty_unicode_bidi == aProperty) {
-      PR_STATIC_ASSERT(NS_STYLE_UNICODE_BIDI_NORMAL == 0);
+      MOZ_STATIC_ASSERT(NS_STYLE_UNICODE_BIDI_NORMAL == 0,
+                        "unicode-bidi style constants not as expected");
       PRInt32 intValue = GetIntValue();
       if (NS_STYLE_UNICODE_BIDI_NORMAL == intValue) {
         AppendASCIItoUTF16(nsCSSProps::LookupPropertyValue(aProperty, intValue),
@@ -1105,6 +1107,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult) const
     case eCSSUnit_Degree:       aResult.AppendLiteral("deg");  break;
     case eCSSUnit_Grad:         aResult.AppendLiteral("grad"); break;
     case eCSSUnit_Radian:       aResult.AppendLiteral("rad");  break;
+    case eCSSUnit_Turn:         aResult.AppendLiteral("turn");  break;
 
     case eCSSUnit_Hertz:        aResult.AppendLiteral("Hz");   break;
     case eCSSUnit_Kilohertz:    aResult.AppendLiteral("kHz");  break;
@@ -1234,6 +1237,7 @@ nsCSSValue::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
     case eCSSUnit_Pixel:
     case eCSSUnit_Degree:
     case eCSSUnit_Grad:
+    case eCSSUnit_Turn:
     case eCSSUnit_Radian:
     case eCSSUnit_Hertz:
     case eCSSUnit_Kilohertz:
@@ -1407,8 +1411,9 @@ nsCSSRect_heap::SizeOfIncludingThis(nsMallocSizeOfFun aMallocSizeOf) const
   return n;
 }
 
-PR_STATIC_ASSERT(NS_SIDE_TOP == 0 && NS_SIDE_RIGHT == 1 &&
-                 NS_SIDE_BOTTOM == 2 && NS_SIDE_LEFT == 3);
+MOZ_STATIC_ASSERT(NS_SIDE_TOP == 0 && NS_SIDE_RIGHT == 1 &&
+                  NS_SIDE_BOTTOM == 2 && NS_SIDE_LEFT == 3,
+                  "box side constants not top/right/bottom/left == 0/1/2/3");
 
 /* static */ const nsCSSRect::side_type nsCSSRect::sides[4] = {
   &nsCSSRect::mTop,
@@ -1771,8 +1776,9 @@ nsCSSCornerSizes::Reset()
   }
 }
 
-PR_STATIC_ASSERT(NS_CORNER_TOP_LEFT == 0 && NS_CORNER_TOP_RIGHT == 1 && \
-    NS_CORNER_BOTTOM_RIGHT == 2 && NS_CORNER_BOTTOM_LEFT == 3);
+MOZ_STATIC_ASSERT(NS_CORNER_TOP_LEFT == 0 && NS_CORNER_TOP_RIGHT == 1 &&
+                  NS_CORNER_BOTTOM_RIGHT == 2 && NS_CORNER_BOTTOM_LEFT == 3,
+                  "box corner constants not tl/tr/br/bl == 0/1/2/3");
 
 /* static */ const nsCSSCornerSizes::corner_type
 nsCSSCornerSizes::corners[4] = {

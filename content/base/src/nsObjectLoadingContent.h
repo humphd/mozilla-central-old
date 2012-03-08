@@ -151,7 +151,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent
 
     void NotifyOwnerDocumentActivityChanged();
 
-    bool SrcStreamLoadInitiated() { return mSrcStreamLoadInitiated; };
+    bool SrcStreamLoading() { return mSrcStreamLoading; };
 
   protected:
     /**
@@ -254,6 +254,12 @@ class nsObjectLoadingContent : public nsImageLoadingContent
     static bool IsSuccessfulRequest(nsIRequest* aRequest);
 
     /**
+     * Check if the given baseURI is contained in the same directory as the
+     * aOriginURI (or a child thereof)
+     */
+    static bool IsFileCodebaseAllowable(nsIURI* aBaseURI, nsIURI* aOriginURI);
+
+    /**
      * Check whether the URI can be handled internally.
      */
     static bool CanHandleURI(nsIURI* aURI);
@@ -300,14 +306,6 @@ class nsObjectLoadingContent : public nsImageLoadingContent
     nsresult TypeForClassID(const nsAString& aClassID, nsACString& aType);
 
     /**
-     * Gets the base URI to be used for this object. This differs from
-     * nsIContent::GetBaseURI in that it takes codebase attributes into
-     * account.
-     */
-    void GetObjectBaseURI(nsIContent* thisContent, nsIURI** aURI);
-
-
-    /**
      * Gets the frame that's associated with this content node.
      * Does not flush.
      */
@@ -328,9 +326,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent
      *
      * This should only be called if the type of this content is eType_Null.
      */
-    static PluginSupportState
-      GetPluginSupportState(nsIContent* aContent,
-                            const nsCString& aContentType);
+    PluginSupportState GetPluginSupportState(nsIContent* aContent, const nsCString& aContentType);
 
     /**
      * If the plugin for aContentType is disabled, return ePluginDisabled.
@@ -339,17 +335,17 @@ class nsObjectLoadingContent : public nsImageLoadingContent
      *
      * This should only be called if the type of this content is eType_Null.
      */
-    static PluginSupportState
-      GetPluginDisabledState(const nsCString& aContentType);
+    PluginSupportState GetPluginDisabledState(const nsCString& aContentType);
 
     /**
      * When there is no usable plugin available this will send UI events and
      * update the AutoFallback object appropriate to the reason for there being
      * no plugin available.
      */
-    static void
-      UpdateFallbackState(nsIContent* aContent, AutoFallback& fallback,
-                          const nsCString& aTypeHint);
+    void UpdateFallbackState(nsIContent* aContent, AutoFallback& fallback, const nsCString& aTypeHint);
+
+    nsresult IsPluginEnabledForType(const nsCString& aMIMEType);
+    bool IsPluginEnabledByExtension(nsIURI* uri, nsCString& mimeType);
 
     /**
      * The final listener to ship the data to (imagelib, uriloader, etc)
@@ -403,9 +399,12 @@ class nsObjectLoadingContent : public nsImageLoadingContent
     // This is used for click-to-play plugins.
     bool                        mShouldPlay : 1;
 
-    // Used to indicate that a stream for a src/data attribute has been
-    // initiated so that we don't do it twice.
-    bool mSrcStreamLoadInitiated;
+    // Used to track when we might try to instantiate a plugin instance based on
+    // a src data stream being delivered to this object. When this is true we don't
+    // want plugin instance instantiation code to attempt to load src data again or
+    // we'll deliver duplicate streams. Should be cleared when we are not loading
+    // src data.
+    bool mSrcStreamLoading;
 
     // A specific state that caused us to fallback
     PluginSupportState          mFallbackReason;

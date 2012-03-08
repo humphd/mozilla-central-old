@@ -71,8 +71,8 @@ public:
    * @param  aPresShell [in] the presentation shell which contains layout info
    *                         for the DOM node
    */
-  virtual nsAccessible* GetAccessibleInShell(nsINode* aNode,
-                                             nsIPresShell* aPresShell) = 0;
+  virtual nsAccessible* GetAccessible(nsINode* aNode,
+                                      nsIPresShell* aPresShell) = 0;
 
   /**
    * Return root document accessible that is or contains a document accessible
@@ -90,10 +90,6 @@ public:
    */
   virtual already_AddRefed<nsAccessible>
     CreateHTMLBRAccessible(nsIContent* aContent, nsIPresShell* aPresShell) = 0;
-  virtual already_AddRefed<nsAccessible>
-    CreateHTML4ButtonAccessible(nsIContent* aContent, nsIPresShell* aPresShell) = 0;
-  virtual already_AddRefed<nsAccessible>
-    CreateHTMLButtonAccessible(nsIContent* aContent, nsIPresShell* aPresShell) = 0;
   virtual already_AddRefed<nsAccessible>
     CreateHTMLCaptionAccessible(nsIContent* aContent, nsIPresShell* aPresShell) = 0;
   virtual already_AddRefed<nsAccessible>

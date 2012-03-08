@@ -48,6 +48,7 @@
 #include "jsdbgapi.h"
 #include "jsclist.h"
 #include "jsinfer.h"
+#include "jsopcode.h"
 #include "jsscope.h"
 
 #include "gc/Barrier.h"
@@ -175,7 +176,9 @@ class Bindings {
     uint16_t nargs;
     uint16_t nvars;
     uint16_t nupvars;
+    bool     hasDup_:1;     // true if there are duplicate argument names
 
+    inline Shape *initialShape(JSContext *cx) const;
   public:
     inline Bindings(JSContext *cx);
 
@@ -197,9 +200,9 @@ class Bindings {
     uint16_t countVars() const { return nvars; }
     uint16_t countUpvars() const { return nupvars; }
 
-    uintN countArgsAndVars() const { return nargs + nvars; }
+    unsigned countArgsAndVars() const { return nargs + nvars; }
 
-    uintN countLocalNames() const { return nargs + nvars + nupvars; }
+    unsigned countLocalNames() const { return nargs + nvars + nupvars; }
 
     bool hasUpvars() const { return nupvars > 0; }
     bool hasLocalNames() const { return countLocalNames() > 0; }
@@ -207,8 +210,14 @@ class Bindings {
     /* Ensure these bindings have a shape lineage. */
     inline bool ensureShape(JSContext *cx);
 
-    /* Returns the shape lineage generated for these bindings. */
+    /* Return the shape lineage generated for these bindings. */
     inline Shape *lastShape() const;
+
+    /*
+     * Return the shape to use to create a call object for these bindings.
+     * The result is guaranteed not to have duplicate property names.
+     */
+    Shape *callObjectShape(JSContext *cx) const;
 
     /* See Scope::extensibleParents */
     inline bool extensibleParents();
@@ -262,13 +271,16 @@ class Bindings {
         return add(cx, NULL, ARGUMENT);
     }
 
+    void noteDup() { hasDup_ = true; }
+    bool hasDup() const { return hasDup_; }
+
     /*
      * Look up an argument or variable name, returning its kind when found or
      * NONE when no such name exists. When indexp is not null and the name
      * exists, *indexp will receive the index of the corresponding argument or
      * variable.
      */
-    BindingKind lookup(JSContext *cx, JSAtom *name, uintN *indexp) const;
+    BindingKind lookup(JSContext *cx, JSAtom *name, unsigned *indexp) const;
 
     /* Convenience method to check for any binding for a name. */
     bool hasBinding(JSContext *cx, JSAtom *name) const {
@@ -542,7 +554,11 @@ struct JSScript : public js::gc::Cell {
 #ifdef JS_CRASH_DIAGNOSTICS
     /* All diagnostic fields must be multiples of Cell::CellSize. */
     uint32_t        cookie2[Cell::CellSize / sizeof(uint32_t)];
-#endif
+
+    void CheckScript(JSScript *prev);
+#else
+    void CheckScript(JSScript *prev) {}
+#endif /* !JS_CRASH_DIAGNOSTICS */
 
 #ifdef DEBUG
     /*
@@ -660,7 +676,7 @@ struct JSScript : public js::gc::Cell {
     }
 
     /*
-     * computedSizeOfData() is the in-use size of all the data sections. 
+     * computedSizeOfData() is the in-use size of all the data sections.
      * sizeOfData() is the size of the block allocated to hold all the data sections
      * (which can be larger than the in-use size).
      */
@@ -817,12 +833,19 @@ struct JSScript : public js::gc::Cell {
     static inline void writeBarrierPost(JSScript *script, void *addr);
 
     static inline js::ThingRootKind rootKind() { return js::THING_ROOT_SCRIPT; }
+
+    static JSPrincipals *normalizeOriginPrincipals(JSPrincipals *principals,
+                                                   JSPrincipals *originPrincipals) {
+        return originPrincipals ? originPrincipals : principals;
+    }
+
+    void markChildren(JSTracer *trc);
 };
 
 /* If this fails, padding_ can be removed. */
 JS_STATIC_ASSERT(sizeof(JSScript) % js::gc::Cell::CellSize == 0);
 
-static JS_INLINE uintN
+static JS_INLINE unsigned
 StackDepth(JSScript *script)
 {
     return script->nslots - script->nfixed;
@@ -836,8 +859,8 @@ js_SweepScriptFilenames(JSCompartment *comp);
 
 /*
  * New-script-hook calling is factored from NewScriptFromEmitter so that it
- * and callers of js_XDRScript can share this code.  In the case of callers
- * of js_XDRScript, the hook should be invoked only after successful decode
+ * and callers of XDRScript can share this code.  In the case of callers
+ * of XDRScript, the hook should be invoked only after successful decode
  * of any owning function (the fun parameter) or script object (null fun).
  */
 extern JS_FRIEND_API(void)
@@ -885,18 +908,21 @@ CheckScript(JSScript *script, JSScript *prev)
 extern jssrcnote *
 js_GetSrcNoteCached(JSContext *cx, JSScript *script, jsbytecode *pc);
 
-extern uintN
-js_PCToLineNumber(JSContext *cx, JSScript *script, jsbytecode *pc);
-
 extern jsbytecode *
-js_LineNumberToPC(JSScript *script, uintN lineno);
+js_LineNumberToPC(JSScript *script, unsigned lineno);
 
-extern JS_FRIEND_API(uintN)
+extern JS_FRIEND_API(unsigned)
 js_GetScriptLineExtent(JSScript *script);
 
 namespace js {
 
-extern uintN
+extern unsigned
+PCToLineNumber(JSScript *script, jsbytecode *pc);
+
+extern unsigned
+PCToLineNumber(unsigned startLine, jssrcnote *notes, jsbytecode *code, jsbytecode *pc);
+
+extern unsigned
 CurrentLine(JSContext *cx);
 
 /*
@@ -914,19 +940,19 @@ enum LineOption {
 };
 
 inline void
-CurrentScriptFileLineOrigin(JSContext *cx, uintN *linenop, LineOption = NOT_CALLED_FROM_JSOP_EVAL);
-
-}
+CurrentScriptFileLineOrigin(JSContext *cx, unsigned *linenop, LineOption = NOT_CALLED_FROM_JSOP_EVAL);
 
 extern JSScript *
-js_CloneScript(JSContext *cx, JSScript *script);
+CloneScript(JSContext *cx, JSScript *script);
 
 /*
- * NB: after a successful JSXDR_DECODE, js_XDRScript callers must do any
+ * NB: after a successful JSXDR_DECODE, XDRScript callers must do any
  * required subsequent set-up of owning function or script object and then call
  * js_CallNewScriptHook.
  */
 extern JSBool
-js_XDRScript(JSXDRState *xdr, JSScript **scriptp);
+XDRScript(JSXDRState *xdr, JSScript **scriptp);
+
+}
 
 #endif /* jsscript_h___ */

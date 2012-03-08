@@ -53,6 +53,7 @@
 #include "jsautooplen.h"
 
 #include "vm/ScopeObject-inl.h"
+#include "vm/StringObject-inl.h"
 
 #if defined JS_POLYIC
 
@@ -101,7 +102,7 @@ class PICStubCompiler : public BaseCompiler
     JSScript *script;
     ic::PICInfo &pic;
     void *stub;
-    uint32_t gcNumber;
+    uint64_t gcNumber;
 
   public:
     bool canCallHook;
@@ -407,7 +408,7 @@ class SetPropCompiler : public PICStubCompiler
             Jump escapedFrame = masm.branchTestPtr(Assembler::Zero, pic.shapeReg, pic.shapeReg);
 
             {
-                Address addr(pic.shapeReg, shape->setterOp() == SetCallArg
+                Address addr(pic.shapeReg, shape->setterOp() == CallObject::setArgOp
                                            ? StackFrame::offsetOfFormalArg(fun, slot)
                                            : StackFrame::offsetOfFixed(slot));
                 masm.storeValue(pic.u.vr, addr);
@@ -416,7 +417,7 @@ class SetPropCompiler : public PICStubCompiler
 
             escapedFrame.linkTo(masm.label(), &masm);
             {
-                if (shape->setterOp() == SetCallVar)
+                if (shape->setterOp() == CallObject::setVarOp)
                     slot += fun->nargs;
 
                 slot += CallObject::RESERVED_SLOTS;
@@ -574,7 +575,7 @@ class SetPropCompiler : public PICStubCompiler
             const Shape *initialShape = obj->lastProperty();
             uint32_t slots = obj->numDynamicSlots();
 
-            uintN flags = 0;
+            unsigned flags = 0;
             PropertyOp getter = clasp->getProperty;
 
             if (pic.kind == ic::PICInfo::SETMETHOD) {
@@ -654,8 +655,8 @@ class SetPropCompiler : public PICStubCompiler
         } else {
             if (shape->hasSetterValue())
                 return disable("scripted setter");
-            if (shape->setterOp() != SetCallArg &&
-                shape->setterOp() != SetCallVar) {
+            if (shape->setterOp() != CallObject::setArgOp &&
+                shape->setterOp() != CallObject::setVarOp) {
                 return disable("setter");
             }
             JS_ASSERT(obj->isCall());
@@ -678,7 +679,7 @@ class SetPropCompiler : public PICStubCompiler
                     return error();
                 {
                     types::AutoEnterTypeInference enter(cx);
-                    if (shape->setterOp() == SetCallArg)
+                    if (shape->setterOp() == CallObject::setArgOp)
                         pic.rhsTypes->addSubset(cx, types::TypeScript::ArgTypes(script, slot));
                     else
                         pic.rhsTypes->addSubset(cx, types::TypeScript::LocalTypes(script, slot));
@@ -944,7 +945,7 @@ class GetPropCompiler : public PICStubCompiler
 
         Jump notStringObj = masm.guardShape(pic.objReg, obj);
 
-        masm.loadPayload(Address(pic.objReg, JSObject::getPrimitiveThisOffset()), pic.objReg);
+        masm.loadPayload(Address(pic.objReg, StringObject::getPrimitiveValueOffset()), pic.objReg);
         masm.loadPtr(Address(pic.objReg, JSString::offsetOfLengthAndFlags()), pic.objReg);
         masm.urshift32(Imm32(JSString::LENGTH_SHIFT), pic.objReg);
         masm.move(ImmType(JSVAL_TYPE_INT32), pic.shapeReg);
@@ -1547,9 +1548,9 @@ class ScopeNameCompiler : public PICStubCompiler
 
         CallObjPropKind kind;
         const Shape *shape = getprop.shape;
-        if (shape->getterOp() == GetCallArg) {
+        if (shape->getterOp() == CallObject::getArgOp) {
             kind = ARG;
-        } else if (shape->getterOp() == GetCallVar) {
+        } else if (shape->getterOp() == CallObject::getVarOp) {
             kind = VAR;
         } else {
             return disable("unhandled callobj sprop getter");
@@ -1759,28 +1760,35 @@ class BindNameCompiler : public PICStubCompiler
 
         BindNameLabels &labels = pic.bindNameLabels();
 
+        if (!IsCacheableNonGlobalScope(scopeChain))
+            return disable("non-cacheable obj at start of scope chain");
+
         /* Guard on the shape of the scope chain. */
         masm.loadPtr(Address(JSFrameReg, StackFrame::offsetOfScopeChain()), pic.objReg);
         masm.loadShape(pic.objReg, pic.shapeReg);
         Jump firstShape = masm.branchPtr(Assembler::NotEqual, pic.shapeReg,
                                          ImmPtr(scopeChain->lastProperty()));
 
-        /* Walk up the scope chain. */
-        JSObject *tobj = scopeChain;
-        Address parent(pic.objReg, ScopeObject::offsetOfEnclosingScope());
-        while (tobj && tobj != obj) {
-            if (!IsCacheableNonGlobalScope(tobj))
-                return disable("non-cacheable obj in scope chain");
-            masm.loadPayload(parent, pic.objReg);
-            masm.loadShape(pic.objReg, pic.shapeReg);
-            Jump shapeTest = masm.branchPtr(Assembler::NotEqual, pic.shapeReg,
-                                            ImmPtr(tobj->lastProperty()));
-            if (!fails.append(shapeTest))
-                return error();
-            tobj = &tobj->asScope().enclosingScope();
+        if (scopeChain != obj) {
+            /* Walk up the scope chain. */
+            JSObject *tobj = &scopeChain->asScope().enclosingScope();
+            Address parent(pic.objReg, ScopeObject::offsetOfEnclosingScope());
+            while (tobj) {
+                if (!IsCacheableNonGlobalScope(tobj))
+                    return disable("non-cacheable obj in scope chain");
+                masm.loadPayload(parent, pic.objReg);
+                masm.loadShape(pic.objReg, pic.shapeReg);
+                Jump shapeTest = masm.branchPtr(Assembler::NotEqual, pic.shapeReg,
+                                                ImmPtr(tobj->lastProperty()));
+                if (!fails.append(shapeTest))
+                    return error();
+                if (tobj == obj)
+                    break;
+                tobj = &tobj->asScope().enclosingScope();
+            }
+            if (tobj != obj)
+                return disable("indirect hit");
         }
-        if (tobj != obj)
-            return disable("indirect hit");
 
         Jump done = masm.jump();
 
@@ -1885,7 +1893,7 @@ GetPropMaybeCached(VMFrame &f, ic::PICInfo *pic, bool cached)
                     LookupStatus status = cc.generateStringObjLengthStub();
                     if (status == Lookup_Error)
                         THROW();
-                    JSString *str = obj->getPrimitiveThis().toString();
+                    JSString *str = obj->asString().unbox();
                     f.regs.sp[-1].setInt32(str->length());
                 }
                 return;
@@ -1928,7 +1936,7 @@ GetPropMaybeCached(VMFrame &f, ic::PICInfo *pic, bool cached)
 
     Value v;
     if (cached) {
-        if (!GetPropertyOperation(f.cx, f.pc(), ObjectValue(*obj), &v))
+        if (!GetPropertyOperation(f.cx, f.pc(), f.regs.sp[-1], &v))
             THROW();
     } else {
         if (!obj->getProperty(f.cx, name, &v))

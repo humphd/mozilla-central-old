@@ -141,13 +141,15 @@ const STATE_FAILED          = "failed";
 const WRITE_ERROR        = 7;
 const UNEXPECTED_ERROR   = 8;
 const ELEVATION_CANCELED = 9;
-const SERVICE_UPDATER_COULD_NOT_BE_STARTED = 16000;
-const SERVICE_NOT_ENOUGH_COMMAND_LINE_ARGS = 16001;
-const SERVICE_UPDATER_SIGN_ERROR           = 16002;
-const SERVICE_UPDATER_COMPARE_ERROR        = 16003;
-const SERVICE_UPDATER_IDENTITY_ERROR       = 16004;
-const SERVICE_STILL_APPLYING_ON_SUCCESS    = 16005;
-const SERVICE_STILL_APPLYING_ON_FAILURE    = 16006;
+
+// Windows service specific errors
+const SERVICE_UPDATER_COULD_NOT_BE_STARTED = 24;
+const SERVICE_NOT_ENOUGH_COMMAND_LINE_ARGS = 25;
+const SERVICE_UPDATER_SIGN_ERROR           = 26;
+const SERVICE_UPDATER_COMPARE_ERROR        = 27;
+const SERVICE_UPDATER_IDENTITY_ERROR       = 28;
+const SERVICE_STILL_APPLYING_ON_SUCCESS    = 29;
+const SERVICE_STILL_APPLYING_ON_FAILURE    = 30;
 
 const CERT_ATTR_CHECK_FAILED_NO_UPDATE  = 100;
 const CERT_ATTR_CHECK_FAILED_HAS_UPDATE = 101;
@@ -2446,6 +2448,7 @@ Checker.prototype = {
       this._callback.onError(request, update);
     }
 
+    this._callback = null;
     this._request = null;
   },
 
@@ -2495,6 +2498,8 @@ Checker.prototype = {
       Services.prefs.setBoolPref(PREF_APP_UPDATE_ENABLED, this._enabled);
       break;
     }
+
+    this._callback = null;
   },
 
   classID: Components.ID("{898CDC9B-E43F-422F-9CC4-2F6291B415A3}"),

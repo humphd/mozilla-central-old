@@ -160,10 +160,8 @@ GetBackendName(mozilla::gfx::BackendType aBackend)
         return "skia";
       case mozilla::gfx::BACKEND_NONE:
         return "none";
-      default:
-        NS_ERROR("Invalid backend type!");
-        return "";
   }
+  MOZ_NOT_REACHED("Incomplet switch");
 }
 
 class THEBES_API gfxPlatform {
@@ -309,6 +307,15 @@ public:
      * Whether to sanitize downloaded fonts using the OTS library
      */
     bool SanitizeDownloadedFonts();
+
+    /**
+     * True when hinting should be enabled.  This setting shouldn't
+     * change per gecko process, while the process is live.  If so the
+     * results are not defined.
+     *
+     * NB: this bit is only honored by the FT2 backend, currently.
+     */
+    virtual bool FontHintingEnabled() { return true; }
 
 #ifdef MOZ_GRAPHITE
     /**

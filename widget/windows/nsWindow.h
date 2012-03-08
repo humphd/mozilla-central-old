@@ -99,9 +99,7 @@ class nsWindow : public nsBaseWidget
   typedef mozilla::TimeStamp TimeStamp;
   typedef mozilla::TimeDuration TimeDuration;
   typedef mozilla::widget::WindowHook WindowHook;
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   typedef mozilla::widget::TaskbarWindowPreview TaskbarWindowPreview;
-#endif
 public:
   nsWindow();
   virtual ~nsWindow();
@@ -280,7 +278,6 @@ public:
    */
   bool                    AssociateDefaultIMC(bool aAssociate);
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   bool HasTaskbarIconBeenCreated() { return mHasTaskbarIconBeenCreated; }
   // Called when either the nsWindow or an nsITaskbarTabPreview receives the noticiation that this window
   // has its icon placed on the taskbar.
@@ -292,7 +289,6 @@ public:
     return preview.forget();
   }
   void SetTaskbarPreview(nsITaskbarWindowPreview *preview) { mTaskbarPreview = do_GetWeakReference(preview); }
-#endif
 
   NS_IMETHOD              ReparentNativeWidget(nsIWidget* aNewParent);
 
@@ -340,10 +336,6 @@ protected:
   void                    ResetLayout();
   void                    InvalidateNonClientRegion();
   HRGN                    ExcludeNonClientFromPaintRegion(HRGN aRegion);
-  static void             InitInputWorkaroundPrefDefaults();
-  static bool             GetInputWorkaroundPref(const char* aPrefName, bool aValueIfAutomatic);
-  static bool             UseTrackPointHack();
-  static void             PerformElantechSwipeGestureHack(UINT& aVirtualKeyCode, nsModifierKeyState& aModKeyState);
   static void             GetMainWindowClass(nsAString& aClass);
   bool                    HasGlass() const {
     return mTransparencyMode == eTransparencyGlass ||
@@ -406,22 +398,12 @@ protected:
                                     PRUint32 aFlags = 0,
                                     const MSG *aMsg = nsnull,
                                     bool *aEventDispatched = nsnull);
-  bool                    OnScroll(UINT aMsg, WPARAM aWParam, LPARAM aLParam);
-  void                    OnScrollInternal(UINT aMsg, WPARAM aWParam,
-                                           LPARAM aLParam);
   bool                    OnGesture(WPARAM wParam, LPARAM lParam);
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   bool                    OnTouch(WPARAM wParam, LPARAM lParam);
-#endif
   bool                    OnHotKey(WPARAM wParam, LPARAM lParam);
   BOOL                    OnInputLangChange(HKL aHKL);
   bool                    OnPaint(HDC aDC, PRUint32 aNestingLevel);
   void                    OnWindowPosChanged(WINDOWPOS *wp, bool& aResult);
-  void                    OnMouseWheel(UINT aMsg, WPARAM aWParam,
-                                       LPARAM aLParam, LRESULT *aRetValue);
-  void                    OnMouseWheelInternal(UINT aMessage, WPARAM aWParam,
-                                               LPARAM aLParam,
-                                               LRESULT *aRetValue);
   void                    OnWindowPosChanging(LPWINDOWPOS& info);
   void                    OnSysColorChanged();
 
@@ -484,9 +466,6 @@ protected:
   nsIntRegion             GetRegionToPaint(bool aForceFullRepaint, 
                                            PAINTSTRUCT ps, HDC aDC);
   static void             ActivateOtherWindowHelper(HWND aWnd);
-#ifdef ACCESSIBILITY
-  static STDMETHODIMP_(LRESULT) LresultFromObject(REFIID riid, WPARAM wParam, LPUNKNOWN pAcc);
-#endif // ACCESSIBILITY
   void                    ClearCachedResources();
 
   nsPopupType PopupType() { return mPopupType; }
@@ -533,10 +512,7 @@ protected:
   static bool           sJustGotActivate;
   static bool           sIsInMouseCapture;
   static int            sTrimOnMinimize;
-  static bool           sDefaultTrackPointHack;
   static const char*    sDefaultMainWindowClass;
-  static bool           sUseElantechSwipeHack;
-  static bool           sUseElantechPinchHack;
   static bool           sAllowD3D9;
 
   // Always use the helper method to read this property.  See bug 603793.
@@ -598,51 +574,29 @@ protected:
   nsRefPtr<gfxASurface> mTransparentSurface;
   HDC                   mMemoryDC;
   nsTransparencyMode    mTransparencyMode;
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
   nsIntRegion           mPossiblyTransparentRegion;
   MARGINS               mGlassMargins;
-#endif // #if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_LONGHORN
 #endif // MOZ_XUL
 
   // Win7 Gesture processing and management
   nsWinGesture          mGesture;
 
-#if MOZ_WINSDK_TARGETVER >= MOZ_NTDDI_WIN7
   // Weak ref to the nsITaskbarWindowPreview associated with this window
   nsWeakPtr             mTaskbarPreview;
   // True if the taskbar (possibly through the tab preview) tells us that the
   // icon has been created on the taskbar.
   bool                  mHasTaskbarIconBeenCreated;
-#endif
 
   // The point in time at which the last paint completed. We use this to avoid
   //  painting too rapidly in response to frequent input events.
   TimeStamp mLastPaintEndTime;
 
-#ifdef ACCESSIBILITY
-  static BOOL           sIsAccessibilityOn;
-  static HINSTANCE      sAccLib;
-  static LPFNLRESULTFROMOBJECT sLresultFromObject;
-#endif // ACCESSIBILITY
-
   // sRedirectedKeyDown is WM_KEYDOWN message or WM_SYSKEYDOWN message which
   // was reirected to SendInput() API by OnKeyDown().
   static MSG            sRedirectedKeyDown;
 
-  static bool sEnablePixelScrolling;
   static bool sNeedsToInitMouseWheelSettings;
-  static ULONG sMouseWheelScrollLines;
-  static ULONG sMouseWheelScrollChars;
   static void InitMouseWheelScrollData();
-
-  static HWND sLastMouseWheelWnd;
-  static PRInt32 sRemainingDeltaForScroll;
-  static PRInt32 sRemainingDeltaForPixel;
-  static bool sLastMouseWheelDeltaIsPositive;
-  static bool sLastMouseWheelOrientationIsVertical;
-  static bool sLastMouseWheelUnitIsPage;
-  static PRUint32 sLastMouseWheelTime; // in milliseconds
-  static void ResetRemainingWheelDelta();
 
   // If a window receives WM_KEYDOWN message or WM_SYSKEYDOWM message which is
   // redirected message, OnKeyDowm() prevents to dispatch NS_KEY_DOWN event

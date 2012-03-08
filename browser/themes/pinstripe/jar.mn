@@ -29,7 +29,6 @@ browser.jar:
   skin/classic/browser/menu-back.png
   skin/classic/browser/menu-forward.png
   skin/classic/browser/page-livemarks.png
-  skin/classic/browser/livemark-item.png
   skin/classic/browser/pageInfo.css
   skin/classic/browser/Privacy-16.png
   skin/classic/browser/Privacy-48.png
@@ -59,7 +58,6 @@ browser.jar:
   skin/classic/browser/newtab/strip.png                     (newtab/strip.png)
   skin/classic/browser/newtab/toolbar.png                   (newtab/toolbar.png)
   skin/classic/browser/setDesktopBackground.css
-  skin/classic/browser/inspector.css
   skin/classic/browser/monitor.png
   skin/classic/browser/monitor_16-10.png
   skin/classic/browser/places/allBookmarks.png              (places/allBookmarks.png)
@@ -90,6 +88,7 @@ browser.jar:
   skin/classic/browser/places/expander-closed.png           (places/expander-closed.png)
   skin/classic/browser/places/expander-open-active.png      (places/expander-open-active.png)
   skin/classic/browser/places/expander-open.png             (places/expander-open.png)
+  skin/classic/browser/places/livemark-item.png             (places/livemark-item.png)
   skin/classic/browser/preferences/alwaysAsk.png            (preferences/alwaysAsk.png)
   skin/classic/browser/preferences/application.png          (preferences/application.png)
   skin/classic/browser/preferences/Options.png              (preferences/Options.png)
@@ -126,9 +125,16 @@ browser.jar:
   skin/classic/browser/tabview/tabview.css                  (tabview/tabview.css)
 * skin/classic/browser/devtools/common.css                  (devtools/common.css)
   skin/classic/browser/devtools/arrows.png                  (devtools/arrows.png)
+  skin/classic/browser/devtools/commandline.png             (devtools/commandline.png)
+  skin/classic/browser/devtools/alerticon-warning.png       (devtools/alerticon-warning.png)
   skin/classic/browser/devtools/goto-mdn.png                (devtools/goto-mdn.png)
   skin/classic/browser/devtools/csshtmltree.css             (devtools/csshtmltree.css)
   skin/classic/browser/devtools/gcli.css                    (devtools/gcli.css)
+  skin/classic/browser/devtools/htmlpanel.css               (devtools/htmlpanel.css)
+  skin/classic/browser/devtools/orion.css                   (devtools/orion.css)
+  skin/classic/browser/devtools/orion-container.css         (devtools/orion-container.css)
+  skin/classic/browser/devtools/orion-task.png              (devtools/orion-task.png)
+  skin/classic/browser/devtools/orion-breakpoint.png        (devtools/orion-breakpoint.png)
   skin/classic/browser/devtools/toolbarbutton-close.png     (devtools/toolbarbutton-close.png)
 * skin/classic/browser/devtools/webconsole.css                  (devtools/webconsole.css)
   skin/classic/browser/devtools/webconsole_networkpanel.css     (devtools/webconsole_networkpanel.css)
@@ -159,10 +165,11 @@ browser.jar:
   skin/classic/browser/devtools/breadcrumbs/rtl-start-selected.png           (devtools/breadcrumbs/rtl-start-selected.png)
   skin/classic/browser/devtools/splitview.css               (devtools/splitview.css)
   skin/classic/browser/devtools/styleeditor.css             (devtools/styleeditor.css)
-  skin/classic/browser/devtools/magnifying-glass.png	    (devtools/magnifying-glass.png)
-  skin/classic/browser/devtools/itemToggle.png		    (devtools/itemToggle.png)
-  skin/classic/browser/devtools/itemArrow-rtl.png	    (devtools/itemArrow-rtl.png)
-  skin/classic/browser/devtools/itemArrow-ltr.png	    (devtools/itemArrow-ltr.png)
+  skin/classic/browser/devtools/debugger.css                (devtools/debugger.css)
+  skin/classic/browser/devtools/magnifying-glass.png        (devtools/magnifying-glass.png)
+  skin/classic/browser/devtools/itemToggle.png              (devtools/itemToggle.png)
+  skin/classic/browser/devtools/itemArrow-rtl.png           (devtools/itemArrow-rtl.png)
+  skin/classic/browser/devtools/itemArrow-ltr.png           (devtools/itemArrow-ltr.png)
   skin/classic/browser/devtools/background-noise-toolbar.png (devtools/background-noise-toolbar.png)
 #ifdef MOZ_SERVICES_SYNC
   skin/classic/browser/sync-throbber.png

@@ -243,11 +243,6 @@ PrefCallback(const char* aPrefName, void* aClosure)
       newOptions |= JSOPTION_TYPE_INFERENCE;
     }
 
-    // This one is special, it's enabled by default and only needs to be unset.
-    if (!Preferences::GetBool(gPrefsToWatch[PREF_jit_hardening])) {
-      newOptions |= JSOPTION_SOFTEN;
-    }
-
     RuntimeService::SetDefaultJSContextOptions(newOptions);
     rts->UpdateAllWorkerJSContextOptions();
   }
@@ -394,7 +389,7 @@ BEGIN_WORKERS_NAMESPACE
 
 // Entry point for the DOM.
 JSBool
-ResolveWorkerClasses(JSContext* aCx, JSObject* aObj, jsid aId, uintN aFlags,
+ResolveWorkerClasses(JSContext* aCx, JSObject* aObj, jsid aId, unsigned aFlags,
                      JSObject** aObjp)
 {
   AssertIsOnMainThread();
@@ -512,7 +507,8 @@ class WorkerTaskRunnable : public WorkerRunnable
 {
 public:
   WorkerTaskRunnable(WorkerPrivate* aPrivate, WorkerTask* aTask)
-    : WorkerRunnable(aPrivate, WorkerThread, UnchangedBusyCount),
+    : WorkerRunnable(aPrivate, WorkerThread, UnchangedBusyCount,
+                     SkipWhenClearing),
       mTask(aTask)
   { }
 

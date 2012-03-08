@@ -56,7 +56,7 @@ class nsHTMLCheckboxAccessible : public nsFormControlAccessible
 public:
   enum { eAction_Click = 0 };
 
-  nsHTMLCheckboxAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLCheckboxAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsIAccessible
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
@@ -81,7 +81,7 @@ class nsHTMLRadioButtonAccessible : public nsRadioButtonAccessible
 {
 
 public:
-  nsHTMLRadioButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLRadioButtonAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual PRUint64 NativeState();
@@ -92,7 +92,7 @@ public:
 
 /**
  * Accessible for HTML input@type="button", @type="submit", @type="image"
- * elements.
+ * and HTML button elements.
  */
 class nsHTMLButtonAccessible : public nsHyperTextAccessibleWrap
 {
@@ -100,7 +100,7 @@ class nsHTMLButtonAccessible : public nsHyperTextAccessibleWrap
 public:
   enum { eAction_Click = 0 };
 
-  nsHTMLButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLButtonAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsIAccessible
   NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
@@ -121,33 +121,6 @@ public:
 
 
 /**
- * Accessible for HTML button element.
- */
-class nsHTML4ButtonAccessible : public nsHyperTextAccessibleWrap
-{
-
-public:
-  enum { eAction_Click = 0 };
-
-  nsHTML4ButtonAccessible(nsIContent *aContent, nsIWeakReference *aShell);
-
-  // nsIAccessible
-  NS_IMETHOD GetActionName(PRUint8 aIndex, nsAString& aName);
-  NS_IMETHOD DoAction(PRUint8 index);
-
-  // nsAccessible
-  virtual mozilla::a11y::role NativeRole();
-  virtual PRUint64 NativeState();
-
-  // ActionAccessible
-  virtual PRUint8 ActionCount();
-
-  // Widgets
-  virtual bool IsWidget() const;
-};
-
-
-/**
  * Accessible for HTML input@type="text" element.
  */
 class nsHTMLTextFieldAccessible : public nsHyperTextAccessibleWrap
@@ -156,7 +129,7 @@ class nsHTMLTextFieldAccessible : public nsHyperTextAccessibleWrap
 public:
   enum { eAction_Click = 0 };
 
-  nsHTMLTextFieldAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLTextFieldAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -190,7 +163,7 @@ public:
 class nsHTMLFileInputAccessible : public nsHyperTextAccessibleWrap
 {
 public:
-  nsHTMLFileInputAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+  nsHTMLFileInputAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual mozilla::a11y::role NativeRole();
@@ -203,7 +176,7 @@ public:
 class nsHTMLGroupboxAccessible : public nsHyperTextAccessibleWrap
 {
 public:
-  nsHTMLGroupboxAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLGroupboxAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual nsresult GetNameInternal(nsAString& aName);
@@ -221,7 +194,7 @@ protected:
 class nsHTMLLegendAccessible : public nsHyperTextAccessibleWrap
 {
 public:
-  nsHTMLLegendAccessible(nsIContent *aContent, nsIWeakReference *aShell);
+  nsHTMLLegendAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual mozilla::a11y::role NativeRole();
@@ -234,7 +207,7 @@ public:
 class nsHTMLFigureAccessible : public nsHyperTextAccessibleWrap
 {
 public:
-  nsHTMLFigureAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+  nsHTMLFigureAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual nsresult GetAttributesInternal(nsIPersistentProperties* aAttributes);
@@ -253,7 +226,7 @@ protected:
 class nsHTMLFigcaptionAccessible : public nsHyperTextAccessibleWrap
 {
 public:
-  nsHTMLFigcaptionAccessible(nsIContent* aContent, nsIWeakReference* aShell);
+  nsHTMLFigcaptionAccessible(nsIContent* aContent, nsDocAccessible* aDoc);
 
   // nsAccessible
   virtual mozilla::a11y::role NativeRole();

@@ -42,10 +42,11 @@
 #include "nsMediaCache.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsDirectoryServiceDefs.h"
+#include "nsXULAppAPI.h"
 #include "nsNetUtil.h"
 #include "prio.h"
 #include "nsThreadUtils.h"
-#include "nsMediaStream.h"
+#include "MediaResource.h"
 #include "nsMathUtils.h"
 #include "prlog.h"
 #include "nsIPrivateBrowsingService.h"
@@ -545,8 +546,15 @@ nsMediaCache::Init()
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   NS_ASSERTION(!mFD, "Cache file already open?");
 
+  // In single process Gecko, store the media cache in the profile directory
+  // so that multiple users can use separate media caches concurrently.
+  // In multi-process Gecko, there is no profile dir, so just store it in the
+  // system temp directory instead.
+  nsresult rv;
   nsCOMPtr<nsIFile> tmp;
-  nsresult rv = NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(tmp));
+  const char* dir = (XRE_GetProcessType() == GeckoProcessType_Content) ?
+    NS_OS_TEMP_DIR : NS_APP_USER_PROFILE_LOCAL_50_DIR;
+  rv = NS_GetSpecialDirectory(dir, getter_AddRefs(tmp));
   NS_ENSURE_SUCCESS(rv,rv);
 
   nsCOMPtr<nsILocalFile> tmpFile = do_QueryInterface(tmp);
@@ -1908,7 +1916,7 @@ nsMediaCacheStream::IsSeekable()
 }
 
 bool
-nsMediaCacheStream::AreAllStreamsForResourceSuspended(nsMediaStream** aActiveStream)
+nsMediaCacheStream::AreAllStreamsForResourceSuspended(MediaResource** aActiveStream)
 {
   ReentrantMonitorAutoEnter mon(gMediaCache->GetReentrantMonitor());
   nsMediaCache::ResourceStreamIterator iter(mResourceID);
@@ -1918,7 +1926,7 @@ nsMediaCacheStream::AreAllStreamsForResourceSuspended(nsMediaStream** aActiveStr
         *aActiveStream = stream->mClient;
       }
       return false;
-	}
+    }
   }
   if (aActiveStream) {
     *aActiveStream = nsnull;
@@ -2160,7 +2168,7 @@ nsMediaCacheStream::Read(char* aBuffer, PRUint32 aCount, PRUint32* aBytes)
     PRUint32 streamBlock = PRUint32(mStreamOffset/BLOCK_SIZE);
     PRUint32 offsetInStreamBlock =
       PRUint32(mStreamOffset - streamBlock*BLOCK_SIZE);
-    PRInt32 size = NS_MIN(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
+    PRInt64 size = NS_MIN(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
 
     if (mStreamLength >= 0) {
       // Don't try to read beyond the end of the stream
@@ -2169,7 +2177,9 @@ nsMediaCacheStream::Read(char* aBuffer, PRUint32 aCount, PRUint32* aBytes)
         // Get out of here and return NS_OK
         break;
       }
-      size = NS_MIN(size, PRInt32(bytesRemaining));
+      size = NS_MIN(size, bytesRemaining);
+      // Clamp size until 64-bit file size issues (bug 500784) are fixed.
+      size = NS_MIN(size, PRInt64(PR_INT32_MAX));
     }
 
     PRInt32 bytes;
@@ -2224,7 +2234,8 @@ nsMediaCacheStream::Read(char* aBuffer, PRUint32 aCount, PRUint32* aBytes)
     gMediaCache->NoteBlockUsage(this, cacheBlock, mCurrentMode, TimeStamp::Now());
 
     PRInt64 offset = cacheBlock*BLOCK_SIZE + offsetInStreamBlock;
-    nsresult rv = gMediaCache->ReadCacheFile(offset, aBuffer + count, size, &bytes);
+    NS_ABORT_IF_FALSE(size >= 0 && size <= PR_INT32_MAX, "Size out of range.");
+    nsresult rv = gMediaCache->ReadCacheFile(offset, aBuffer + count, PRInt32(size), &bytes);
     if (NS_FAILED(rv)) {
       if (count == 0)
         return rv;
@@ -2262,7 +2273,7 @@ nsMediaCacheStream::ReadFromCache(char* aBuffer,
     PRUint32 streamBlock = PRUint32(streamOffset/BLOCK_SIZE);
     PRUint32 offsetInStreamBlock =
       PRUint32(streamOffset - streamBlock*BLOCK_SIZE);
-    PRInt32 size = NS_MIN<PRInt64>(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
+    PRInt64 size = NS_MIN<PRInt64>(aCount - count, BLOCK_SIZE - offsetInStreamBlock);
 
     if (mStreamLength >= 0) {
       // Don't try to read beyond the end of the stream
@@ -2270,7 +2281,9 @@ nsMediaCacheStream::ReadFromCache(char* aBuffer,
       if (bytesRemaining <= 0) {
         return NS_ERROR_FAILURE;
       }
-      size = NS_MIN(size, PRInt32(bytesRemaining));
+      size = NS_MIN(size, bytesRemaining);
+      // Clamp size until 64-bit file size issues (bug 500784) are fixed.
+      size = NS_MIN(size, PRInt64(PR_INT32_MAX));
     }
 
     PRInt32 bytes;
@@ -2289,7 +2302,8 @@ nsMediaCacheStream::ReadFromCache(char* aBuffer,
         return NS_ERROR_FAILURE;
       }
       PRInt64 offset = cacheBlock*BLOCK_SIZE + offsetInStreamBlock;
-      nsresult rv = gMediaCache->ReadCacheFile(offset, aBuffer + count, size, &bytes);
+      NS_ABORT_IF_FALSE(size >= 0 && size <= PR_INT32_MAX, "Size out of range.");
+      nsresult rv = gMediaCache->ReadCacheFile(offset, aBuffer + count, PRInt32(size), &bytes);
       if (NS_FAILED(rv)) {
         return rv;
       }
@@ -2362,7 +2376,7 @@ nsMediaCacheStream::InitAsClone(nsMediaCacheStream* aOriginal)
   return NS_OK;
 }
 
-nsresult nsMediaCacheStream::GetCachedRanges(nsTArray<nsByteRange>& aRanges)
+nsresult nsMediaCacheStream::GetCachedRanges(nsTArray<MediaByteRange>& aRanges)
 {
   // Take the monitor, so that the cached data ranges can't grow while we're
   // trying to loop over them.
@@ -2377,7 +2391,7 @@ nsresult nsMediaCacheStream::GetCachedRanges(nsTArray<nsByteRange>& aRanges)
     PRInt64 endOffset = GetCachedDataEnd(startOffset);
     NS_ASSERTION(startOffset < endOffset, "Buffered range must end after its start");
     // Bytes [startOffset..endOffset] are cached.
-    aRanges.AppendElement(nsByteRange(startOffset, endOffset));
+    aRanges.AppendElement(MediaByteRange(startOffset, endOffset));
     startOffset = GetNextCachedData(endOffset);
     NS_ASSERTION(startOffset == -1 || startOffset > endOffset,
       "Must have advanced to start of next range, or hit end of stream");

@@ -79,8 +79,10 @@ class nsINodeInfo;
 class nsIControllers;
 class nsEventListenerManager;
 class nsIScrollableFrame;
+class nsAttrValueOrString;
 class nsContentList;
 class nsDOMTokenList;
+class ContentUnbinder;
 struct nsRect;
 
 typedef PRUptrdiff PtrBits;
@@ -101,7 +103,7 @@ public:
   }
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsChildContentList)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(nsChildContentList)
 
   // nsWrapperCache
   virtual JSObject* WrapObject(JSContext *cx, XPCWrappedNativeScope *scope,
@@ -245,7 +247,7 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
-  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
+  NS_DECL_SIZEOF_EXCLUDING_THIS
 
   /**
    * Called during QueryInterface to give the binding manager a chance to
@@ -289,16 +291,18 @@ public:
    * have mutation listeners (in which case it's cheap to just return false
    * and let the caller go ahead and set the value).
    * @param aOldValue Set to the old value of the attribute, but only if there
-   *   are event listeners
+   *   are event listeners. If set, the type of aOldValue will be either
+   *   nsAttrValue::eString or nsAttrValue::eAtom.
    * @param aModType Set to nsIDOMMutationEvent::MODIFICATION or to
    *   nsIDOMMutationEvent::ADDITION, but only if this helper returns true
    * @param aHasListeners Set to true if there are mutation event listeners
    *   listening for NS_EVENT_BITS_MUTATION_ATTRMODIFIED
    */
   bool MaybeCheckSameAttrVal(PRInt32 aNamespaceID, nsIAtom* aName,
-                               nsIAtom* aPrefix, const nsAString& aValue,
-                               bool aNotify, nsAutoString* aOldValue,
-                               PRUint8* aModType, bool* aHasListeners);
+                             nsIAtom* aPrefix,
+                             const nsAttrValueOrString& aValue,
+                             bool aNotify, nsAttrValue& aOldValue,
+                             PRUint8* aModType, bool* aHasListeners);
   virtual nsresult SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName, nsIAtom* aPrefix,
                            const nsAString& aValue, bool aNotify);
   virtual nsresult SetParsedAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
@@ -434,8 +438,12 @@ public:
   // nsIDOMElement method implementation
   NS_DECL_NSIDOMELEMENT
 
-  nsresult CloneNode(bool aDeep, nsIDOMNode **aResult)
+  nsresult CloneNode(bool aDeep, PRUint8 aOptionalArgc, nsIDOMNode **aResult)
   {
+    if (!aOptionalArgc) {
+      aDeep = true;
+    }
+    
     return nsNodeUtils::CloneNodeImpl(this, aDeep, true, aResult);
   }
 
@@ -589,7 +597,7 @@ public:
   nsIContent* GetLastElementChild();
   nsIContent* GetPreviousElementSibling();
   nsIContent* GetNextElementSibling();
-  nsIDOMDOMTokenList* GetClassList(nsresult *aResult);
+  nsDOMTokenList* GetClassList(nsresult *aResult);
   bool MozMatchesSelector(const nsAString& aSelector, nsresult* aResult);
 
   /**
@@ -623,21 +631,36 @@ public:
     mRefCnt.RemovePurple();
   }
 
-  static bool CanSkip(nsINode* aNode);
+  static bool CanSkip(nsINode* aNode, bool aRemovingAllowed);
   static bool CanSkipInCC(nsINode* aNode);
   static bool CanSkipThis(nsINode* aNode);
+  static void MarkNodeChildren(nsINode* aNode);
   static void InitCCCallbacks();
   static void MarkUserData(void* aObject, nsIAtom* aKey, void* aChild,
                            void *aData);
   static void MarkUserDataHandler(void* aObject, nsIAtom* aKey, void* aChild,
                                   void* aData);
 protected:
+  /*
+   * Named-bools for use with SetAttrAndNotify to make call sites easier to
+   * read.
+   */
+  static const bool kFireMutationEvent           = true;
+  static const bool kDontFireMutationEvent       = false;
+  static const bool kNotifyDocumentObservers     = true;
+  static const bool kDontNotifyDocumentObservers = false;
+  static const bool kCallAfterSetAttr            = true;
+  static const bool kDontCallAfterSetAttr        = false;
+
   /**
    * Set attribute and (if needed) notify documentobservers and fire off
    * mutation events.  This will send the AttributeChanged notification.
    * Callers of this method are responsible for calling AttributeWillChange,
    * since that needs to happen before the new attr value has been set, and
    * in particular before it has been parsed.
+   *
+   * For the boolean parameters, consider using the named bools above to aid
+   * code readability.
    *
    * @param aNamespaceID  namespace of attribute
    * @param aAttribute    local-name of attribute
@@ -649,18 +672,17 @@ protected:
    *                      needed if aFireMutation or aNotify is true.
    * @param aFireMutation should mutation-events be fired?
    * @param aNotify       should we notify document-observers?
-   * @param aValueForAfterSetAttr If not null, AfterSetAttr will be called
-   *                      with the value pointed by this parameter.
+   * @param aCallAfterSetAttr should we call AfterSetAttr?
    */
   nsresult SetAttrAndNotify(PRInt32 aNamespaceID,
                             nsIAtom* aName,
                             nsIAtom* aPrefix,
-                            const nsAString& aOldValue,
+                            const nsAttrValue& aOldValue,
                             nsAttrValue& aParsedValue,
                             PRUint8 aModType,
                             bool aFireMutation,
                             bool aNotify,
-                            const nsAString* aValueForAfterSetAttr);
+                            bool aCallAfterSetAttr);
 
   /**
    * Convert an attribute string value to attribute type based on the type of
@@ -705,14 +727,16 @@ protected:
    *
    * @param aNamespaceID the namespace of the attr being set
    * @param aName the localname of the attribute being set
-   * @param aValue the value it's being set to.  If null, the attr is being
-   *        removed.
+   * @param aValue the value it's being set to represented as either a string or
+   *        a parsed nsAttrValue. Alternatively, if the attr is being removed it
+   *        will be null.
    * @param aNotify Whether we plan to notify document observers.
    */
   // Note that this is inlined so that when subclasses call it it gets
   // inlined.  Those calls don't go through a vtable.
   virtual nsresult BeforeSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                 const nsAString* aValue, bool aNotify)
+                                 const nsAttrValueOrString* aValue,
+                                 bool aNotify)
   {
     return NS_OK;
   }
@@ -732,7 +756,7 @@ protected:
   // Note that this is inlined so that when subclasses call it it gets
   // inlined.  Those calls don't go through a vtable.
   virtual nsresult AfterSetAttr(PRInt32 aNamespaceID, nsIAtom* aName,
-                                const nsAString* aValue, bool aNotify)
+                                const nsAttrValue* aValue, bool aNotify)
   {
     return NS_OK;
   }
@@ -770,6 +794,10 @@ protected:
   {
     return this;
   }
+
+  nsresult GetAttributeNodeNSInternal(const nsAString& aNamespaceURI,
+                                      const nsAString& aLocalName,
+                                      nsIDOMAttr** aReturn);
 
 public:
   // Because of a bug in MS C++ compiler nsDOMSlots must be declared public,
@@ -929,6 +957,7 @@ protected:
    */
   virtual void GetLinkTarget(nsAString& aTarget);
 
+  friend class ContentUnbinder;
   /**
    * Array containing all attributes and children for this element
    */

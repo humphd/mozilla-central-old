@@ -72,28 +72,26 @@ inline
 bool
 EnsureObjectIsEventTarget(JSContext* aCx, JSObject* aObj, char* aFunctionName)
 {
-  JSClass* classPtr = JS_GET_CLASS(aCx, aObj);
-  if (classPtr &&
-      (ClassIsWorker(classPtr) || ClassIsWorkerGlobalScope(classPtr) ||
-       ClassIsXMLHttpRequest(classPtr))) {
+  JSClass* classPtr = JS_GetClass(aObj);
+  if (ClassIsWorker(classPtr) || ClassIsWorkerGlobalScope(classPtr) ||
+      ClassIsXMLHttpRequest(classPtr)) {
     return true;
   }
 
   JS_ReportErrorNumber(aCx, js_GetErrorMessage, NULL, JSMSG_INCOMPATIBLE_PROTO,
-                       "EventTarget", aFunctionName,
-                        classPtr ? classPtr->name : "object");
+                       "EventTarget", aFunctionName, classPtr->name);
   return false;
 }
 
 inline
 EventTarget*
-GetPrivate(JSContext* aCx, JSObject* aObj)
+GetPrivate(JSObject* aObj)
 {
-  return GetJSPrivateSafeish<EventTarget>(aCx, aObj);
+  return GetJSPrivateSafeish<EventTarget>(aObj);
 }
 
 JSBool
-Construct(JSContext* aCx, uintN aArgc, jsval* aVp)
+Construct(JSContext* aCx, unsigned aArgc, jsval* aVp)
 {
   JS_ReportErrorNumber(aCx, js_GetErrorMessage, NULL, JSMSG_WRONG_CONSTRUCTOR,
                        gClass.name);
@@ -151,14 +149,14 @@ EventTarget::SetEventListenerOnEventTarget(JSContext* aCx, const char* aType,
 
 // static
 EventTarget*
-EventTarget::FromJSObject(JSContext* aCx, JSObject* aObj)
+EventTarget::FromJSObject(JSObject* aObj)
 {
-  return GetPrivate(aCx, aObj);
+  return GetPrivate(aObj);
 }
 
 // static
 JSBool
-EventTarget::AddEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
+EventTarget::AddEventListener(JSContext* aCx, unsigned aArgc, jsval* aVp)
 {
   JSObject* obj = JS_THIS_OBJECT(aCx, aVp);
   if (!obj) {
@@ -169,7 +167,7 @@ EventTarget::AddEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
     return false;
   }
 
-  EventTarget* self = GetPrivate(aCx, obj);
+  EventTarget* self = GetPrivate(obj);
   if (!self) {
     return true;
   }
@@ -193,7 +191,7 @@ EventTarget::AddEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
 
 // static
 JSBool
-EventTarget::RemoveEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
+EventTarget::RemoveEventListener(JSContext* aCx, unsigned aArgc, jsval* aVp)
 {
   JSObject* obj = JS_THIS_OBJECT(aCx, aVp);
   if (!obj) {
@@ -204,7 +202,7 @@ EventTarget::RemoveEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
     return false;
   }
 
-  EventTarget* self = GetPrivate(aCx, obj);
+  EventTarget* self = GetPrivate(obj);
   if (!self) {
     return true;
   }
@@ -228,7 +226,7 @@ EventTarget::RemoveEventListener(JSContext* aCx, uintN aArgc, jsval* aVp)
 
 // static
 JSBool
-EventTarget::DispatchEvent(JSContext* aCx, uintN aArgc, jsval* aVp)
+EventTarget::DispatchEvent(JSContext* aCx, unsigned aArgc, jsval* aVp)
 {
   JSObject* obj = JS_THIS_OBJECT(aCx, aVp);
   if (!obj) {
@@ -239,7 +237,7 @@ EventTarget::DispatchEvent(JSContext* aCx, uintN aArgc, jsval* aVp)
     return false;
   }
 
-  EventTarget* self = GetPrivate(aCx, obj);
+  EventTarget* self = GetPrivate(obj);
   if (!self) {
     return true;
   }

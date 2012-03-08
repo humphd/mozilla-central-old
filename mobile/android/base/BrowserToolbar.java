@@ -77,9 +77,10 @@ public class BrowserToolbar extends LinearLayout {
 
     final private Context mContext;
     private Handler mHandler;
-    private boolean mInflated;
     private int mColor;
     private int mCounterColor;
+    private int[] mPadding;
+    private boolean mTitleCanExpand;
 
     private int mDuration;
     private TranslateAnimation mSlideUpIn;
@@ -92,7 +93,7 @@ public class BrowserToolbar extends LinearLayout {
     public BrowserToolbar(Context context, AttributeSet attrs) {
         super(context, attrs);
         mContext = context;
-        mInflated = false;
+        mTitleCanExpand = true;
 
         // Get the device's highlight color
         TypedArray typedArray;
@@ -108,18 +109,7 @@ public class BrowserToolbar extends LinearLayout {
         typedArray.recycle();
     }
 
-    @Override
-    protected void onFinishInflate () {
-        super.onFinishInflate();
-
-        // HACK: Without this, the onFinishInflate is called twice
-        // This issue is due to a bug when Android inflates a layout with a
-        // parent. Fixed in Honeycomb
-        if (mInflated)
-            return;
-
-        mInflated = true;
-
+    public void init() {
         mAwesomeBar = (Button) findViewById(R.id.awesome_bar);
         mAwesomeBar.setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
@@ -129,10 +119,10 @@ public class BrowserToolbar extends LinearLayout {
 
         Resources resources = getResources();
         
-        int padding[] = { mAwesomeBar.getPaddingLeft(),
-                          mAwesomeBar.getPaddingTop(),
-                          mAwesomeBar.getPaddingRight(),
-                          mAwesomeBar.getPaddingBottom() };
+        mPadding = new int[] { mAwesomeBar.getPaddingLeft(),
+                               mAwesomeBar.getPaddingTop(),
+                               mAwesomeBar.getPaddingRight(),
+                               mAwesomeBar.getPaddingBottom() };
 
         GeckoStateListDrawable states = new GeckoStateListDrawable();
         states.initializeFilter(mColor);
@@ -140,7 +130,7 @@ public class BrowserToolbar extends LinearLayout {
         states.addState(new int[] { }, resources.getDrawable(R.drawable.address_bar_url_default));
         mAwesomeBar.setBackgroundDrawable(states);
 
-        mAwesomeBar.setPadding(padding[0], padding[1], padding[2], padding[3]);
+        mAwesomeBar.setPadding(mPadding[0], mPadding[1], mPadding[2], mPadding[3]);
 
         mTabs = (ImageButton) findViewById(R.id.tabs);
         mTabs.setOnClickListener(new Button.OnClickListener() {
@@ -206,7 +196,7 @@ public class BrowserToolbar extends LinearLayout {
     }
 
     private void onAwesomeBarSearch() {
-        GeckoApp.mAppContext.onEditRequested();
+        GeckoApp.mAppContext.onSearchRequested();
     }
 
     private void addTab() {
@@ -290,6 +280,10 @@ public class BrowserToolbar extends LinearLayout {
     public void setStopVisibility(boolean visible) {
         mStop.setVisibility(visible ? View.VISIBLE : View.GONE);
         mSiteSecurity.setVisibility(visible ? View.GONE : View.VISIBLE);
+        if (!visible && mTitleCanExpand)
+            mAwesomeBar.setPadding(mPadding[0], mPadding[1], mPadding[2], mPadding[3]);
+        else
+            mAwesomeBar.setPadding(mPadding[0], mPadding[1], mPadding[0], mPadding[3]);
     }
 
     public void setShadowVisibility(boolean visible) {
@@ -300,7 +294,7 @@ public class BrowserToolbar extends LinearLayout {
         Tab tab = Tabs.getInstance().getSelectedTab();
         // Setting a null title for about:home will ensure we just see
         // the "Enter Search or Address" placeholder text
-        if (tab != null && tab.getURL().equals("about:home"))
+        if (tab != null && "about:home".equals(tab.getURL()))
             title = null;
         mAwesomeBar.setText(title);
     }
@@ -316,23 +310,42 @@ public class BrowserToolbar extends LinearLayout {
     }
     
     public void setSecurityMode(String mode) {
-        if (mode.equals("identified"))
+        mTitleCanExpand = false;
+
+        if (mode.equals("identified")) {
             mSiteSecurity.setImageLevel(1);
-        else if (mode.equals("verified"))
+        } else if (mode.equals("verified")) {
             mSiteSecurity.setImageLevel(2);
-        else
+        } else {
             mSiteSecurity.setImageLevel(0);
+            mTitleCanExpand = true;
+        }
+    }
+
+    public void show() {
+        if (Build.VERSION.SDK_INT >= 11)
+            GeckoActionBar.show(GeckoApp.mAppContext);
+        else
+            setVisibility(View.VISIBLE);
+    }
+
+    public void hide() {
+        if (Build.VERSION.SDK_INT >= 11)
+            GeckoActionBar.hide(GeckoApp.mAppContext);
+        else
+            setVisibility(View.GONE);
     }
 
     public void refresh() {
         Tab tab = Tabs.getInstance().getSelectedTab();
         if (tab != null) {
+            String url = tab.getURL();
             setTitle(tab.getDisplayTitle());
             setFavicon(tab.getFavicon());
             setSecurityMode(tab.getSecurityMode());
             setProgressVisibility(tab.isLoading());
-            setShadowVisibility(!(tab.getURL().startsWith("about:")));
-            updateTabCountAndAnimate(Tabs.getInstance().getCount());
+            setShadowVisibility((url == null) || !url.startsWith("about:"));
+            updateTabCount(Tabs.getInstance().getCount());
         }
     }
 }
