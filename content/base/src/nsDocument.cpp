@@ -8588,6 +8588,21 @@ ResetFullScreen(nsIDocument* aDocument, void* aData) {
 
 /* static */
 void
+nsDocument::MaybeUnlockPointer(nsIDocument* aDocument)
+{
+  if (!aDocument) {
+    return;
+  }
+
+  if (!sPointerLockDoc) {
+    return;
+  }
+
+  sPointerLockDoc->UnLockPointer();
+}
+
+/* static */
+void
 nsDocument::ExitFullScreen()
 {
   // Clear full-screen stacks in all descendant documents.
@@ -8652,6 +8667,7 @@ nsDocument::RestorePreviousFullScreenState()
   while (doc != this) {
     NS_ASSERTION(doc->IsFullScreenDoc(), "Should be full-screen doc");
     static_cast<nsDocument*>(doc)->ClearFullScreenStack();
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     doc = doc->GetParentDocument();
   }
@@ -8660,6 +8676,7 @@ nsDocument::RestorePreviousFullScreenState()
   NS_ASSERTION(doc == this, "Must have reached this doc.");
   while (doc != nsnull) {
     static_cast<nsDocument*>(doc)->FullScreenStackPop();
+    MaybeUnlockPointer(doc);
     DispatchFullScreenChange(doc);
     if (static_cast<nsDocument*>(doc)->mFullScreenStack.IsEmpty()) {
       // Full-screen stack in document is empty. Go back up to the parent
@@ -8935,7 +8952,14 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
 
   // Remember the root document, so that if a full-screen document is hidden
   // we can reset full-screen state in the remaining visible full-screen documents.
-  sFullScreenRootDoc = do_GetWeakReference(nsContentUtils::GetRootDocument(this));
+  nsIDocument* fullScreenDoc = nsContentUtils::GetRootDocument(this);
+  sFullScreenRootDoc = do_GetWeakReference(fullScreenDoc);
+
+  // If a document is already in fullscreen, then unlock the mouse pointer
+  // before setting a new document to fullscreen
+  if (fullScreenDoc) {
+    MaybeUnlockPointer(fullScreenDoc);
+  }
 
   // If a document is already in fullscreen, then unlock the mouse pointer
   // before setting a new document to fullscreen
