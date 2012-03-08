@@ -984,6 +984,12 @@ public:
   // Returns the top element from the full-screen stack.
   Element* FullScreenStackTop();
 
+
+  void RequestPointerLock(Element* aElement);
+  bool ShouldLockPointer(Element* aElement);
+  bool SetPointerLock(Element* aElement, int aCursorStyle);
+  static void UnLockPointer();
+
   // This method may fire a DOM event; if it does so it will happen
   // synchronously.
   void UpdateVisibilityState();
@@ -1306,6 +1312,9 @@ private:
   nsDataHashtable< nsPtrHashKey<imgIRequest>, PRUint32> mImageTracker;
 
   VisibilityState mVisibilityState;
+
+  static nsRefPtr<Element> sPointerLockElement;
+  static nsRefPtr<nsDocument> sPointerLockDoc;
 
 #ifdef DEBUG
 protected:

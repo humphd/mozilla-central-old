@@ -144,6 +144,13 @@ public:
   }
 
   /**
+   * Returns true if the element has the pointer locked
+   */
+  bool IsPointerLock() const {
+    return mState.HasState(NS_EVENT_STATE_POINTER_LOCK);
+  }
+
+  /**
    * The style state of this element. This is the real state of the element
    * with any style locks applied for pseudo-class inspecting.
    */

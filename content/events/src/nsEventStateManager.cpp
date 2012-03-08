@@ -137,6 +137,8 @@
 #include "mozilla/LookAndFeel.h"
 #include "sampler.h"
 
+#include "nsIDOMClientRect.h"
+
 #ifdef XP_MACOSX
 #import <ApplicationServices/ApplicationServices.h>
 #endif
@@ -159,6 +161,10 @@ bool nsEventStateManager::sNormalLMouseEventInProcess = false;
 nsEventStateManager* nsEventStateManager::sActiveESM = nsnull;
 nsIDocument* nsEventStateManager::sMouseOverDocument = nsnull;
 nsWeakFrame nsEventStateManager::sLastDragOverFrame = nsnull;
+nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
+nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
+bool nsEventStateManager::sPointerLock = false;
+nsCOMPtr<nsIContent> nsEventStateManager::sPointerLockedElement = nsnull;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
 static PRUint32 gMouseOrKeyboardEventCounter = 0;
@@ -772,6 +778,7 @@ nsMouseWheelTransaction::LimitToOnePageScroll(PRInt32 aScrollLines,
 
 nsEventStateManager::nsEventStateManager()
   : mLockCursor(0),
+    mPreLockPoint(0,0),
     mCurrentTarget(nsnull),
     mLastMouseOverFrame(nsnull),
     // init d&d gesture state machine variables
@@ -3775,6 +3782,18 @@ nsEventStateManager::DispatchMouseEvent(nsGUIEvent* aEvent, PRUint32 aMessage,
                                         nsIContent* aTargetContent,
                                         nsIContent* aRelatedContent)
 {
+  // http://dvcs.w3.org/hg/webevents/raw-file/default/mouse-lock.html#methods
+  // "[When the mouse is locked on an element...e]vents that require the concept
+  // of a mouse cursor must not be dispatched (for example: mouseover, mouseout).
+  if (sPointerLockedElement &&
+      (aMessage == NS_MOUSELEAVE ||
+       aMessage == NS_MOUSEENTER ||
+       aMessage == NS_MOUSE_ENTER_SYNTH ||
+       aMessage == NS_MOUSE_EXIT_SYNTH)) {
+    mCurrentTargetContent = nsnull;
+    return mPresContext->GetPrimaryFrameFor(sPointerLockedElement);
+  }
+
   SAMPLE_LABEL("Input", "DispatchMouseEvent");
   nsEventStatus status = nsEventStatus_eIgnore;
   nsMouseEvent event(NS_IS_TRUSTED_EVENT(aEvent), aMessage, aEvent->widget,
@@ -3985,6 +4004,24 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
   switch(aEvent->message) {
   case NS_MOUSE_MOVE:
     {
+      if (sPointerLockedElement && aEvent->widget) {
+        // Perform mouse lock by recentering the mouse directly, then remembering the deltas.
+        aEvent->lastRefPoint = GetMouseCoords();
+
+        // refPoint should not be the centre on mousemove
+        if (aEvent->refPoint.x == aEvent->lastRefPoint.x &&
+            aEvent->refPoint.y == aEvent->lastRefPoint.y) {
+          aEvent->refPoint = sLastRefPoint;
+        } else {
+          aEvent->widget->SynthesizeNativeMouseMove(aEvent->lastRefPoint);
+        }
+      } else {
+        aEvent->lastRefPoint = nsIntPoint(sLastRefPoint.x, sLastRefPoint.y);
+      }
+
+      // Update the last known refPoint with the current refPoint.
+      sLastRefPoint = nsIntPoint(aEvent->refPoint.x, aEvent->refPoint.y);
+
       // Get the target content target (mousemove target == mouseover target)
       nsCOMPtr<nsIContent> targetElement = GetEventTargetContent(aEvent);
       if (!targetElement) {
@@ -4018,6 +4055,70 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
 
   // reset mCurretTargetContent to what it was
   mCurrentTargetContent = targetBeforeEvent;
+}
+
+void
+nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
+                                    nsIContent* aElement)
+{
+  // Remember which element is locked so we don't dispatch events for
+  // elements that aren't locked. aElement will be nsnull when unlocking.
+  sPointerLockedElement = aElement;
+  sPointerLock = sPointerLockedElement ? true : false;
+
+  if (!aWidget) {
+    return;
+  }
+
+  if (sPointerLockedElement) {
+    // Store the last known ref point so we can reposition the pointer after unlock.
+    mPreLockPoint = sLastRefPoint + sLastScreenOffset;
+    sLastRefPoint = GetMouseCoords();
+    aWidget->SynthesizeNativeMouseMove(sLastRefPoint);
+
+    // Retarget all events to this element via capture.
+    nsIPresShell::SetCapturingContent(aElement, CAPTURE_POINTERLOCK);
+  } else {
+    // Unlocking, so return pointer to the original position
+    aWidget->SynthesizeNativeMouseMove(nsDOMUIEvent::GetLastScreenPoint());
+
+    // Don't retarget events to this element any more.
+    nsIPresShell::SetCapturingContent(nsnull, CAPTURE_POINTERLOCK);
+  }
+}
+
+void
+nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset)
+{
+  sLastScreenOffset = aScreenOffset;
+}
+
+nsIntPoint
+nsEventStateManager::GetMouseCoords()
+{
+  NS_ASSERTION(sPointerLockedElement, "sPointerLockedElement is null in GetMouseCoords!");
+
+  nsIFrame* frame = sPointerLockedElement->GetPrimaryFrame();
+  NS_ASSERTION(frame, "sPointerLockedElement->GetPrimaryFrame() was null");
+  if (!frame) {
+    nsIDocument::UnLockPointer();
+    return nsIntPoint(0,0);
+  }
+
+  nsIntRect screenRect = frame->GetScreenRect();
+
+  nsCOMPtr<nsIDOMHTMLElement> lockedElement = do_QueryInterface(sPointerLockedElement);
+  nsCOMPtr<nsIDOMClientRect> elementRect;
+  lockedElement->GetBoundingClientRect(getter_AddRefs(elementRect));
+
+  float left, top, width, height;
+  elementRect->GetLeft(&left);
+  elementRect->GetTop(&top);
+  elementRect->GetWidth(&width);
+  elementRect->GetHeight(&height);
+
+  return nsIntPoint((width/2 + left) + screenRect.x,
+                    (height/2 + top) + screenRect.y);
 }
 
 void
@@ -4421,6 +4522,13 @@ nsEventStateManager::SetFullScreenState(Element* aElement, bool aIsFullScreen)
   while ((ancestor = GetParentElement(ancestor))) {
     DoStateChange(ancestor, NS_EVENT_STATE_FULL_SCREEN_ANCESTOR, aIsFullScreen);
   }
+}
+
+/* static */
+void
+nsEventStateManager::SetPointerLockState(Element* aElement, bool aIsPointerLock)
+{
+  DoStateChange(aElement, NS_EVENT_STATE_POINTER_LOCK, aIsPointerLock);
 }
 
 /* static */

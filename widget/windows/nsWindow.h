@@ -177,6 +177,8 @@ public:
   virtual nsresult        SynthesizeNativeMouseEvent(nsIntPoint aPoint,
                                                      PRUint32 aNativeMessage,
                                                      PRUint32 aModifierFlags);
+  virtual nsresult        SynthesizeNativeMouseMove(nsIntPoint aPoint)
+                          { return SynthesizeNativeMouseEvent(aPoint, MOUSEEVENTF_MOVE, 0); }
   NS_IMETHOD              ResetInputState();
   NS_IMETHOD_(void)       SetInputContext(const InputContext& aContext,
                                           const InputContextAction& aAction);

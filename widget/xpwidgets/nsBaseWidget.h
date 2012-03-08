@@ -266,6 +266,9 @@ protected:
                                               PRUint32 aModifierFlags)
   { return NS_ERROR_UNEXPECTED; }
 
+  virtual nsresult SynthesizeNativeMouseMove(nsIntPoint aPoint)
+  { return NS_ERROR_UNEXPECTED; }
+
   // Stores the clip rectangles in aRects into mClipRects. Returns true
   // if the new rectangles are different from the old rectangles.
   bool StoreWindowClipRegion(const nsTArray<nsIntRect>& aRects);

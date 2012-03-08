@@ -118,8 +118,8 @@ typedef nsEventStatus (* EVENT_CALLBACK)(nsGUIEvent *event);
 #endif
 
 #define NS_IWIDGET_IID \
-  { 0x3fa36ce2, 0x472d, 0x4bff, \
-    { 0xb1, 0xe4, 0xc3, 0xe3, 0x19, 0x24, 0xa1, 0xe4 } }
+  { 0xb5bb55c7, 0x9a50, 0x4fa8, \
+    { 0xa7, 0x6e, 0xbd, 0x31, 0x6f, 0x3e, 0x9c, 0x13 } }
 
 /*
  * Window shadow styles
@@ -1359,6 +1359,11 @@ class nsIWidget : public nsISupports {
     virtual nsresult SynthesizeNativeMouseEvent(nsIntPoint aPoint,
                                                 PRUint32 aNativeMessage,
                                                 PRUint32 aModifierFlags) = 0;
+
+    /**
+     * A shortcut to SynthesizeNativeMouseEvent, abstracting away the native message.
+     */
+    virtual nsresult SynthesizeNativeMouseMove(nsIntPoint aPoint) = 0;
 
     /**
      * Activates a native menu item at the position specified by the index

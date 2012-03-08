@@ -3240,6 +3240,9 @@ nsGenericElement::UnbindFromTree(bool aDeep, bool aNullParent)
       // Fully exit full-screen.
       nsIDocument::ExitFullScreen(false);
     }
+    if (IsPointerLock()) {
+      nsIDocument::UnLockPointer();
+    }
     if (GetParent()) {
       NS_RELEASE(mParent);
     } else {

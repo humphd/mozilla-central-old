@@ -66,10 +66,15 @@ public:
 
   virtual nsresult InitFromCtor(const nsAString& aType,
                                 JSContext* aCx, jsval* aVal);
+
+  static nsIntPoint GetLastScreenPoint() {
+    return sLastScreenPoint;
+  }
 protected:
   // Internal helper functions
   nsIntPoint GetScreenPoint();
   nsIntPoint GetClientPoint();
+  nsIntPoint GetMovementPoint();
   nsIntPoint GetLayerPoint();
   nsIntPoint GetPagePoint();
 
@@ -88,6 +93,13 @@ protected:
   // Screenpoint is mEvent->refPoint.
   nsIntPoint mLayerPoint;
   nsIntPoint mPagePoint;
+  nsIntPoint mMovement;
+  static nsIntPoint sLastScreenPoint;
+  static nsIntPoint sLastClientPoint;
+
+private:
+  bool IsPointerLocked();
+  nsIntPoint ScreenPointInternal();
 };
 
 #define NS_FORWARD_TO_NSDOMUIEVENT \

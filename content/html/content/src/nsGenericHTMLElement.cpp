@@ -3248,6 +3248,13 @@ nsresult nsGenericHTMLElement::MozRequestFullScreen()
   return NS_OK;
 }
 
+nsresult nsGenericHTMLElement::MozRequestPointerLock()
+{
+  OwnerDoc()->RequestPointerLock(this);
+
+  return NS_OK;
+}
+
 nsresult nsGenericHTMLElement::Click()
 {
   if (HasFlag(NODE_HANDLING_CLICK))

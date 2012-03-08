@@ -226,7 +226,12 @@ public:
   // Sets the full-screen event state on aElement to aIsFullScreen.
   static void SetFullScreenState(mozilla::dom::Element* aElement, bool aIsFullScreen);
 
+  // Sets the pointer-lock event state on aElement to aIsPointerLock.
+  static void SetPointerLockState(mozilla::dom::Element* aElement, bool aIsPointerLock);
+
   static bool IsRemoteTarget(nsIContent* aTarget);
+
+  static bool sPointerLock;
 
 protected:
   friend class MouseEnterLeaveDispatcher;
@@ -478,12 +483,18 @@ private:
                                   bool aAddState);
 
   PRInt32     mLockCursor;
+  // The element that is mouse locked, if any.
+  static nsCOMPtr<nsIContent> sPointerLockedElement;
+  // Point when mouse was locked, used to reposition after unlocking.
+  nsIntPoint  mPreLockPoint;
 
   nsWeakFrame mCurrentTarget;
   nsCOMPtr<nsIContent> mCurrentTargetContent;
   nsWeakFrame mLastMouseOverFrame;
   nsCOMPtr<nsIContent> mLastMouseOverElement;
   static nsWeakFrame sLastDragOverFrame;
+  static nsIntPoint sLastRefPoint;
+  static nsIntPoint sLastScreenOffset;
 
   // member variables for the d&d gesture state machine
   nsIntPoint mGestureDownPoint; // screen coordinates
@@ -555,7 +566,11 @@ public:
                               nsGUIEvent* inMouseDownEvent ) ;
   void KillClickHoldTimer ( ) ;
   void FireContextClick ( ) ;
+
+  void SetPointerLock( nsIWidget* aWidget, nsIContent* aElement ) ;
+  nsIntPoint GetMouseCoords();
   static void sClickHoldCallback ( nsITimer* aTimer, void* aESM ) ;
+  static void SetLastScreenOffset( nsIntPoint aScreenOffset ) ;
 };
 
 /**
