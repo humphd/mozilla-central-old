@@ -322,20 +322,6 @@ Bindings::trace(JSTracer *trc)
         MarkShape(trc, &lastBinding, "shape");
 }
 
-#ifdef JS_CRASH_DIAGNOSTICS
-
-void
-CheckScript(JSScript *script, JSScript *prev)
-{
-    if (script->cookie1[0] != JS_SCRIPT_COOKIE || script->cookie2[0] != JS_SCRIPT_COOKIE) {
-        crash::StackBuffer<sizeof(JSScript), 0x87> buf1(script);
-        crash::StackBuffer<sizeof(JSScript), 0x88> buf2(prev);
-        JS_OPT_ASSERT(false);
-    }
-}
-
-#endif /* JS_CRASH_DIAGNOSTICS */
-
 #if JS_HAS_XDR
 
 static bool
@@ -1453,10 +1439,24 @@ js_CallDestroyScriptHook(JSContext *cx, JSScript *script)
     JS_ClearScriptTraps(cx, script);
 }
 
+#ifdef JS_CRASH_DIAGNOSTICS
+
+void
+JSScript::CheckScript(JSScript *prev)
+{
+    if (cookie1[0] != JS_SCRIPT_COOKIE || cookie2[0] != JS_SCRIPT_COOKIE) {
+        crash::StackBuffer<sizeof(JSScript), 0x87> buf1(this);
+        crash::StackBuffer<sizeof(JSScript), 0x88> buf2(prev);
+        JS_OPT_ASSERT(false);
+    }
+}
+
+#endif /* JS_CRASH_DIAGNOSTICS */
+
 void
 JSScript::finalize(JSContext *cx, bool background)
 {
-    CheckScript(this, NULL);
+    CheckScript(NULL);
 
     js_CallDestroyScriptHook(cx, this);
 
@@ -1571,28 +1571,18 @@ js_GetSrcNoteCached(JSContext *cx, JSScript *script, jsbytecode *pc)
 }
 
 unsigned
-js_PCToLineNumber(JSContext *cx, JSScript *script, jsbytecode *pc)
+js::PCToLineNumber(unsigned startLine, jssrcnote *notes, jsbytecode *code, jsbytecode *pc)
 {
-    /* Cope with StackFrame.pc value prior to entering js_Interpret. */
-    if (!pc)
-        return 0;
+    unsigned lineno = startLine;
 
     /*
-     * Special case: function definition needs no line number note because
-     * the function's script contains its starting line number.
+     * Walk through source notes accumulating their deltas, keeping track of
+     * line-number notes, until we pass the note for pc's offset within
+     * script->code.
      */
-    if (*pc == JSOP_DEFFUN)
-        return script->getFunction(GET_UINT32_INDEX(pc))->script()->lineno;
-
-    /*
-     * General case: walk through source notes accumulating their deltas,
-     * keeping track of line-number notes, until we pass the note for pc's
-     * offset within script->code.
-     */
-    unsigned lineno = script->lineno;
     ptrdiff_t offset = 0;
-    ptrdiff_t target = pc - script->code;
-    for (jssrcnote *sn = script->notes(); !SN_IS_TERMINATOR(sn); sn = SN_NEXT(sn)) {
+    ptrdiff_t target = pc - code;
+    for (jssrcnote *sn = notes; !SN_IS_TERMINATOR(sn); sn = SN_NEXT(sn)) {
         offset += SN_DELTA(sn);
         SrcNoteType type = (SrcNoteType) SN_TYPE(sn);
         if (type == SRC_SETLINE) {
@@ -1605,7 +1595,18 @@ js_PCToLineNumber(JSContext *cx, JSScript *script, jsbytecode *pc)
         if (offset > target)
             break;
     }
+
     return lineno;
+}
+
+unsigned
+js::PCToLineNumber(JSScript *script, jsbytecode *pc)
+{
+    /* Cope with StackFrame.pc value prior to entering js_Interpret. */
+    if (!pc)
+        return 0;
+
+    return PCToLineNumber(script->lineno, script->notes(), script->code, pc);
 }
 
 /* The line number limit is the same as the jssrcnote offset limit. */
@@ -1680,7 +1681,7 @@ namespace js {
 unsigned
 CurrentLine(JSContext *cx)
 {
-    return js_PCToLineNumber(cx, cx->fp()->script(), cx->regs().pc);
+    return PCToLineNumber(cx->fp()->script(), cx->regs().pc);
 }
 
 void
@@ -1700,7 +1701,7 @@ CurrentScriptFileLineOriginSlow(JSContext *cx, const char **file, unsigned *line
 
     JSScript *script = iter.fp()->script();
     *file = script->filename;
-    *linenop = js_PCToLineNumber(cx, iter.fp()->script(), iter.pc());
+    *linenop = PCToLineNumber(iter.fp()->script(), iter.pc());
     *origin = script->originPrincipals;
 }
 
@@ -1944,13 +1945,52 @@ JSScript::clearTraps(JSContext *cx)
 }
 
 void
-JSScript::markTrapClosures(JSTracer *trc)
+JSScript::markChildren(JSTracer *trc)
 {
-    JS_ASSERT(hasAnyBreakpointsOrStepMode());
+    CheckScript(NULL);
 
-    for (unsigned i = 0; i < length; i++) {
-        BreakpointSite *site = debug->breakpoints[i];
-        if (site && site->trapHandler)
-            MarkValue(trc, &site->trapClosure, "trap closure");
+    JS_ASSERT_IF(trc->runtime->gcCheckCompartment,
+                 compartment() == trc->runtime->gcCheckCompartment);
+
+    for (uint32_t i = 0; i < natoms; ++i) {
+        if (atoms[i])
+            MarkStringUnbarriered(trc, &atoms[i], "atom");
+    }
+
+    if (JSScript::isValidOffset(objectsOffset)) {
+        JSObjectArray *objarray = objects();
+        MarkObjectRange(trc, objarray->length, objarray->vector, "objects");
+    }
+
+    if (JSScript::isValidOffset(regexpsOffset)) {
+        JSObjectArray *objarray = regexps();
+        MarkObjectRange(trc, objarray->length, objarray->vector, "objects");
+    }
+
+    if (JSScript::isValidOffset(constOffset)) {
+        JSConstArray *constarray = consts();
+        MarkValueRange(trc, constarray->length, constarray->vector, "consts");
+    }
+
+    if (function())
+        MarkObject(trc, &function_, "function");
+
+    if (!isCachedEval && globalObject)
+        MarkObject(trc, &globalObject, "object");
+
+    if (IS_GC_MARKING_TRACER(trc) && filename)
+        js_MarkScriptFilename(filename);
+
+    bindings.trace(trc);
+
+    if (types)
+        types->trace(trc);
+
+    if (hasAnyBreakpointsOrStepMode()) {
+        for (unsigned i = 0; i < length; i++) {
+            BreakpointSite *site = debug->breakpoints[i];
+            if (site && site->trapHandler)
+                MarkValue(trc, &site->trapClosure, "trap closure");
+        }
     }
 }

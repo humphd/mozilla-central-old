@@ -82,6 +82,7 @@ class nsIScrollableFrame;
 class nsAttrValueOrString;
 class nsContentList;
 class nsDOMTokenList;
+class ContentUnbinder;
 struct nsRect;
 
 typedef PRUptrdiff PtrBits;
@@ -246,7 +247,7 @@ public:
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
-  NS_DECL_DOM_MEMORY_REPORTER_SIZEOF
+  NS_DECL_SIZEOF_EXCLUDING_THIS
 
   /**
    * Called during QueryInterface to give the binding manager a chance to
@@ -596,7 +597,7 @@ public:
   nsIContent* GetLastElementChild();
   nsIContent* GetPreviousElementSibling();
   nsIContent* GetNextElementSibling();
-  nsIDOMDOMTokenList* GetClassList(nsresult *aResult);
+  nsDOMTokenList* GetClassList(nsresult *aResult);
   bool MozMatchesSelector(const nsAString& aSelector, nsresult* aResult);
 
   /**
@@ -956,6 +957,7 @@ protected:
    */
   virtual void GetLinkTarget(nsAString& aTarget);
 
+  friend class ContentUnbinder;
   /**
    * Array containing all attributes and children for this element
    */

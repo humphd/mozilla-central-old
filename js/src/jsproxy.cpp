@@ -494,11 +494,11 @@ ArrayToIdVector(JSContext *cx, const Value &array, AutoIdVector &props)
         return true;
 
     JSObject *obj = &array.toObject();
-    jsuint length;
+    uint32_t length;
     if (!js_GetLengthProperty(cx, obj, &length))
         return false;
 
-    for (jsuint n = 0; n < length; ++n) {
+    for (uint32_t n = 0; n < length; ++n) {
         if (!JS_CHECK_OPERATION_LIMIT(cx))
             return false;
         Value v;
@@ -1251,18 +1251,14 @@ proxy_TraceObject(JSTracer *trc, JSObject *obj)
     MarkCrossCompartmentSlot(trc, &obj->getReservedSlotRef(JSSLOT_PROXY_PRIVATE), "private");
     MarkCrossCompartmentSlot(trc, &obj->getReservedSlotRef(JSSLOT_PROXY_EXTRA + 0), "extra0");
     MarkCrossCompartmentSlot(trc, &obj->getReservedSlotRef(JSSLOT_PROXY_EXTRA + 1), "extra1");
-    if (IsFunctionProxy(obj)) {
-        MarkCrossCompartmentSlot(trc, &GetCall(obj), "call");
-        MarkCrossCompartmentSlot(trc, &GetFunctionProxyConstruct(obj), "construct");
-    }
 }
 
 static void
 proxy_TraceFunction(JSTracer *trc, JSObject *obj)
 {
-    proxy_TraceObject(trc, obj);
     MarkCrossCompartmentSlot(trc, &GetCall(obj), "call");
     MarkCrossCompartmentSlot(trc, &GetFunctionProxyConstruct(obj), "construct");
+    proxy_TraceObject(trc, obj);
 }
 
 static JSBool

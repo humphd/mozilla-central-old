@@ -1141,7 +1141,7 @@ static JS_ALWAYS_INLINE bool IsNegative(Type i)
   return IsNegativeImpl<Type, numeric_limits<Type>::is_signed>::Test(i);
 }
 
-// Implicitly convert val to bool, allowing JSBool, jsint, and double
+// Implicitly convert val to bool, allowing JSBool, int, and double
 // arguments numerically equal to 0 or 1.
 static bool
 jsvalToBool(JSContext* cx, jsval val, bool* result)
@@ -1151,7 +1151,7 @@ jsvalToBool(JSContext* cx, jsval val, bool* result)
     return true;
   }
   if (JSVAL_IS_INT(val)) {
-    jsint i = JSVAL_TO_INT(val);
+    int32_t i = JSVAL_TO_INT(val);
     *result = i != 0;
     return i == 0 || i == 1;
   }
@@ -1165,7 +1165,7 @@ jsvalToBool(JSContext* cx, jsval val, bool* result)
   return false;
 }
 
-// Implicitly convert val to IntegerType, allowing JSBool, jsint, double,
+// Implicitly convert val to IntegerType, allowing JSBool, int, double,
 // Int64, UInt64, and CData integer types 't' where all values of 't' are
 // representable by IntegerType.
 template<class IntegerType>
@@ -1177,7 +1177,7 @@ jsvalToInteger(JSContext* cx, jsval val, IntegerType* result)
   if (JSVAL_IS_INT(val)) {
     // Make sure the integer fits in the alotted precision, and has the right
     // sign.
-    jsint i = JSVAL_TO_INT(val);
+    int32_t i = JSVAL_TO_INT(val);
     return ConvertExact(i, result);
   }
   if (JSVAL_IS_DOUBLE(val)) {
@@ -1246,7 +1246,7 @@ jsvalToInteger(JSContext* cx, jsval val, IntegerType* result)
   return false;
 }
 
-// Implicitly convert val to FloatType, allowing jsint, double,
+// Implicitly convert val to FloatType, allowing int, double,
 // Int64, UInt64, and CData numeric types 't' where all values of 't' are
 // representable by FloatType.
 template<class FloatType>
@@ -1359,7 +1359,7 @@ StringToInteger(JSContext* cx, JSString* string, IntegerType* result)
   return true;
 }
 
-// Implicitly convert val to IntegerType, allowing jsint, double,
+// Implicitly convert val to IntegerType, allowing int, double,
 // Int64, UInt64, and optionally a decimal or hexadecimal string argument.
 // (This is common code shared by jsvalToSize and the Int64/UInt64 constructors.)
 template<class IntegerType>
@@ -1374,7 +1374,7 @@ jsvalToBigInteger(JSContext* cx,
   if (JSVAL_IS_INT(val)) {
     // Make sure the integer fits in the alotted precision, and has the right
     // sign.
-    jsint i = JSVAL_TO_INT(val);
+    int32_t i = JSVAL_TO_INT(val);
     return ConvertExact(i, result);
   }
   if (JSVAL_IS_DOUBLE(val)) {
@@ -1421,7 +1421,7 @@ jsvalToSize(JSContext* cx, jsval val, bool allowString, size_t* result)
   return Convert<size_t>(double(*result)) == *result;
 }
 
-// Implicitly convert val to IntegerType, allowing jsint, double,
+// Implicitly convert val to IntegerType, allowing int, double,
 // Int64, UInt64, and optionally a decimal or hexadecimal string argument.
 // (This is common code shared by jsvalToSize and the Int64/UInt64 constructors.)
 template<class IntegerType>
@@ -1436,7 +1436,7 @@ jsidToBigInteger(JSContext* cx,
   if (JSID_IS_INT(val)) {
     // Make sure the integer fits in the alotted precision, and has the right
     // sign.
-    jsint i = JSID_TO_INT(val);
+    int32_t i = JSID_TO_INT(val);
     return ConvertExact(i, result);
   }
   if (allowString && JSID_IS_STRING(val)) {
@@ -1525,9 +1525,9 @@ static bool
 jsvalToPtrExplicit(JSContext* cx, jsval val, uintptr_t* result)
 {
   if (JSVAL_IS_INT(val)) {
-    // jsint always fits in intptr_t. If the integer is negative, cast through
+    // int32_t always fits in intptr_t. If the integer is negative, cast through
     // an intptr_t intermediate to sign-extend.
-    jsint i = JSVAL_TO_INT(val);
+    int32_t i = JSVAL_TO_INT(val);
     *result = i < 0 ? uintptr_t(intptr_t(i)) : uintptr_t(i);
     return true;
   }
@@ -1574,7 +1574,7 @@ jsvalToPtrExplicit(JSContext* cx, jsval val, uintptr_t* result)
 
 template<class IntegerType, class CharType, size_t N, class AP>
 void
-IntegerToString(IntegerType i, jsuint radix, Vector<CharType, N, AP>& result)
+IntegerToString(IntegerType i, int radix, Vector<CharType, N, AP>& result)
 {
   JS_STATIC_ASSERT(numeric_limits<IntegerType>::is_exact);
 
@@ -1650,7 +1650,7 @@ ConvertToJS(JSContext* cx,
   case TYPE_##name: {                                                          \
     type value = *static_cast<type*>(data);                                    \
     if (sizeof(type) < 4)                                                      \
-      *result = INT_TO_JSVAL(jsint(value));                                    \
+      *result = INT_TO_JSVAL(int32_t(value));                                    \
     else if (!JS_NewNumberValue(cx, double(value), result))                    \
       return false;                                                            \
     break;                                                                     \
@@ -1955,7 +1955,7 @@ ImplicitConvert(JSContext* cx,
                JS_IsArrayObject(cx, JSVAL_TO_OBJECT(val))) {
       // Convert each element of the array by calling ImplicitConvert.
       JSObject* sourceArray = JSVAL_TO_OBJECT(val);
-      jsuint sourceLength;
+      uint32_t sourceLength;
       if (!JS_GetArrayLength(cx, sourceArray, &sourceLength) ||
           targetLength != size_t(sourceLength)) {
         JS_ReportError(cx, "ArrayType length does not match source array length");
@@ -1971,7 +1971,7 @@ ImplicitConvert(JSContext* cx,
         return false;
       }
 
-      for (jsuint i = 0; i < sourceLength; ++i) {
+      for (uint32_t i = 0; i < sourceLength; ++i) {
         js::AutoValueRooter item(cx);
         if (!JS_GetElement(cx, sourceArray, i, item.jsval_addr()))
           return false;
@@ -2929,7 +2929,7 @@ CType::GetSafeSize(JSObject* obj, size_t* result)
 
   jsval size = JS_GetReservedSlot(obj, SLOT_SIZE);
 
-  // The "size" property can be a jsint, a double, or JSVAL_VOID
+  // The "size" property can be an int, a double, or JSVAL_VOID
   // (for arrays of undefined length), and must always fit in a size_t.
   if (JSVAL_IS_INT(size)) {
     *result = JSVAL_TO_INT(size);
@@ -2953,7 +2953,7 @@ CType::GetSize(JSObject* obj)
 
   JS_ASSERT(!JSVAL_IS_VOID(size));
 
-  // The "size" property can be a jsint, a double, or JSVAL_VOID
+  // The "size" property can be an int, a double, or JSVAL_VOID
   // (for arrays of undefined length), and must always fit in a size_t.
   // For callers who know it can never be JSVAL_VOID, return a size_t directly.
   if (JSVAL_IS_INT(size))
@@ -2968,7 +2968,7 @@ CType::IsSizeDefined(JSObject* obj)
 
   jsval size = JS_GetReservedSlot(obj, SLOT_SIZE);
 
-  // The "size" property can be a jsint, a double, or JSVAL_VOID
+  // The "size" property can be an int, a double, or JSVAL_VOID
   // (for arrays of undefined length), and must always fit in a size_t.
   JS_ASSERT(JSVAL_IS_INT(size) || JSVAL_IS_DOUBLE(size) || JSVAL_IS_VOID(size));
   return !JSVAL_IS_VOID(size);
@@ -3599,7 +3599,7 @@ ArrayType::CreateInternal(JSContext* cx,
   jsval sizeVal = JSVAL_VOID;
   jsval lengthVal = JSVAL_VOID;
   if (lengthDefined) {
-    // Check for overflow, and convert to a jsint or double as required.
+    // Check for overflow, and convert to an int or double as required.
     size_t size = length * baseSize;
     if (length > 0 && size / length != baseSize) {
       JS_ReportError(cx, "size overflow");
@@ -3750,7 +3750,7 @@ ArrayType::GetSafeLength(JSObject* obj, size_t* result)
 
   jsval length = JS_GetReservedSlot(obj, SLOT_LENGTH);
 
-  // The "length" property can be a jsint, a double, or JSVAL_VOID
+  // The "length" property can be an int, a double, or JSVAL_VOID
   // (for arrays of undefined length), and must always fit in a size_t.
   if (JSVAL_IS_INT(length)) {
     *result = JSVAL_TO_INT(length);
@@ -3775,7 +3775,7 @@ ArrayType::GetLength(JSObject* obj)
 
   JS_ASSERT(!JSVAL_IS_VOID(length));
 
-  // The "length" property can be a jsint, a double, or JSVAL_VOID
+  // The "length" property can be an int, a double, or JSVAL_VOID
   // (for arrays of undefined length), and must always fit in a size_t.
   // For callers who know it can never be JSVAL_VOID, return a size_t directly.
   if (JSVAL_IS_INT(length))
@@ -4112,7 +4112,7 @@ StructType::Create(JSContext* cx, unsigned argc, jsval* vp)
 JSBool
 StructType::DefineInternal(JSContext* cx, JSObject* typeObj, JSObject* fieldsObj)
 {
-  jsuint len;
+  uint32_t len;
   ASSERT_OK(JS_GetArrayLength(cx, fieldsObj, &len));
 
   // Get the common prototype for CData objects of this type from
@@ -4150,7 +4150,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj, JSObject* fieldsObj
     structSize = 0;
     structAlign = 0;
 
-    for (jsuint i = 0; i < len; ++i) {
+    for (uint32_t i = 0; i < len; ++i) {
       js::AutoValueRooter item(cx);
       if (!JS_GetElement(cx, fieldsObj, i, item.jsval_addr()))
         return JS_FALSE;
@@ -4925,7 +4925,7 @@ FunctionType::Create(JSContext* cx, unsigned argc, jsval* vp)
     }
 
     arrayObj = JSVAL_TO_OBJECT(argv[2]);
-    jsuint len;
+    uint32_t len;
     ASSERT_OK(JS_GetArrayLength(cx, arrayObj, &len));
 
     if (!argTypes.appendN(JSVAL_VOID, len)) {
@@ -4937,7 +4937,7 @@ FunctionType::Create(JSContext* cx, unsigned argc, jsval* vp)
   // Pull out the argument types from the array, if any.
   JS_ASSERT(!argTypes.length() || arrayObj);
   js::AutoArrayRooter items(cx, argTypes.length(), argTypes.begin());
-  for (jsuint i = 0; i < argTypes.length(); ++i) {
+  for (uint32_t i = 0; i < argTypes.length(); ++i) {
     if (!JS_GetElement(cx, arrayObj, i, &argTypes[i]))
       return JS_FALSE;
   }
@@ -4956,7 +4956,7 @@ FunctionType::CreateInternal(JSContext* cx,
                              jsval abi,
                              jsval rtype,
                              jsval* argtypes,
-                             jsuint arglen)
+                             unsigned arglen)
 {
   // Determine and check the types, and prepare the function CIF.
   AutoPtr<FunctionInfo> fninfo(NewFunctionInfo(cx, abi, rtype, argtypes, arglen));
@@ -5109,7 +5109,7 @@ FunctionType::Call(JSContext* cx,
   }
 
   jsval* argv = JS_ARGV(cx, vp);
-  for (jsuint i = 0; i < argcFixed; ++i)
+  for (unsigned i = 0; i < argcFixed; ++i)
     if (!ConvertArgument(cx, argv[i], fninfo->mArgTypes[i], &values[i], &strings))
       return false;
 
@@ -6044,7 +6044,7 @@ Int64Base::ToString(JSContext* cx,
     return JS_FALSE;
   }
 
-  jsuint radix = 10;
+  int radix = 10;
   if (argc == 1) {
     jsval arg = JS_ARGV(cx, vp)[0];
     if (JSVAL_IS_INT(arg))

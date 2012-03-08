@@ -62,7 +62,7 @@ const MEM_HISTOGRAMS = {
   "explicit": "MEMORY_EXPLICIT",
   "resident": "MEMORY_RESIDENT",
   "storage-sqlite": "MEMORY_STORAGE_SQLITE",
-  "explicit/images/content/used/uncompressed":
+  "images-content-used-uncompressed":
     "MEMORY_IMAGES_CONTENT_USED_UNCOMPRESSED",
   "heap-allocated": "MEMORY_HEAP_ALLOCATED",
   "page-faults-hard": "PAGE_FAULTS_HARD",
@@ -239,8 +239,7 @@ TelemetryPing.prototype = {
     return retgram;
   },
 
-  getHistograms: function getHistograms() {
-    let hls = Telemetry.histogramSnapshots;
+  getHistograms: function getHistograms(hls) {
     let info = Telemetry.registeredHistograms;
     let ret = {};
 
@@ -294,7 +293,8 @@ TelemetryPing.prototype = {
       appName: ai.name,
       appBuildID: ai.appBuildID,
       appUpdateChannel: getUpdateChannel(),
-      platformBuildID: ai.platformBuildID
+      platformBuildID: ai.platformBuildID,
+      locale: getLocale()
     };
 
     // sysinfo fields are not always available, get what we can.

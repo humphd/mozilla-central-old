@@ -51,6 +51,18 @@ XPCOMUtils.defineLazyGetter(this, "PluralForm", function() {
   return PluralForm;
 });
 
+// Lazily-loaded browser scripts:
+[
+  ["SelectHelper", "chrome://browser/content/SelectHelper.js"],
+].forEach(function (aScript) {
+  let [name, script] = aScript;
+  XPCOMUtils.defineLazyGetter(window, name, function() {
+    let sandbox = {};
+    Services.scriptloader.loadSubScript(script, sandbox);
+    return sandbox[name];
+  });
+});
+
 XPCOMUtils.defineLazyServiceGetter(this, "Haptic",
   "@mozilla.org/widget/hapticfeedback;1", "nsIHapticFeedback");
 
@@ -124,6 +136,11 @@ XPCOMUtils.defineLazyGetter(this, "ContentAreaUtils", function() {
   let ContentAreaUtils = {};
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", ContentAreaUtils);
   return ContentAreaUtils;
+});
+
+XPCOMUtils.defineLazyGetter(this, "Rect", function() {
+  Cu.import("resource://gre/modules/Geometry.jsm");
+  return Rect;
 });
 
 function resolveGeckoURI(aURI) {
@@ -455,6 +472,15 @@ var BrowserApp = {
     return null;
   },
 
+  getTabForWindow: function getTabForWindow(aWindow) {
+    let tabs = this._tabs;
+    for (let i = 0; i < tabs.length; i++) {
+      if (tabs[i].browser.contentWindow == aWindow)
+        return tabs[i];
+    }
+    return null; 
+  },
+
   getBrowserForWindow: function getBrowserForWindow(aWindow) {
     let tabs = this._tabs;
     for (let i = 0; i < tabs.length; i++) {
@@ -567,6 +593,10 @@ var BrowserApp = {
       Cu.reportError("Error trying to select tab (tab doesn't exist)");
       return;
     }
+
+    // There's nothing to do if the tab is already selected
+    if (aTab == this.selectedTab)
+      return;
 
     let message = {
       gecko: {
@@ -1428,7 +1458,7 @@ nsBrowserAccess.prototype = {
     if (newTab) {
       let parentId = -1;
       if (!isExternal) {
-        let parent = BrowserApp.getTabForBrowser(BrowserApp.getBrowserForWindow(aOpener.top));
+        let parent = BrowserApp.getTabForWindow(aOpener.top);
         if (parent)
           parentId = parent.id;
       }
@@ -1511,17 +1541,23 @@ Tab.prototype = {
     let frameLoader = this.browser.QueryInterface(Ci.nsIFrameLoaderOwner).frameLoader;
     frameLoader.clipSubdocument = false;
 
+    // only set tab uri if uri is valid
+    let uri = null;
+    try {
+      uri = Services.io.newURI(aURL, null, null).spec;
+    } catch (e) {}
+
     this.id = ++gTabIDFactory;
 
     let message = {
       gecko: {
         type: "Tab:Added",
         tabID: this.id,
-        uri: aURL,
+        uri: uri,
         parentId: ("parentId" in aParams) ? aParams.parentId : -1,
         external: ("external" in aParams) ? aParams.external : false,
         selected: ("selected" in aParams) ? aParams.selected : true,
-        title: aParams.title || "",
+        title: aParams.title || aURL,
         delayLoad: aParams.delayLoad || false
       }
     };
@@ -1537,6 +1573,7 @@ Tab.prototype = {
     this.browser.addEventListener("DOMLinkAdded", this, true);
     this.browser.addEventListener("DOMTitleChanged", this, true);
     this.browser.addEventListener("DOMWindowClose", this, true);
+    this.browser.addEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.addEventListener("scroll", this, true);
     this.browser.addEventListener("PluginClickToPlay", this, true);
     this.browser.addEventListener("pagehide", this, true);
@@ -1579,6 +1616,7 @@ Tab.prototype = {
     this.browser.removeEventListener("DOMLinkAdded", this, true);
     this.browser.removeEventListener("DOMTitleChanged", this, true);
     this.browser.removeEventListener("DOMWindowClose", this, true);
+    this.browser.removeEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.removeEventListener("scroll", this, true);
     this.browser.removeEventListener("PluginClickToPlay", this, true);
     this.browser.removeEventListener("pagehide", this, true);
@@ -1853,6 +1891,17 @@ Tab.prototype = {
             }
           });
         }
+        break;
+      }
+
+      case "DOMWillOpenModalDialog": {
+        if (!aEvent.isTrusted)
+          return;
+
+        // We're about to open a modal dialog, make sure the opening
+        // tab is brought to the front.
+        let tab = BrowserApp.getTabForWindow(aEvent.target.top);
+        BrowserApp.selectTab(tab);
         break;
       }
 
@@ -2266,7 +2315,7 @@ var BrowserEventHandler = {
       }
     } else if (aTopic == "Gesture:SingleTap") {
       let element = this._highlightElement;
-      if (element && !FormAssistant.handleClick(element)) {
+      if (element && !SelectHelper.handleClick(element)) {
         try {
           let data = JSON.parse(aData);
           [data.x, data.y] = ElementTouchHelper.toScreenCoords(element.ownerDocument.defaultView, data.x, data.y);
@@ -2286,11 +2335,7 @@ var BrowserEventHandler = {
       this._cancelTapHighlight();
       this.onDoubleTap(aData);
     } else if (aTopic == "dom-touch-listener-added") {
-      let browser = BrowserApp.getBrowserForWindow(aSubject);
-      if (!browser)
-        return;
-
-      let tab = BrowserApp.getTabForBrowser(browser);
+      let tab = BrowserApp.getTabForWindow(aSubject);
       if (!tab)
         return;
 
@@ -2304,17 +2349,12 @@ var BrowserEventHandler = {
   },
  
   _zoomOut: function() {
-    this._zoomedToElement = null;
-    // zoom out, try to keep the center in the center of the page
-    setTimeout(function() {
-      sendMessageToJava({ gecko: { type: "Browser:ZoomToPageWidth"} });
-    }, 0);    
+    sendMessageToJava({ gecko: { type: "Browser:ZoomToPageWidth"} });
   },
 
   onDoubleTap: function(aData) {
     let data = JSON.parse(aData);
 
-    let rect = {};
     let win = BrowserApp.selectedBrowser.contentWindow;
     
     let zoom = BrowserApp.selectedTab._viewport.zoom;
@@ -2327,25 +2367,47 @@ var BrowserEventHandler = {
     win = element.ownerDocument.defaultView;
     while (element && win.getComputedStyle(element,null).display == "inline")
       element = element.parentNode;
-    if (!element || element == this._zoomedToElement) {
+
+    if (!element) {
       this._zoomOut();
-    } else if (element) {
+    } else {
       const margin = 15;
-      this._zoomedToElement = element;
-      rect = ElementTouchHelper.getBoundingContentRect(element);
+      const minDifference = -20;
+      const maxDifference = 20;
+      let rect = ElementTouchHelper.getBoundingContentRect(element);
 
-      let zoom = BrowserApp.selectedTab.viewport.zoom;
-      rect.x *= zoom;
-      rect.y *= zoom;
-      rect.w *= zoom;
-      rect.h *= zoom;
+      let viewport = BrowserApp.selectedTab.viewport;
+      let vRect = new Rect(viewport.x, viewport.y, viewport.width, viewport.height);
 
-      setTimeout(function() {
-        rect.type = "Browser:ZoomToRect";
-        rect.x -= margin;
-        rect.w += 2*margin;
-        sendMessageToJava({ gecko: rect });
-      }, 0);
+      let zoom = viewport.zoom;
+      let bRect = new Rect(Math.max(0,rect.x - margin),
+                           rect.y,
+                           rect.w + 2*margin,
+                           rect.h);
+      // constrict the rect to the screen width
+      bRect.width = Math.min(bRect.width, viewport.pageWidth/zoom - bRect.x);
+      bRect.scale(zoom, zoom);
+
+      let overlap = vRect.intersect(bRect);
+      let overlapArea = overlap.width*overlap.height;
+      // we want to know if the area of the element showing is near the max we can show
+      // on the screen at any time and if its already stretching the width of the screen
+      let availHeight = Math.min(bRect.width*vRect.height/vRect.width, bRect.height);
+      let showing = overlapArea/(bRect.width*availHeight);
+      let dw = (bRect.width - vRect.width)/zoom;
+      let dx = (bRect.x - vRect.x)/zoom;
+
+      if (showing > 0.9 &&
+          dx > minDifference && dx < maxDifference &&
+          dw > minDifference && dw < maxDifference) {
+            this._zoomOut();
+            return;
+      }
+
+      rect.type = "Browser:ZoomToRect";
+      rect.x = bRect.x; rect.y = bRect.y;
+      rect.w = bRect.width; rect.h = availHeight;
+      sendMessageToJava({ gecko: rect });
     }
   },
 
@@ -2516,11 +2578,7 @@ const ElementTouchHelper = {
     if (!aWindow)
       throw "Must provide a window";
   
-    let browser = BrowserApp.getBrowserForWindow(aWindow.top);
-    if (!browser)
-      throw "Unable to find a browser";
-
-    let tab = BrowserApp.getTabForBrowser(browser);
+    let tab = BrowserApp.getTabForWindow(aWindow.top);
     if (!tab)
       throw "Unable to find a tab";
 
@@ -2534,12 +2592,8 @@ const ElementTouchHelper = {
   toScreenCoords: function(aWindow, aX, aY) {
     if (!aWindow)
       throw "Must provide a window";
-  
-    let browser = BrowserApp.getBrowserForWindow(aWindow.top);
-    if (!browser)
-      throw "Unable to find a browser";
 
-    let tab = BrowserApp.getTabForBrowser(browser);
+    let tab = BrowserApp.getTabForWindow(aWindow.top);
     if (!tab)
       throw "Unable to find a tab";
 
@@ -2792,21 +2846,34 @@ var ErrorPageEventHandler = {
 };
 
 var FormAssistant = {
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIFormSubmitObserver]),
+
   // Used to keep track of the element that corresponds to the current
   // autocomplete suggestions
   _currentInputElement: null,
-  _uiBusy: false,
+
+  // Keep track of whether or not an invalid form has been submitted
+  _invalidSubmit: false,
 
   init: function() {
     Services.obs.addObserver(this, "FormAssist:AutoComplete", false);
-    Services.obs.addObserver(this, "FormAssist:Closed", false);
+    Services.obs.addObserver(this, "FormAssist:Hidden", false);
+    Services.obs.addObserver(this, "invalidformsubmit", false);
 
+    // We need to use a capturing listener for focus events
+    BrowserApp.deck.addEventListener("focus", this, true);
     BrowserApp.deck.addEventListener("input", this, false);
+    BrowserApp.deck.addEventListener("pageshow", this, false);
   },
 
   uninit: function() {
     Services.obs.removeObserver(this, "FormAssist:AutoComplete");
-    Services.obs.removeObserver(this, "FormAssist:Closed");
+    Services.obs.removeObserver(this, "FormAssist:Hidden");
+    Services.obs.removeObserver(this, "invalidformsubmit");
+
+    BrowserApp.deck.removeEventListener("focus", this);
+    BrowserApp.deck.removeEventListener("input", this);
+    BrowserApp.deck.removeEventListener("pageshow", this);
   },
 
   observe: function(aSubject, aTopic, aData) {
@@ -2820,39 +2887,59 @@ var FormAssistant = {
         this._currentInputElement.value = aData;
         break;
 
-      case "FormAssist:Closed":
+      case "FormAssist:Hidden":
         this._currentInputElement = null;
         break;
     }
   },
 
+  notifyInvalidSubmit: function notifyInvalidSubmit(aFormElement, aInvalidElements) {
+    if (!aInvalidElements.length)
+      return;
+
+    // Ignore this notificaiton if the current tab doesn't contain the invalid form
+    if (BrowserApp.selectedBrowser.contentDocument !=
+        aFormElement.ownerDocument.defaultView.top.document)
+      return;
+
+    this._invalidSubmit = true;
+
+    // Our focus listener will show the element's validation message
+    let currentElement = aInvalidElements.queryElementAt(0, Ci.nsISupports);
+    currentElement.focus();
+  },
+
   handleEvent: function(aEvent) {
     switch (aEvent.type) {
-      case "input":
+      case "focus":
         let currentElement = aEvent.target;
-        if (!this._isAutocomplete(currentElement))
+        this._showValidationMessage(currentElement);
+        break;
+
+      case "input":
+        currentElement = aEvent.target;
+
+        // Since we can only show one popup at a time, prioritze autocomplete
+        // suggestions over a form validation message
+        if (this._showAutoCompleteSuggestions(currentElement))
+          break;
+        if (this._showValidationMessage(currentElement))
           break;
 
-        // Keep track of input element so we can fill it in if the user
-        // selects an autocomplete suggestion
-        this._currentInputElement = currentElement;
-        let suggestions = this._getAutocompleteSuggestions(currentElement.value, currentElement);
+        // If we're not showing autocomplete suggestions, hide the form assist popup
+        this._hideFormAssistPopup();
+        break;
 
-        let rect = ElementTouchHelper.getBoundingContentRect(currentElement);
-        let viewport = BrowserApp.selectedTab.viewport;
-
-        sendMessageToJava({
-          gecko: {
-            type:  "FormAssist:AutoComplete",
-            suggestions: suggestions,
-            rect: [rect.x - (viewport.x / viewport.zoom), rect.y - (viewport.y / viewport.zoom), rect.w, rect.h],
-            zoom: viewport.zoom
-          }
-        });
+      // Reset invalid submit state on each pageshow
+      case "pageshow":
+        let target = aEvent.originalTarget;
+        if (target == content.document || target.ownerDocument == content.document)
+          this._invalidSubmit = false;
     }
   },
 
-  _isAutocomplete: function (aElement) {
+  // We only want to show autocomplete suggestions for certain elements
+  _isAutoComplete: function _isAutoComplete(aElement) {
     if (!(aElement instanceof HTMLInputElement) ||
         (aElement.getAttribute("type") == "password") ||
         (aElement.hasAttribute("autocomplete") &&
@@ -2862,142 +2949,149 @@ var FormAssistant = {
     return true;
   },
 
-  /** Retrieve the autocomplete list from the autocomplete service for an element */
-  _getAutocompleteSuggestions: function(aSearchString, aElement) {
-    let results = Cc["@mozilla.org/satchel/form-autocomplete;1"].
-                  getService(Ci.nsIFormAutoComplete).
-                  autoCompleteSearch(aElement.name || aElement.id, aSearchString, aElement, null);
+  // Retrieves autocomplete suggestions for an element from the form autocomplete service.
+  _getAutoCompleteSuggestions: function _getAutoCompleteSuggestions(aSearchString, aElement) {
+    // Cache the form autocomplete service for future use
+    if (!this._formAutoCompleteService)
+      this._formAutoCompleteService = Cc["@mozilla.org/satchel/form-autocomplete;1"].
+                                      getService(Ci.nsIFormAutoComplete);
 
+    let results = this._formAutoCompleteService.autoCompleteSearch(aElement.name || aElement.id,
+                                                                   aSearchString, aElement, null);
     let suggestions = [];
-    if (results.matchCount > 0) {
-      for (let i = 0; i < results.matchCount; i++) {
-        let value = results.getValueAt(i);
-        // Do not show the value if it is the current one in the input field
-        if (value == aSearchString)
-          continue;
+    for (let i = 0; i < results.matchCount; i++) {
+      let value = results.getValueAt(i);
 
-        suggestions.push(value);
-      }
+      // Do not show the value if it is the current one in the input field
+      if (value == aSearchString)
+        continue;
+
+      // Supply a label and value, since they can differ for datalist suggestions
+      suggestions.push({ label: value, value: value });
     }
 
     return suggestions;
   },
 
-  show: function(aList, aElement) {
-    let data = JSON.parse(sendMessageToJava({ gecko: aList }));
-    let selected = data.button;
-    if (selected == -1)
-        return;
+  /**
+   * (Copied from mobile/xul/chrome/content/forms.js)
+   * This function is similar to getListSuggestions from
+   * components/satchel/src/nsInputListAutoComplete.js but sadly this one is
+   * used by the autocomplete.xml binding which is not in used in fennec
+   */
+  _getListSuggestions: function _getListSuggestions(aElement) {
+    if (!(aElement instanceof HTMLInputElement) || !aElement.list)
+      return [];
 
-    if (!(selected instanceof Array)) {
-      let temp = [];
-      for (let i = 0; i < aList.listitems.length; i++) {
-        temp[i] = (i == selected);
-      }
-      selected = temp;
+    let suggestions = [];
+    let filter = !aElement.hasAttribute("mozNoFilter");
+    let lowerFieldValue = aElement.value.toLowerCase();
+
+    let options = aElement.list.options;
+    let length = options.length;
+    for (let i = 0; i < length; i++) {
+      let item = options.item(i);
+
+      let label = item.value;
+      if (item.label)
+        label = item.label;
+      else if (item.text)
+        label = item.text;
+
+      if (filter && label.toLowerCase().indexOf(lowerFieldValue) == -1)
+        continue;
+      suggestions.push({ label: label, value: item.value });
     }
-    this.forOptions(aElement, function(aNode, aIndex) {
-      aNode.selected = selected[aIndex];
+
+    return suggestions;
+  },
+
+  // Gets the element position data necessary for the Java UI to position
+  // the form assist popup.
+  _getElementPositionData: function _getElementPositionData(aElement) {
+    let rect = ElementTouchHelper.getBoundingContentRect(aElement);
+    let viewport = BrowserApp.selectedTab.viewport;
+    
+    return { rect: [rect.x - (viewport.x / viewport.zoom),
+                    rect.y - (viewport.y / viewport.zoom),
+                    rect.w, rect.h],
+             zoom: viewport.zoom }
+  },
+
+  // Retrieves autocomplete suggestions for an element from the form autocomplete service
+  // and sends the suggestions to the Java UI, along with element position data.
+  // Returns true if there are suggestions to show, false otherwise.
+  _showAutoCompleteSuggestions: function _showAutoCompleteSuggestions(aElement) {
+    if (!this._isAutoComplete(aElement))
+      return false;
+
+    let autoCompleteSuggestions = this._getAutoCompleteSuggestions(aElement.value, aElement);
+    let listSuggestions = this._getListSuggestions(aElement);
+
+    // On desktop, we show datalist suggestions below autocomplete suggestions,
+    // without duplicates removed.
+    let suggestions = autoCompleteSuggestions.concat(listSuggestions);
+
+    // Return false if there are no suggestions to show
+    if (!suggestions.length)
+      return false;
+
+    let positionData = this._getElementPositionData(aElement);
+    sendMessageToJava({
+      gecko: {
+        type:  "FormAssist:AutoComplete",
+        suggestions: suggestions,
+        rect: positionData.rect,
+        zoom: positionData.zoom
+      }
     });
-    this.fireOnChange(aElement);
+
+    // Keep track of input element so we can fill it in if the user
+    // selects an autocomplete suggestion
+    this._currentInputElement = aElement;
+
+    return true;
   },
 
-  handleClick: function(aTarget) {
-    // if we're busy looking at a select we want to eat any clicks that
-    // come to us, but not to process them
-    if (this._uiBusy)
-        return true;
+  // Only show a validation message if the user submitted an invalid form,
+  // there's a non-empty message string, and the element is the correct type
+  _isValidateable: function _isValidateable(aElement) {
+    if (!this._invalidSubmit ||
+        !aElement.validationMessage ||
+        !(aElement instanceof HTMLInputElement ||
+          aElement instanceof HTMLTextAreaElement ||
+          aElement instanceof HTMLSelectElement ||
+          aElement instanceof HTMLButtonElement))
+      return false;
 
-    let target = aTarget;
-    while (target) {
-      if (this._isSelectElement(target) && !target.disabled) {
-        this._uiBusy = true;
-        target.focus();
-        let list = this.getListForElement(target);
-        this.show(list, target);
-        target = null;
-        this._uiBusy = false;
-        return true;
+    return true;
+  },
+
+  // Sends a validation message and position data for an element to the Java UI.
+  // Returns true if there's a validation message to show, false otherwise.
+  _showValidationMessage: function _sendValidationMessage(aElement) {
+    if (!this._isValidateable(aElement))
+      return false;
+
+    let positionData = this._getElementPositionData(aElement);
+    sendMessageToJava({
+      gecko: {
+        type: "FormAssist:ValidationMessage",
+        validationMessage: aElement.validationMessage,
+        rect: positionData.rect,
+        zoom: positionData.zoom
       }
-      if (target)
-        target = target.parentNode;
-    }
-    return false;
-  },
-
-  fireOnChange: function(aElement) {
-    let evt = aElement.ownerDocument.createEvent("Events");
-    evt.initEvent("change", true, true, aElement.defaultView, 0,
-                  false, false,
-                  false, false, null);
-    setTimeout(function() {
-      aElement.dispatchEvent(evt);
-    }, 0);
-  },
-
-  _isSelectElement: function(aElement) {
-    return (aElement instanceof HTMLSelectElement);
-  },
-
-  getListForElement: function(aElement) {
-    let result = {
-      type: "Prompt:Show",
-      multiple: aElement.multiple,
-      selected: [],
-      listitems: []
-    };
-
-    if (aElement.multiple) {
-      result.buttons = [
-        { label: Strings.browser.GetStringFromName("selectHelper.closeMultipleSelectDialog") },
-      ];
-    }
-
-    this.forOptions(aElement, function(aNode, aIndex, aIsGroup, aInGroup) {
-      let item = {
-        label: aNode.text || aNode.label,
-        isGroup: aIsGroup,
-        inGroup: aInGroup,
-        disabled: aNode.disabled,
-        id: aIndex
-      }
-      if (aInGroup)
-        item.disabled = item.disabled || aNode.parentNode.disabled;
-
-      result.listitems[aIndex] = item;
-      result.selected[aIndex] = aNode.selected;
     });
-    return result;
+
+    return true;
   },
 
-  forOptions: function(aElement, aFunction) {
-    let optionIndex = 0;
-    let children = aElement.children;
-    let numChildren = children.length;
-    // if there are no children in this select, we add a dummy row so that at least something appears
-    if (numChildren == 0)
-      aFunction.call(this, {label:""}, optionIndex);
-    for (let i = 0; i < numChildren; i++) {
-      let child = children[i];
-      if (child instanceof HTMLOptionElement) {
-        // This is a regular choice under no group.
-        aFunction.call(this, child, optionIndex, false, false);
-        optionIndex++;
-      } else if (child instanceof HTMLOptGroupElement) {
-        aFunction.call(this, child, optionIndex, true, false);
-        optionIndex++;
-
-        let subchildren = child.children;
-        let numSubchildren = subchildren.length;
-        for (let j = 0; j < numSubchildren; j++) {
-          let subchild = subchildren[j];
-          aFunction.call(this, subchild, optionIndex, false, true);
-          optionIndex++;
-        }
-      }
-    }
+  _hideFormAssistPopup: function _hideFormAssistPopup() {
+    sendMessageToJava({
+      gecko: { type:  "FormAssist:Hide" }
+    });
   }
-}
+};
 
 var XPInstallObserver = {
   init: function xpi_init() {
@@ -3431,8 +3525,7 @@ var OfflineApps = {
     if (!Services.prefs.getBoolPref("browser.offline-apps.notify"))
       return;
 
-    let browser = BrowserApp.getBrowserForWindow(aContentWindow);
-    let tab = BrowserApp.getTabForBrowser(browser);
+    let tab = BrowserApp.getTabForWindow(aContentWindow);
     let currentURI = aContentWindow.document.documentURIObject;
 
     // Don't bother showing UI if the user has already made a decision
@@ -3531,8 +3624,8 @@ var IndexedDB = {
 
     let contentWindow = requestor.getInterface(Ci.nsIDOMWindow);
     let contentDocument = contentWindow.document;
-    let browser = BrowserApp.getBrowserForWindow(contentWindow);
-    if (!browser)
+    let tab = BrowserApp.getTabForWindow(contentWindow);
+    if (!tab)
       return;
 
     let host = contentDocument.documentURIObject.asciiHost;
@@ -3551,7 +3644,6 @@ var IndexedDB = {
     }
 
     let notificationID = responseTopic + host;
-    let tab = BrowserApp.getTabForBrowser(browser);
     let observer = requestor.getInterface(Ci.nsIObserver);
 
     if (topic == this._quotaCancel) {
@@ -3782,7 +3874,7 @@ var ClipboardHelper = {
       return false;
     }
   }
-}
+};
 
 var PluginHelper = {
   showDoorHanger: function(aTab) {

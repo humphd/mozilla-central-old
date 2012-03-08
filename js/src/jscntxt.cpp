@@ -359,7 +359,7 @@ PopulateReportBlame(JSContext *cx, JSErrorReport *report)
     for (FrameRegsIter iter(cx); !iter.done(); ++iter) {
         if (iter.fp()->isScriptFrame()) {
             report->filename = iter.fp()->script()->filename;
-            report->lineno = js_PCToLineNumber(cx, iter.fp()->script(), iter.pc());
+            report->lineno = PCToLineNumber(iter.fp()->script(), iter.pc());
             report->originPrincipals = iter.fp()->script()->originPrincipals;
             break;
         }
@@ -503,6 +503,37 @@ js_ReportErrorVA(JSContext *cx, unsigned flags, const char *format, va_list ap)
     Foreground::free_(ucmessage);
     return warning;
 }
+
+namespace js {
+
+/* |callee| requires a usage string provided by JS_DefineFunctionsWithHelp. */
+void
+ReportUsageError(JSContext *cx, JSObject *callee, const char *msg)
+{
+    const char *usageStr = "usage";
+    JSAtom *usageAtom = js_Atomize(cx, usageStr, strlen(usageStr));
+    DebugOnly<const Shape *> shape = callee->nativeLookup(cx, ATOM_TO_JSID(usageAtom));
+    JS_ASSERT(!shape->configurable());
+    JS_ASSERT(!shape->writable());
+    JS_ASSERT(shape->hasDefaultGetter());
+
+    jsval usage;
+    if (!JS_LookupProperty(cx, callee, "usage", &usage))
+        return;
+
+    if (JSVAL_IS_VOID(usage)) {
+        JS_ReportError(cx, "%s", msg);
+    } else {
+        JSString *str = JSVAL_TO_STRING(usage);
+        JS::Anchor<JSString *> a_str(str);
+        const jschar *chars = JS_GetStringCharsZ(cx, str);
+        if (!chars)
+            return;
+        JS_ReportError(cx, "%s. Usage: %hs", msg, chars);
+    }
+}
+
+} /* namespace js */
 
 /*
  * The arguments from ap need to be packaged up into an array and stored

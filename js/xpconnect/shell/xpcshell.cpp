@@ -644,10 +644,12 @@ DumpHeap(JSContext *cx, unsigned argc, jsval *vp)
         }
     }
 
-    ok = JS_DumpHeap(cx, dumpFile, startThing, startTraceKind, thingToFind,
+    ok = JS_DumpHeap(JS_GetRuntime(cx), dumpFile, startThing, startTraceKind, thingToFind,
                      maxDepth, thingToIgnore);
     if (dumpFile != gOutFile)
         fclose(dumpFile);
+    if (!ok)
+        JS_ReportOutOfMemory(cx);
     return ok;
 
   not_traceable_arg:
@@ -1946,9 +1948,7 @@ main(int argc, char **argv, char **envp)
 
         nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
         rv = xpc->InitClassesWithNewWrappedGlobal(cx, backstagePass,
-                                                  NS_GET_IID(nsISupports),
                                                   systemprincipal,
-                                                  nsnull,
                                                   nsIXPConnect::
                                                   FLAG_SYSTEM_GLOBAL_OBJECT,
                                                   getter_AddRefs(holder));

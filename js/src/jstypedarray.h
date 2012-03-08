@@ -252,7 +252,7 @@ struct JS_FRIEND_API(TypedArray) {
 
   public:
     static bool
-    isArrayIndex(JSContext *cx, JSObject *obj, jsid id, jsuint *ip = NULL);
+    isArrayIndex(JSContext *cx, JSObject *obj, jsid id, uint32_t *ip = NULL);
 
     static inline uint32_t slotWidth(int atype) {
         switch (atype) {
@@ -307,7 +307,7 @@ js_CreateArrayBuffer(JSContext *cx, uint32_t nbytes);
  * enumerant values above), with nelements elements.
  */
 JS_FRIEND_API(JSObject *)
-js_CreateTypedArray(JSContext *cx, jsint atype, uint32_t nelements);
+js_CreateTypedArray(JSContext *cx, int atype, uint32_t nelements);
 
 /*
  * Create a new typed array of type atype (one of the TypedArray
@@ -315,7 +315,7 @@ js_CreateTypedArray(JSContext *cx, jsint atype, uint32_t nelements);
  * which must either be a typed array or an array-like object.
  */
 JS_FRIEND_API(JSObject *)
-js_CreateTypedArrayWithArray(JSContext *cx, jsint atype, JSObject *arrayArg);
+js_CreateTypedArrayWithArray(JSContext *cx, int atype, JSObject *arrayArg);
 
 /*
  * Create a new typed array of type atype (one of the TypedArray
@@ -325,8 +325,8 @@ js_CreateTypedArrayWithArray(JSContext *cx, jsint atype, JSObject *arrayArg);
  * array are used as the default values.
  */
 JS_FRIEND_API(JSObject *)
-js_CreateTypedArrayWithBuffer(JSContext *cx, jsint atype, JSObject *bufArg,
-                              jsint byteoffset, jsint length);
+js_CreateTypedArrayWithBuffer(JSContext *cx, int atype, JSObject *bufArg,
+                              int byteoffset, int length);
 
 extern int32_t JS_FASTCALL
 js_TypedArray_uint8_clamp_double(const double x);
@@ -335,7 +335,7 @@ JS_FRIEND_API(JSBool)
 JS_IsArrayBufferObject(JSObject *obj);
 
 JS_FRIEND_API(JSObject *)
-JS_NewArrayBuffer(JSContext *cx, jsuint nbytes);
+JS_NewArrayBuffer(JSContext *cx, uint32_t nbytes);
 
 JS_FRIEND_API(uint32_t)
 JS_GetArrayBufferByteLength(JSObject *obj);

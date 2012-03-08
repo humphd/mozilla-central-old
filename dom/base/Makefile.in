@@ -66,6 +66,7 @@ EXTRA_COMPONENTS = \
 		$(NULL)
 
 EXTRA_JS_MODULES += Webapps.jsm \
+        DOMRequestHelper.jsm \
 		$(NULL)
 endif
 
@@ -104,7 +105,7 @@ EXPORTS = \
   nsWrapperCache.h \
   nsContentPermissionHelper.h \
   nsStructuredCloneContainer.h \
-  nsDOMMemoryReporter.h \
+  nsWindowMemoryReporter.h \
   $(NULL)
 
 EXPORTS_NAMESPACES = mozilla/dom
@@ -139,7 +140,7 @@ CPPSRCS =			\
 	nsStructuredCloneContainer.cpp \
 	nsDOMNavigationTiming.cpp \
 	nsPerformance.cpp	\
-	nsDOMMemoryReporter.cpp \
+	nsWindowMemoryReporter.cpp \
 	DOMError.cpp \
 	DOMRequest.cpp \
 	Navigator.cpp \

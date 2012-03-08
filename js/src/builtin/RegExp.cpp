@@ -45,6 +45,7 @@
 #include "vm/MethodGuard-inl.h"
 #include "vm/RegExpObject-inl.h"
 #include "vm/RegExpStatics-inl.h"
+#include "vm/StringBuffer-inl.h"
 
 using namespace js;
 using namespace js::types;
@@ -244,7 +245,7 @@ CompileRegExpObject(JSContext *cx, RegExpObjectBuilder &builder, CallArgs args)
          */
         JSObject &sourceObj = sourceValue.toObject();
 
-        if (args.length() >= 2 && !args[1].isUndefined()) {
+        if (args.hasDefined(1)) {
             JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_NEWREGEXP_FLAGGED);
             return false;
         }
@@ -293,7 +294,7 @@ CompileRegExpObject(JSContext *cx, RegExpObjectBuilder &builder, CallArgs args)
     }
 
     RegExpFlag flags = RegExpFlag(0);
-    if (args.length() > 1 && !args[1].isUndefined()) {
+    if (args.hasDefined(1)) {
         JSString *flagStr = ToString(cx, args[1]);
         if (!flagStr)
             return false;
@@ -343,8 +344,9 @@ regexp_construct(JSContext *cx, unsigned argc, Value *vp)
          * Otherwise, delegate to the standard constructor.
          * See ECMAv5 15.10.3.1.
          */
-        if (args.length() >= 1 && IsObjectWithClass(args[0], ESClass_RegExp, cx) &&
-            (args.length() == 1 || args[1].isUndefined()))
+        if (args.hasDefined(0) &&
+            IsObjectWithClass(args[0], ESClass_RegExp, cx) &&
+            !args.hasDefined(1))
         {
             args.rval() = args[0];
             return true;

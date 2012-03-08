@@ -108,7 +108,7 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10401
+MOZPNG=10509
 MOZZLIB=0x1230
 NSPR_VERSION=4
 NSS_VERSION=3
@@ -628,9 +628,10 @@ if test "$GXX" = "yes"; then
     GNU_CXX=1
     CXX_VERSION=`$CXX -v 2>&1 | grep 'gcc version'`
 fi
-if test "`echo | $AS -v 2>&1 | grep -c GNU`" != "0"; then
+if test "`echo | $AS -o conftest.out -v 2>&1 | grep -c GNU`" != "0"; then
     GNU_AS=1
 fi
+rm -f conftest.out
 if test "`echo | $LD -v 2>&1 | grep -c GNU`" != "0"; then
     GNU_LD=1
 fi
@@ -5157,10 +5158,10 @@ incorrect])
     else
        AC_CHECK_LIB(QtSensors, main, [
           MOZ_ENABLE_QTMOBILITY=1
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtMobility"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtSensors"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtFeedback"
-          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I/usr/include/qt4/QtLocation"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtMobility"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtSensors"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtFeedback"
+          MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS -I$QTDIR/include/QtLocation"
           MOZ_QT_LIBS="$MOZ_QT_LIBS -lQtSensors -lQtFeedback -lQtLocation"
        ])
     fi
@@ -7308,7 +7309,11 @@ if test "${OS_TARGET}" = "Android"; then
   :
 elif test "${OS_TARGET}" = "WINNT" -o "${OS_TARGET}" = "Darwin" -o "${OS_TARGET}" = "OS2"; then
   dnl On Windows, OSX and OS2, we want to link all our binaries against mozglue
-  MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
+  if test -z "$GNU_CC"; then
+    MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
+  else
+    MOZ_GLUE_LDFLAGS='-L$(LIBXUL_DIST)/lib $(call EXPAND_LIBNAME,mozglue)'
+  fi
 else
   dnl On other Unix systems, we only want to link executables against mozglue
   MOZ_GLUE_PROGRAM_LDFLAGS='$(MKSHLIB_FORCE_ALL) $(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib) $(MKSHLIB_UNFORCE_ALL)'
@@ -9208,7 +9213,7 @@ if test -z "$MOZ_NATIVE_NSPR"; then
     fi
     if test "$MOZ_OPTIMIZE" = "1"; then
         ac_configure_args="$ac_configure_args --enable-optimize"
-    else
+    elif test -z "$MOZ_OPTIMIZE"; then
         ac_configure_args="$ac_configure_args --disable-optimize"
     fi
     if test -n "$HAVE_64BIT_OS"; then

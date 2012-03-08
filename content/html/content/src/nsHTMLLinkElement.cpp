@@ -84,6 +84,9 @@ public:
   // nsIDOMHTMLLinkElement
   NS_DECL_NSIDOMHTMLLINKELEMENT
 
+  // DOM memory reporter participant
+  NS_DECL_SIZEOF_EXCLUDING_THIS
+
   // nsILink
   NS_IMETHOD    LinkAdded();
   NS_IMETHOD    LinkRemoved();
@@ -455,3 +458,11 @@ nsHTMLLinkElement::IntrinsicState() const
 {
   return Link::LinkState() | nsGenericHTMLElement::IntrinsicState();
 }
+
+size_t
+nsHTMLLinkElement::SizeOfExcludingThis(nsMallocSizeOfFun aMallocSizeOf) const
+{
+  return nsGenericHTMLElement::SizeOfExcludingThis(aMallocSizeOf) +
+         Link::SizeOfExcludingThis(aMallocSizeOf);
+}
+

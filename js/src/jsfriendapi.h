@@ -104,7 +104,8 @@ enum {
     JS_TELEMETRY_GC_SLICE_MS,
     JS_TELEMETRY_GC_MMU_50,
     JS_TELEMETRY_GC_RESET,
-    JS_TELEMETRY_GC_INCREMENTAL_DISABLED
+    JS_TELEMETRY_GC_INCREMENTAL_DISABLED,
+    JS_TELEMETRY_GC_NON_INCREMENTAL
 };
 
 typedef void
@@ -165,6 +166,21 @@ JS_WrapPropertyDescriptor(JSContext *cx, js::PropertyDescriptor *desc);
 extern JS_FRIEND_API(JSBool)
 JS_EnumerateState(JSContext *cx, JSObject *obj, JSIterateOp enum_op, js::Value *statep, jsid *idp);
 
+struct JSFunctionSpecWithHelp {
+    const char      *name;
+    JSNative        call;
+    uint16_t        nargs;
+    uint16_t        flags;
+    const char      *usage;
+    const char      *help;
+};
+
+#define JS_FN_HELP(name,call,nargs,flags,usage,help)                          \
+    {name, call, nargs, (flags) | JSPROP_ENUMERATE | JSFUN_STUB_GSOPS, usage, help}
+
+extern JS_FRIEND_API(bool)
+JS_DefineFunctionsWithHelp(JSContext *cx, JSObject *obj, const JSFunctionSpecWithHelp *fs);
+
 #endif
 
 JS_END_EXTERN_C
@@ -220,7 +236,7 @@ typedef bool
   * fp is the file for the dump output.
   */
 extern JS_FRIEND_API(void)
-DumpHeapComplete(JSContext *cx, FILE *fp);
+DumpHeapComplete(JSRuntime *rt, FILE *fp);
 
 #endif
 
@@ -497,7 +513,7 @@ JS_FRIEND_API(bool)
 GetPropertyNames(JSContext *cx, JSObject *obj, unsigned flags, js::AutoIdVector *props);
 
 JS_FRIEND_API(bool)
-StringIsArrayIndex(JSLinearString *str, jsuint *indexp);
+StringIsArrayIndex(JSLinearString *str, uint32_t *indexp);
 
 JS_FRIEND_API(void)
 SetPreserveWrapperCallback(JSRuntime *rt, PreserveWrapperCallback callback);
@@ -518,15 +534,15 @@ IsObjectInContextCompartment(const JSObject *obj, const JSContext *cx);
 #define JSITER_FOR_OF     0x20  /* harmony for-of loop */
 
 inline uintptr_t
-GetContextStackLimit(const JSContext *cx)
+GetNativeStackLimit(const JSRuntime *rt)
 {
-    return RuntimeFriendFields::get(GetRuntime(cx))->nativeStackLimit;
+    return RuntimeFriendFields::get(rt)->nativeStackLimit;
 }
 
 #define JS_CHECK_RECURSION(cx, onerror)                                         \
     JS_BEGIN_MACRO                                                              \
         int stackDummy_;                                                        \
-        if (!JS_CHECK_STACK_SIZE(js::GetContextStackLimit(cx), &stackDummy_)) { \
+        if (!JS_CHECK_STACK_SIZE(js::GetNativeStackLimit(js::GetRuntime(cx)), &stackDummy_)) { \
             js_ReportOverRecursed(cx);                                          \
             onerror;                                                            \
         }                                                                       \
@@ -657,7 +673,7 @@ SizeOfJSContext();
     D(LAST_DITCH)                               \
     D(TOO_MUCH_MALLOC)                          \
     D(ALLOC_TRIGGER)                            \
-    D(UNUSED1) /* was CHUNK */                  \
+    D(DEBUG_GC)                                 \
     D(UNUSED2) /* was SHAPE */                  \
     D(UNUSED3) /* was REFILL */                 \
                                                 \
@@ -806,6 +822,9 @@ class ObjectPtr
     JSObject *operator->() const { return value; }
     operator JSObject *() const { return value; }
 };
+
+extern JS_FRIEND_API(JSObject *)
+GetTestingFunctions(JSContext *cx);
 
 } /* namespace js */
 

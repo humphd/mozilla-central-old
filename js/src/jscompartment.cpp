@@ -73,7 +73,6 @@ JSCompartment::JSCompartment(JSRuntime *rt)
   : rt(rt),
     principals(NULL),
     needsBarrier_(false),
-    barrierMarker_(rt->gcMarker.sizeLimit()),
     gcBytes(0),
     gcTriggerBytes(0),
     gcLastBytes(0),
@@ -81,7 +80,6 @@ JSCompartment::JSCompartment(JSRuntime *rt)
     typeLifoAlloc(TYPE_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
     data(NULL),
     active(false),
-    hasDebugModeCodeToDrop(false),
 #ifdef JS_METHODJIT
     jaegerCompartment_(NULL),
 #endif
@@ -126,9 +124,6 @@ JSCompartment::init(JSContext *cx)
         return false;
 
     if (!scriptFilenameTable.init())
-        return false;
-
-    if (!barrierMarker_.init())
         return false;
 
     return debuggees.init();
@@ -401,7 +396,7 @@ bool
 JSCompartment::wrap(JSContext *cx, AutoIdVector &props)
 {
     jsid *vector = props.begin();
-    jsint length = props.length();
+    int length = props.length();
     for (size_t n = 0; n < size_t(length); ++n) {
         if (!wrapId(cx, &vector[n]))
             return false;
@@ -680,18 +675,16 @@ JSCompartment::updateForDebugMode(JSContext *cx)
 #ifdef JS_METHODJIT
     bool enabled = debugMode();
 
-    if (enabled) {
+    if (enabled)
         JS_ASSERT(!hasScriptsOnStack());
-    } else if (hasScriptsOnStack()) {
-        hasDebugModeCodeToDrop = true;
+    else if (hasScriptsOnStack())
         return;
-    }
 
     /*
      * Discard JIT code and bytecode analyses for any scripts that change
-     * debugMode. This assumes that 'comp' is in the same thread as 'cx'.
+     * debugMode.
      */
-    for (gc::CellIter i(cx, this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
+    for (gc::CellIter i(this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();
         if (script->debugMode != enabled) {
             mjit::ReleaseScriptCode(cx, script);
@@ -699,7 +692,6 @@ JSCompartment::updateForDebugMode(JSContext *cx)
             script->debugMode = enabled;
         }
     }
-    hasDebugModeCodeToDrop = false;
 #endif
 }
 
@@ -739,7 +731,7 @@ JSCompartment::removeDebuggee(JSContext *cx,
 void
 JSCompartment::clearBreakpointsIn(JSContext *cx, js::Debugger *dbg, JSObject *handler)
 {
-    for (gc::CellIter i(cx, this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
+    for (gc::CellIter i(this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();
         if (script->hasAnyBreakpointsOrStepMode())
             script->clearBreakpointsIn(cx, dbg, handler);
@@ -749,7 +741,7 @@ JSCompartment::clearBreakpointsIn(JSContext *cx, js::Debugger *dbg, JSObject *ha
 void
 JSCompartment::clearTraps(JSContext *cx)
 {
-    for (gc::CellIter i(cx, this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
+    for (gc::CellIter i(this, gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         JSScript *script = i.get<JSScript>();
         if (script->hasAnyBreakpointsOrStepMode())
             script->clearTraps(cx);

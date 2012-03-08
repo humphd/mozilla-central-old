@@ -1871,9 +1871,18 @@ nsObjectLoadingContent::GetObjectBaseURI(const nsACString & aMimeType, nsIURI** 
     codebase.AssignLiteral("/");
   }
 
-  nsContentUtils::NewURIWithDocumentCharset(aURI, codebase,
-                                            thisContent->OwnerDoc(),
-                                            baseURI);
+  if (!codebase.IsEmpty()) {
+    nsresult rv = nsContentUtils::NewURIWithDocumentCharset(aURI, codebase,
+                                                            thisContent->OwnerDoc(),
+                                                            baseURI);
+    if (NS_SUCCEEDED(rv))
+      return rv;
+    NS_WARNING("GetObjectBaseURI: Could not resolve plugin's codebase to a URI, using baseURI instead");
+  }
+
+  // Codebase empty or build URI failed, just use baseURI
+  *aURI = NULL;
+  baseURI.swap(*aURI);
   return NS_OK;
 }
 
@@ -2133,10 +2142,13 @@ nsObjectLoadingContent::StopPluginInstance()
   }
 #endif
 
-  DoStopPlugin(mInstanceOwner, delayedStop);
-
+  // DoStopPlugin can process events and there may be pending InDocCheckEvent
+  // events which can drop in underneath us and destroy the instance we are
+  // about to destroy. Make sure this doesn't happen via this temp ref ptr and
+  // the !mInstanceOwner check above.
+  nsRefPtr<nsPluginInstanceOwner> instOwner = mInstanceOwner;
   mInstanceOwner = nsnull;
-
+  DoStopPlugin(instOwner, delayedStop);
   return NS_OK;
 }
 

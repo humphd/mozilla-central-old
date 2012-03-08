@@ -554,7 +554,11 @@ struct JSScript : public js::gc::Cell {
 #ifdef JS_CRASH_DIAGNOSTICS
     /* All diagnostic fields must be multiples of Cell::CellSize. */
     uint32_t        cookie2[Cell::CellSize / sizeof(uint32_t)];
-#endif
+
+    void CheckScript(JSScript *prev);
+#else
+    void CheckScript(JSScript *prev) {}
+#endif /* !JS_CRASH_DIAGNOSTICS */
 
 #ifdef DEBUG
     /*
@@ -834,6 +838,8 @@ struct JSScript : public js::gc::Cell {
                                                    JSPrincipals *originPrincipals) {
         return originPrincipals ? originPrincipals : principals;
     }
+
+    void markChildren(JSTracer *trc);
 };
 
 /* If this fails, padding_ can be removed. */
@@ -902,9 +908,6 @@ CheckScript(JSScript *script, JSScript *prev)
 extern jssrcnote *
 js_GetSrcNoteCached(JSContext *cx, JSScript *script, jsbytecode *pc);
 
-extern unsigned
-js_PCToLineNumber(JSContext *cx, JSScript *script, jsbytecode *pc);
-
 extern jsbytecode *
 js_LineNumberToPC(JSScript *script, unsigned lineno);
 
@@ -912,6 +915,12 @@ extern JS_FRIEND_API(unsigned)
 js_GetScriptLineExtent(JSScript *script);
 
 namespace js {
+
+extern unsigned
+PCToLineNumber(JSScript *script, jsbytecode *pc);
+
+extern unsigned
+PCToLineNumber(unsigned startLine, jssrcnote *notes, jsbytecode *code, jsbytecode *pc);
 
 extern unsigned
 CurrentLine(JSContext *cx);

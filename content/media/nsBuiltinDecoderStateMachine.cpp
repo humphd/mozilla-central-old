@@ -48,7 +48,7 @@
 #include "nsDeque.h"
 
 #include "mozilla/Preferences.h"
-#include "mozilla/StdInt.h"
+#include "mozilla/StandardInteger.h"
 #include "mozilla/Util.h"
 
 using namespace mozilla;
@@ -2018,6 +2018,13 @@ void nsBuiltinDecoderStateMachine::AdvanceFrame()
       // If we have video, we want to increment the clock in steps of the frame
       // duration.
       RenderVideoFrame(currentFrame, presTime);
+    }
+    // If we're no longer playing after dropping and reacquiring the lock,
+    // playback must've been stopped on the decode thread (by a seek, for
+    // example).  In that case, the current frame is probably out of date.
+    if (!IsPlaying()) {
+      ScheduleStateMachine();
+      return;
     }
     mDecoder->GetFrameStatistics().NotifyPresentedFrame();
     PRInt64 now = DurationToUsecs(TimeStamp::Now() - mPlayStartTime) + mPlayDuration;

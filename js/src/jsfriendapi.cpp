@@ -38,7 +38,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "mozilla/GuardObjects.h"
-#include "mozilla/StdInt.h"
+#include "mozilla/StandardInteger.h"
 
 #include "jscntxt.h"
 #include "jscompartment.h"
@@ -46,6 +46,8 @@
 #include "jswrapper.h"
 #include "jsweakmap.h"
 #include "jswatchpoint.h"
+
+#include "builtin/TestingFunctions.h"
 
 #include "jsobjinlines.h"
 
@@ -178,6 +180,51 @@ JS_FRIEND_API(void)
 JS_TraceShapeCycleCollectorChildren(JSTracer *trc, void *shape)
 {
     MarkCycleCollectorChildren(trc, (Shape *)shape);
+}
+
+static bool
+DefineHelpProperty(JSContext *cx, JSObject *obj, const char *prop, const char *value)
+{
+    JSAtom *atom = js_Atomize(cx, value, strlen(value));
+    if (!atom)
+        return false;
+    jsval v = STRING_TO_JSVAL(atom);
+    return JS_DefineProperty(cx, obj, prop, v,
+                             JS_PropertyStub, JS_StrictPropertyStub,
+                             JSPROP_READONLY | JSPROP_PERMANENT);
+}
+
+JS_FRIEND_API(bool)
+JS_DefineFunctionsWithHelp(JSContext *cx, JSObject *obj, const JSFunctionSpecWithHelp *fs)
+{
+    RootObject objRoot(cx, &obj);
+
+    JS_ASSERT(cx->compartment != cx->runtime->atomsCompartment);
+
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, obj);
+    for (; fs->name; fs++) {
+        JSAtom *atom = js_Atomize(cx, fs->name, strlen(fs->name));
+        if (!atom)
+            return false;
+
+        JSFunction *fun = js_DefineFunction(cx, objRoot,
+                                            ATOM_TO_JSID(atom), fs->call, fs->nargs, fs->flags);
+        if (!fun)
+            return false;
+
+        if (fs->usage) {
+            if (!DefineHelpProperty(cx, fun, "usage", fs->usage))
+                return false;
+        }
+
+        if (fs->help) {
+            if (!DefineHelpProperty(cx, fun, "help", fs->help))
+                return false;
+        }
+    }
+
+    return true;
 }
 
 AutoPreserveCompartment::AutoPreserveCompartment(JSContext *cx
@@ -468,22 +515,32 @@ struct DumpingChildInfo {
     {}
 };
 
-typedef HashSet<void *, DefaultHasher<void *>, ContextAllocPolicy> PtrSet;
+typedef HashSet<void *, DefaultHasher<void *>, SystemAllocPolicy> PtrSet;
 
 struct JSDumpHeapTracer : public JSTracer {
     PtrSet visited;
     FILE   *output;
-    Vector<DumpingChildInfo, 0, ContextAllocPolicy> nodes;
+    Vector<DumpingChildInfo, 0, SystemAllocPolicy> nodes;
     char   buffer[200];
     bool   rootTracing;
 
-    JSDumpHeapTracer(JSContext *cx, FILE *fp)
-        : visited(cx), output(fp), nodes(cx)
+    JSDumpHeapTracer(FILE *fp)
+      : output(fp)
     {}
 };
 
 static void
 DumpHeapVisitChild(JSTracer *trc, void **thingp, JSGCTraceKind kind);
+
+static char
+MarkDescriptor(void *thing)
+{
+    gc::Cell *cell = static_cast<gc::Cell*>(thing);
+    if (cell->isMarked(gc::BLACK))
+        return cell->isMarked(gc::GRAY) ? 'G' : 'B';
+    else
+        return cell->isMarked(gc::GRAY) ? 'X' : 'W';
+}
 
 static void
 DumpHeapPushIfNew(JSTracer *trc, void **thingp, JSGCTraceKind kind)
@@ -498,7 +555,7 @@ DumpHeapPushIfNew(JSTracer *trc, void **thingp, JSGCTraceKind kind)
      * already seen thing, for complete root information.
      */
     if (dtrc->rootTracing) {
-        fprintf(dtrc->output, "%p %s\n", thing,
+        fprintf(dtrc->output, "%p %c %s\n", thing, MarkDescriptor(thing),
                 JS_GetTraceEdgeName(dtrc, dtrc->buffer, sizeof(dtrc->buffer)));
     }
 
@@ -515,15 +572,15 @@ DumpHeapVisitChild(JSTracer *trc, void **thingp, JSGCTraceKind kind)
     JS_ASSERT(trc->callback == DumpHeapVisitChild);
     JSDumpHeapTracer *dtrc = static_cast<JSDumpHeapTracer *>(trc);
     const char *edgeName = JS_GetTraceEdgeName(dtrc, dtrc->buffer, sizeof(dtrc->buffer));
-    fprintf(dtrc->output, "> %p %s\n", *thingp, edgeName);
+    fprintf(dtrc->output, "> %p %c %s\n", *thingp, MarkDescriptor(*thingp), edgeName);
     DumpHeapPushIfNew(dtrc, thingp, kind);
 }
 
 void
-js::DumpHeapComplete(JSContext *cx, FILE *fp)
+js::DumpHeapComplete(JSRuntime *rt, FILE *fp)
 {
-    JSDumpHeapTracer dtrc(cx, fp);
-    JS_TracerInit(&dtrc, cx, DumpHeapPushIfNew);
+    JSDumpHeapTracer dtrc(fp);
+    JS_TracerInit(&dtrc, rt, DumpHeapPushIfNew);
     if (!dtrc.visited.init(10000))
         return;
 
@@ -540,7 +597,7 @@ js::DumpHeapComplete(JSContext *cx, FILE *fp)
         DumpingChildInfo dci = dtrc.nodes.popCopy();
         JS_PrintTraceThingInfo(dtrc.buffer, sizeof(dtrc.buffer),
                                &dtrc, dci.node, dci.kind, JS_TRUE);
-        fprintf(fp, "%p %s\n", dci.node, dtrc.buffer);
+        fprintf(fp, "%p %c %s\n", dci.node, MarkDescriptor(dci.node), dtrc.buffer);
         JS_TraceChildren(&dtrc, dci.node, dci.kind);
     }
 
@@ -777,6 +834,19 @@ extern JS_FRIEND_API(void)
 IncrementalValueBarrier(const Value &v)
 {
     HeapValue::writeBarrierPre(v);
+}
+
+JS_FRIEND_API(JSObject *)
+GetTestingFunctions(JSContext *cx)
+{
+    JSObject *obj = JS_NewObject(cx, NULL, NULL, NULL);
+    if (!obj)
+        return NULL;
+
+    if (!DefineTestingFunctions(cx, obj))
+        return NULL;
+
+    return obj;
 }
 
 } // namespace js

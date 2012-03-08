@@ -40,8 +40,6 @@
 
 #include "mozilla/Util.h"
 
-#include "nsICharsetAlias.h"
-
 #include "nsCOMPtr.h"
 #include "nsXPIDLString.h"
 #include "nsPrintfCString.h"
@@ -102,7 +100,6 @@
 #include "nsFrameSelection.h"
 #include "nsISelectionPrivate.h"//for toStringwithformat code
 
-#include "nsICharsetAlias.h"
 #include "nsContentUtils.h"
 #include "nsJSUtils.h"
 #include "nsIDocumentEncoder.h" //for outputting selection
@@ -3448,4 +3445,23 @@ nsHTMLDocument::RemovedFromDocShell()
 {
   mEditingState = eOff;
   nsDocument::RemovedFromDocShell();
+}
+
+/* virtual */ void
+nsHTMLDocument::DocSizeOfExcludingThis(nsWindowSizes* aWindowSizes) const
+{
+  nsDocument::DocSizeOfExcludingThis(aWindowSizes);
+
+  // Measurement of the following members may be added later if DMD finds it is
+  // worthwhile:
+  // - mImages
+  // - mApplets
+  // - mEmbeds
+  // - mLinks
+  // - mAnchors
+  // - mScripts
+  // - mForms
+  // - mFormControls
+  // - mWyciwygChannel
+  // - mMidasCommandManager
 }

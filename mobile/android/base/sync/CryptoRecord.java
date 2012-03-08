@@ -152,6 +152,8 @@ public class CryptoRecord extends Record {
    *
    * @param jsonRecord
    * @return
+   *        A CryptoRecord that encapsulates the provided record.
+   *
    * @throws NonObjectJSONException
    * @throws ParseException
    * @throws IOException
@@ -236,12 +238,22 @@ public class CryptoRecord extends Record {
   }
 
   @Override
-  public void initFromPayload(CryptoRecord payload) {
+  public void initFromEnvelope(CryptoRecord payload) {
     throw new IllegalStateException("Can't do this with a CryptoRecord.");
   }
 
   @Override
-  public CryptoRecord getPayload() {
+  public CryptoRecord getEnvelope() {
+    throw new IllegalStateException("Can't do this with a CryptoRecord.");
+  }
+
+  @Override
+  protected void populatePayload(ExtendedJSONObject payload) {
+    throw new IllegalStateException("Can't do this with a CryptoRecord.");
+  }
+
+  @Override
+  protected void initFromPayload(ExtendedJSONObject payload) {
     throw new IllegalStateException("Can't do this with a CryptoRecord.");
   }
 
