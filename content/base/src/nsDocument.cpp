@@ -9288,7 +9288,7 @@ nsDocument::MozExitPointerLock()
 }
 
 NS_IMETHODIMP
-nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement)
+nsDocument::GetMozPointerLockElement(nsIDOMElement** aPointerLockElement)
 {
   NS_ENSURE_ARG_POINTER(aPointerLockElement);
   *aPointerLockElement = nsnull;

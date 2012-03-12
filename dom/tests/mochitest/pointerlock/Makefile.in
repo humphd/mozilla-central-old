@@ -69,6 +69,7 @@ _TEST_FILES	= \
 		test_screenClientXYConst.html \
 		test_cssDisplayProperty.html \
 		test_suppressSomeMouseEvents.html \
+		test_locksvgelement.html \
 		iframe_differentDOM.html \
 		$(NULL)
 
