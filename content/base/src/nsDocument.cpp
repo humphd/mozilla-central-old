@@ -221,10 +221,11 @@ nsWeakPtr nsDocument::sFullScreenDoc = nsnull;
 // which requested DOM full-screen mode.
 nsWeakPtr nsDocument::sFullScreenRootDoc = nsnull;
 
-// Reference to the pointerlock element
-nsRefPtr<Element> nsDocument::sPointerLockElement;
-// Reference to the document which requested pointerlock
-nsRefPtr<nsDocument> nsDocument::sPointerLockDoc = nsnull;
+// Reference to the pointer locked element.
+nsWeakPtr nsDocument::sPointerLockElement = nsnull;
+
+// Reference to the document which requested pointer lock.
+nsWeakPtr nsDocument::sPointerLockDoc = nsnull;
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gDocumentLeakPRLog;
@@ -8572,11 +8573,12 @@ nsDocument::MaybeUnlockPointer(nsIDocument* aDocument)
     return;
   }
 
-  if (!sPointerLockDoc) {
+  nsCOMPtr<nsIDocument> pointerLockDoc = do_QueryReferent(sPointerLockDoc);
+  if (!pointerLockDoc) {
     return;
   }
 
-  sPointerLockDoc->UnLockPointer();
+  static_cast<nsDocument*>(pointerLockDoc.get())->UnLockPointer();
 }
 
 /* static */
@@ -8600,7 +8602,8 @@ nsDocument::ExitFullScreen()
   nsAutoTArray<nsIDocument*, 8> changed;
 
   // We may also need to unlock the pointer, if it's locked.
-  if (sPointerLockElement) {
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (pointerLockElement) {
     UnLockPointer();
   }
 
@@ -8635,7 +8638,8 @@ nsDocument::RestorePreviousFullScreenState()
   }
 
   // If fullscreen mode is updated the pointer should be unlocked
-  if (sPointerLockElement) {
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (pointerLockElement) {
     UnLockPointer();
   }
 
@@ -8941,7 +8945,8 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
 
   // If a document is already in fullscreen, then unlock the mouse pointer
   // before setting a new document to fullscreen
-  if (sPointerLockElement) {
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (pointerLockElement) {
     UnLockPointer();
   }
 
@@ -9134,25 +9139,22 @@ nsDocument::RequestPointerLock(Element* aElement)
 {
   NS_ASSERTION(aElement,
     "Must pass non-null element to nsDocument::RequestPointerLock");
-  if (!aElement) {
-    NS_WARNING("RequestPointerLock(): No Element");
-    return;
-  }
 
-  if (aElement == sPointerLockElement) {
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (aElement == pointerLockElement) {
     DispatchPointerLockChange(this);
     return;
   }
 
   if (!ShouldLockPointer(aElement) ||
       !SetPointerLock(aElement, NS_STYLE_CURSOR_NONE)) {
-      DispatchPointerLockError(this);
-      return;
+    DispatchPointerLockError(this);
+    return;
   }
 
   nsEventStateManager::SetPointerLockState(aElement, true);
-  sPointerLockElement = aElement;
-  sPointerLockDoc = this;
+  sPointerLockElement = do_GetWeakReference(aElement);
+  sPointerLockDoc = do_GetWeakReference(static_cast<nsIDocument*>(this));
   DispatchPointerLockChange(this);
 }
 
@@ -9160,10 +9162,7 @@ bool
 nsDocument::ShouldLockPointer(Element* aElement)
 {
   // Check if pointer lock pref is enabled
-  nsCOMPtr<nsIPrefBranch> prefs(do_GetService("@mozilla.org/preferences-service;1"));
-  bool pointerLockEnabled;
-  prefs->GetBoolPref("full-screen-api.pointer-lock.enabled", &pointerLockEnabled);
-  if (!pointerLockEnabled) {
+  if (!Preferences::GetBool("full-screen-api.pointer-lock.enabled")) {
     NS_WARNING("ShouldLockPointer(): Pointer Lock pref not enabled");
     return false;
   }
@@ -9178,11 +9177,23 @@ nsDocument::ShouldLockPointer(Element* aElement)
     return false;
   }
 
-  // Check if the element is display:none, etc.
-  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
-  FlushPendingNotifications(Flush_Layout);
-  if (!(content && content->GetPrimaryFrame())) {
-    NS_WARNING("ShouldLockPointer(): Element without Frame");
+  // Check if the element is in a document with a docshell.
+  nsCOMPtr<nsIDocument> ownerDoc = aElement->OwnerDoc();
+  if (!ownerDoc) {
+    return false;
+  }
+  if (!nsCOMPtr<nsISupports>(ownerDoc->GetContainer())) {
+    return false;
+  }
+  nsCOMPtr<nsPIDOMWindow> ownerWindow = ownerDoc->GetWindow();
+  if (!ownerWindow) {
+    return false;
+  }
+  nsCOMPtr<nsPIDOMWindow> ownerInnerWindow = ownerDoc->GetInnerWindow();
+  if (!ownerInnerWindow) {
+    return false;
+  }
+  if (ownerWindow->GetCurrentInnerWindow() != ownerInnerWindow) {
     return false;
   }
 
@@ -9230,6 +9241,11 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
     return false;
   }
 
+  if (aElement->OwnerDoc() != this) {
+    NS_WARNING("SetPointerLock(): Element not in this document.");
+    return false;
+  }
+
   // Hide the cursor and set pointer lock for future mouse events
   nsRefPtr<nsEventStateManager> esm = presContext->EventStateManager();
   esm->SetCursor(aCursorStyle, nsnull, false,
@@ -9242,16 +9258,18 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
 void
 nsDocument::UnLockPointer()
 {
-  if (!sPointerLockElement) {
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (!pointerLockElement) {
     return;
   }
 
-  if (!sPointerLockDoc->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
+  nsCOMPtr<nsIDocument> pointerLockDoc = do_QueryReferent(sPointerLockDoc);
+  if (!static_cast<nsDocument*>(pointerLockDoc.get())->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
     return;
   }
 
-  DispatchPointerLockChange(sPointerLockDoc);
-  nsEventStateManager::SetPointerLockState(sPointerLockElement, false);
+  DispatchPointerLockChange(pointerLockDoc);
+  nsEventStateManager::SetPointerLockState(pointerLockElement, false);
   sPointerLockElement = nsnull;
   sPointerLockDoc = nsnull;
 }
@@ -9274,8 +9292,9 @@ nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement)
 {
   NS_ENSURE_ARG_POINTER(aPointerLockElement);
   *aPointerLockElement = nsnull;
-  if (sPointerLockElement) {
-    CallQueryInterface(sPointerLockElement, aPointerLockElement);
+  nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
+  if (pointerLockElement) {
+    CallQueryInterface(pointerLockElement, aPointerLockElement);
   }
 
   return NS_OK;

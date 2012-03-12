@@ -141,9 +141,9 @@ public:
   }
 
   /**
-   * Returns true if the element has the pointer locked
+   * Returns true if the element has the pointer locked to it.
    */
-  bool IsPointerLock() const {
+  bool IsPointerLocked() const {
     return mState.HasState(NS_EVENT_STATE_POINTER_LOCK);
   }
 

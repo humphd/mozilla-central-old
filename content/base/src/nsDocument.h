@@ -1317,8 +1317,8 @@ private:
 
   VisibilityState mVisibilityState;
 
-  static nsRefPtr<Element> sPointerLockElement;
-  static nsRefPtr<nsDocument> sPointerLockDoc;
+  static nsWeakPtr sPointerLockElement;
+  static nsWeakPtr sPointerLockDoc;
 
 #ifdef DEBUG
 protected:
