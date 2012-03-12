@@ -9244,7 +9244,7 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
     return false;
   }
 
-  if (aElement->OwnerDoc() != this) {
+  if (aElement && (aElement->OwnerDoc() != this)) {
     NS_WARNING("SetPointerLock(): Element not in this document.");
     return false;
   }
@@ -9293,7 +9293,7 @@ nsDocument::MozExitPointerLock()
 }
 
 NS_IMETHODIMP
-nsDocument::GetMozPointerLockElement(nsIDOMHTMLElement** aPointerLockElement)
+nsDocument::GetMozPointerLockElement(nsIDOMElement** aPointerLockElement)
 {
   NS_ENSURE_ARG_POINTER(aPointerLockElement);
   *aPointerLockElement = nsnull;
