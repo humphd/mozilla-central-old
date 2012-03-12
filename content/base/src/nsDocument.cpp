@@ -9241,7 +9241,7 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
     return false;
   }
 
-  if (aElement->OwnerDoc() != this) {
+  if (aElement && (aElement->OwnerDoc() != this)) {
     NS_WARNING("SetPointerLock(): Element not in this document.");
     return false;
   }
