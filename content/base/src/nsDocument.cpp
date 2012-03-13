@@ -9152,10 +9152,7 @@ nsDocument::RequestPointerLock(Element* aElement)
     return;
   }
 
-  aElement->SetPointerLocked();
-  //nsCOMPtr<nsINode> elementNode = do_QueryInterface(aElement);
-  //elementNode->SetPointerLocked();
-  //nsEventStateManager::SetPointerLockState(aElement, true);
+  aElement->SetPointerLock();
   sPointerLockElement = do_GetWeakReference(aElement);
   sPointerLockDoc = do_GetWeakReference(static_cast<nsIDocument*>(this));
   DispatchPointerLockChange(this);
@@ -9271,10 +9268,8 @@ nsDocument::UnLockPointer()
     return;
   }
 
-  //sPointerLockElement->ClearPointerLocked();
-  pointerLockElement->ClearPointerLocked();
+  pointerLockElement->ClearPointerLock();
   DispatchPointerLockChange(pointerLockDoc);
-  //nsEventStateManager::SetPointerLockState(pointerLockElement, false);
   sPointerLockElement = nsnull;
   sPointerLockDoc = nsnull;
 }
