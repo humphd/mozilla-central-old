@@ -67,7 +67,6 @@ _TEST_FILES	= \
 		test_retargetMouseEvents.html \
 		test_targetOutOfFocus.html \
 		test_screenClientXYConst.html \
-		test_cssDisplayProperty.html \
 		test_suppressSomeMouseEvents.html \
 		test_locksvgelement.html \
 		iframe_differentDOM.html \

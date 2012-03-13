@@ -9152,7 +9152,7 @@ nsDocument::RequestPointerLock(Element* aElement)
     return;
   }
 
-  nsEventStateManager::SetPointerLockState(aElement, true);
+  aElement->SetPointerLock();
   sPointerLockElement = do_GetWeakReference(aElement);
   sPointerLockDoc = do_GetWeakReference(static_cast<nsIDocument*>(this));
   DispatchPointerLockChange(this);
@@ -9268,8 +9268,8 @@ nsDocument::UnLockPointer()
     return;
   }
 
+  pointerLockElement->ClearPointerLock();
   DispatchPointerLockChange(pointerLockDoc);
-  nsEventStateManager::SetPointerLockState(pointerLockElement, false);
   sPointerLockElement = nsnull;
   sPointerLockDoc = nsnull;
 }
