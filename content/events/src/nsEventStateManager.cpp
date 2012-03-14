@@ -51,7 +51,6 @@
 #include "nsEventListenerManager.h"
 #include "nsIMEStateManager.h"
 #include "nsContentEventHandler.h"
-#include "nsDocument.h"
 #include "nsIContent.h"
 #include "nsINodeInfo.h"
 #include "nsIDocument.h"
