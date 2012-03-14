@@ -229,6 +229,8 @@ public:
   static bool IsRemoteTarget(nsIContent* aTarget);
 
   static bool sPointerLock;
+  static nsIntPoint sLastScreenPoint;
+  static nsIntPoint sLastClientPoint;
 
 protected:
   friend class MouseEnterLeaveDispatcher;

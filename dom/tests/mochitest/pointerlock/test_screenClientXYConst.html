@@ -58,7 +58,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }
 
       var moveUnlocked = function (e) {
-        isUnlocked = document.mozPointerLockElement ? false : true;
+        isUnlocked = !document.mozPointerLockElement;
 
         unLockedCoords.screenX = e.screenX;
         unLockedCoords.screenY = e.screenY;
@@ -70,7 +70,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var moveLocked = function (e) {
-        isLocked = document.mozPointerLockElement ? true : false;
+        isLocked = !!document.mozPointerLockElement;
 
         lockedCoords.screenX = e.screenX;
         lockedCoords.screenY = e.screenY;
