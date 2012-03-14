@@ -46,7 +46,7 @@
         document.addEventListener("mozpointerlockchange", function (e) {
           if (document.mozPointerLockElement === div) {
             document.body.removeChild(div);
-            removedDOM = !!document.mozPointerLockElement;
+            removedDOM = !document.mozPointerLockElement;
             document.mozCancelFullScreen();
           }
 
