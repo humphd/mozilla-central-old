@@ -163,6 +163,8 @@ nsIDocument* nsEventStateManager::sMouseOverDocument = nsnull;
 nsWeakFrame nsEventStateManager::sLastDragOverFrame = nsnull;
 nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
+nsIntPoint nsEventStateManager::sLastScreenPoint = nsIntPoint(0,0);
+nsIntPoint nsEventStateManager::sLastClientPoint = nsIntPoint(0,0);
 bool nsEventStateManager::sPointerLock = false;
 nsCOMPtr<nsIContent> nsEventStateManager::sPointerLockedElement = nsnull;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
@@ -1052,6 +1054,18 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
   if (NS_EVENT_NEEDS_FRAME(aEvent)) {
     NS_ASSERTION(mCurrentTarget, "mCurrentTarget is null.  this should not happen.  see bug #13007");
     if (!mCurrentTarget) return NS_ERROR_NULL_POINTER;
+  }
+
+  // Store mouse event position info for deltas in mouse lock calculations later.
+  if (NS_IS_TRUSTED_EVENT(aEvent) &&
+      (NS_IS_MOUSE_EVENT_STRUCT(aEvent) &&
+       IsMouseEventReal(aEvent)) ||
+       aEvent->eventStructType == NS_MOUSE_SCROLL_EVENT) {
+    nsEventStateManager::sLastScreenPoint =
+      nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
+
+    nsEventStateManager::sLastClientPoint =
+      nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
   }
 
   // Do not take account NS_MOUSE_ENTER/EXIT so that loading a page
@@ -4083,7 +4097,7 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
     nsIPresShell::SetCapturingContent(aElement, CAPTURE_POINTERLOCK);
   } else {
     // Unlocking, so return pointer to the original position
-    aWidget->SynthesizeNativeMouseMove(nsDOMUIEvent::GetLastScreenPoint());
+    aWidget->SynthesizeNativeMouseMove(sLastScreenPoint);
 
     // Don't retarget events to this element any more.
     nsIPresShell::SetCapturingContent(nsnull, CAPTURE_POINTERLOCK);
