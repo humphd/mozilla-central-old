@@ -6330,3 +6330,10 @@ nsINode::Contains(nsIDOMNode* aOther, bool* aReturn)
   *aReturn = Contains(node);
   return NS_OK;
 }
+
+nsresult nsGenericElement::MozRequestPointerLock()
+{
+  OwnerDoc()->RequestPointerLock(this);
+
+  return NS_OK;
+}

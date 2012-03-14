@@ -4110,7 +4110,7 @@ nsEventStateManager::GetMouseCoords()
 
   nsIntRect screenRect = frame->GetScreenRect();
 
-  nsCOMPtr<nsIDOMHTMLElement> lockedElement = do_QueryInterface(sPointerLockedElement);
+  nsCOMPtr<nsIDOMElement> lockedElement = do_QueryInterface(sPointerLockedElement);
   nsCOMPtr<nsIDOMClientRect> elementRect;
   lockedElement->GetBoundingClientRect(getter_AddRefs(elementRect));
 
