@@ -41,6 +41,7 @@
 
 #include "nsIDOMUIEvent.h"
 #include "nsDOMEvent.h"
+#include "nsLayoutUtils.h"
 
 class nsDOMUIEvent : public nsDOMEvent,
                      public nsIDOMUIEvent
@@ -67,9 +68,61 @@ public:
   virtual nsresult InitFromCtor(const nsAString& aType,
                                 JSContext* aCx, jsval* aVal);
 
-  static nsIntPoint GetLastScreenPoint() {
-    return sLastScreenPoint;
+  static nsIntPoint CalculateScreenPoint(nsPresContext* aPresContext,
+                                         nsEvent* aEvent)
+  {
+    if (!aEvent ||
+        (aEvent->eventStructType != NS_MOUSE_EVENT &&
+         aEvent->eventStructType != NS_POPUP_EVENT &&
+         aEvent->eventStructType != NS_MOUSE_SCROLL_EVENT &&
+         aEvent->eventStructType != NS_MOZTOUCH_EVENT &&
+         aEvent->eventStructType != NS_DRAG_EVENT &&
+         aEvent->eventStructType != NS_SIMPLE_GESTURE_EVENT)) {
+      return nsIntPoint(0, 0);
+    }
+
+    if (!((nsGUIEvent*)aEvent)->widget ) {
+      return aEvent->refPoint;
+    }
+
+    nsIntPoint offset = aEvent->refPoint +
+                        ((nsGUIEvent*)aEvent)->widget->WidgetToScreenOffset();
+    nscoord factor = aPresContext->DeviceContext()->UnscaledAppUnitsPerDevPixel();
+    return nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(offset.x * factor),
+                      nsPresContext::AppUnitsToIntCSSPixels(offset.y * factor));
   }
+
+  static nsIntPoint CalculateClientPoint(nsPresContext* aPresContext,
+                                         nsEvent* aEvent,
+                                         nsIntPoint* aDefaultClientPoint)
+  {
+    if (!aEvent ||
+        (aEvent->eventStructType != NS_MOUSE_EVENT &&
+         aEvent->eventStructType != NS_POPUP_EVENT &&
+         aEvent->eventStructType != NS_MOUSE_SCROLL_EVENT &&
+         aEvent->eventStructType != NS_MOZTOUCH_EVENT &&
+         aEvent->eventStructType != NS_DRAG_EVENT &&
+         aEvent->eventStructType != NS_SIMPLE_GESTURE_EVENT) ||
+        !aPresContext ||
+        !((nsGUIEvent*)aEvent)->widget) {
+      return (nsnull == aDefaultClientPoint ? nsIntPoint(0, 0) :
+        nsIntPoint(aDefaultClientPoint->x, aDefaultClientPoint->y));
+    }
+
+    nsPoint pt(0, 0);
+    nsIPresShell* shell = aPresContext->GetPresShell();
+    if (!shell) {
+      return nsIntPoint(0, 0);
+    }
+    nsIFrame* rootFrame = shell->GetRootFrame();
+    if (rootFrame) {
+      pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, rootFrame);
+    }
+
+    return nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(pt.x),
+                      nsPresContext::AppUnitsToIntCSSPixels(pt.y));
+  }
+
 protected:
   // Internal helper functions
   nsIntPoint GetScreenPoint();
@@ -94,11 +147,9 @@ protected:
   nsIntPoint mLayerPoint;
   nsIntPoint mPagePoint;
   nsIntPoint mMovement;
-  static nsIntPoint sLastScreenPoint;
-  static nsIntPoint sLastClientPoint;
+  bool mIsPointerLocked;
 
 private:
-  bool IsPointerLocked();
   nsIntPoint ScreenPointInternal();
 };
 

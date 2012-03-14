@@ -49,18 +49,15 @@
 #include "nsContentUtils.h"
 #include "nsEventStateManager.h"
 #include "nsIFrame.h"
-#include "nsLayoutUtils.h"
 #include "nsIScrollableFrame.h"
 #include "DictionaryHelpers.h"
-
-nsIntPoint nsDOMUIEvent::sLastScreenPoint = nsIntPoint(0,0);
-nsIntPoint nsDOMUIEvent::sLastClientPoint = nsIntPoint(0,0);
 
 nsDOMUIEvent::nsDOMUIEvent(nsPresContext* aPresContext, nsGUIEvent* aEvent)
   : nsDOMEvent(aPresContext, aEvent ?
                static_cast<nsEvent *>(aEvent) :
                static_cast<nsEvent *>(new nsUIEvent(false, 0, 0)))
   , mClientPoint(0, 0), mLayerPoint(0, 0), mPagePoint(0, 0)
+  , mIsPointerLocked(nsEventStateManager::sPointerLock)
 {
   if (aEvent) {
     mEventIsInternal = false;
@@ -126,12 +123,6 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsDOMUIEvent)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(UIEvent)
 NS_INTERFACE_MAP_END_INHERITING(nsDOMEvent)
 
-bool
-nsDOMUIEvent::IsPointerLocked()
-{
-  return  nsEventStateManager::sPointerLock;
-}
-
 nsIntPoint
 nsDOMUIEvent::GetMovementPoint()
 {
@@ -189,21 +180,23 @@ nsDOMUIEvent::ScreenPointInternal()
 nsIntPoint
 nsDOMUIEvent::GetScreenPoint()
 {
-  if (IsPointerLocked()) {
-    return sLastScreenPoint;
+  if (mIsPointerLocked) {
+    return nsEventStateManager::sLastScreenPoint;
   }
 
-  sLastScreenPoint = ScreenPointInternal();
-
-  return sLastScreenPoint;
+  return CalculateScreenPoint(mPresContext, mEvent); // ScreenPointInternal();
 }
 
 nsIntPoint
 nsDOMUIEvent::GetClientPoint()
 {
-  if (IsPointerLocked()) {
-    return sLastClientPoint;
+  if (mIsPointerLocked) {
+    return nsEventStateManager::sLastClientPoint;
   }
+
+  return CalculateClientPoint(mPresContext, mEvent, &mClientPoint);
+
+/**
 
   if (!mEvent ||
       (mEvent->eventStructType != NS_MOUSE_EVENT &&
@@ -226,10 +219,9 @@ nsDOMUIEvent::GetClientPoint()
   if (rootFrame)
     pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(mEvent, rootFrame);
 
-  sLastClientPoint = nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(pt.x),
-                                nsPresContext::AppUnitsToIntCSSPixels(pt.y));
-
-  return sLastClientPoint;
+  return nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(pt.x),
+                    nsPresContext::AppUnitsToIntCSSPixels(pt.y));
+**/
 }
 
 NS_IMETHODIMP

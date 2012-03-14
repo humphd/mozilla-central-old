@@ -9203,12 +9203,13 @@ nsDocument::ShouldLockPointer(Element* aElement)
 bool
 nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
 {
-  if (!GetWindow()) {
+  nsCOMPtr<nsPIDOMWindow> window = GetWindow();
+  if (!window) {
     NS_WARNING("SetPointerLock(): No Window");
     return false;
   }
 
-  nsIDocShell *docShell = GetWindowInternal()->GetDocShell();
+  nsIDocShell *docShell = window->GetDocShell();
   if (!docShell) {
     NS_WARNING("SetPointerLock(): No DocShell (window already closed?)");
     return false;

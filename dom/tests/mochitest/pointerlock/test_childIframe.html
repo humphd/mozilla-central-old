@@ -98,7 +98,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       };
 
       var moveIframe = function (e) {
-        hoverIframe = document.mozPointerLockElement ? true : false;
+        hoverIframe = !!document.mozPointerLockElement;
 
         parent.removeEventListener("mousemove", moveIframe);
         parent.addEventListener("mousemove", secondMoveChild);
