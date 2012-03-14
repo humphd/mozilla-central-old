@@ -28,15 +28,15 @@
 
       SimpleTest.waitForExplicitFinish();
 
-      var div
-        , hasRequestPointerLock = false
-        , pointerLockChangeEventFired = false
-        , pointerUnlocked = false
-        , pointerLocked = false
-        , hasExitPointerLock = false
-        , pointerLockElement = false
-        , hasMovementX = false
-        , hasMovementY = false;
+      var div,
+        hasRequestPointerLock = false,
+        pointerLockChangeEventFired = false,
+        pointerUnlocked = false,
+        pointerLocked = false,
+        hasExitPointerLock = false,
+        pointerLockElement = false,
+        hasMovementX = false,
+        hasMovementY = false;
 
       function runTests () {
         ok(hasRequestPointerLock, "Element should have mozRequestPointerLock.");
@@ -49,7 +49,7 @@
         ok(hasMovementY, "Mouse Event should have mozMovementY.");
       }
 
-      document.addEventListener("click", function(e) {
+      document.addEventListener("mousemove", function(e) {
         hasMovementX = "mozMovementX" in e;
         hasMovementY = "mozMovementY" in e;
 
@@ -63,9 +63,9 @@
         if (document.mozPointerLockElement) {
           pointerLocked = true;
           pointerLockElement = document.mozPointerLockElement === div;
-          synthesizeMouseAtCenter(child, {type: "click"}, window);
+          synthesizeMouseAtCenter(div, {type: "mousemove"}, window);
         } else {
-          pointerUnLocked = true;
+          pointerUnlocked = true;
           document.mozCancelFullScreen();
         }
       }, false);
@@ -74,8 +74,7 @@
         if (document.mozFullScreenElement === div) {
           hasRequestPointerLock = "mozRequestPointerLock" in div;
           div.mozRequestPointerLock();
-        }
-        else {
+        } else {
           runTests();
           SimpleTest.finish();
         }

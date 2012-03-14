@@ -55,6 +55,7 @@ include $(topsrcdir)/config/rules.mk
 
 _TEST_FILES	= \
 		test_pointerlock-api.html \
+		test_pointerlockerror.html \
 		test_escapeKey.html \
 		test_withoutDOM.html \
 		test_removedFromDOM.html \
