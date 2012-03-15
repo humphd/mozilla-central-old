@@ -1061,11 +1061,13 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       (NS_IS_MOUSE_EVENT_STRUCT(aEvent) &&
        IsMouseEventReal(aEvent)) ||
        aEvent->eventStructType == NS_MOUSE_SCROLL_EVENT) {
-    nsEventStateManager::sLastScreenPoint =
-      nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
+    if (!sPointerLockedElement) {
+      nsEventStateManager::sLastScreenPoint =
+        nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
 
-    nsEventStateManager::sLastClientPoint =
-      nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
+      nsEventStateManager::sLastClientPoint =
+        nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
+    }
   }
 
   // Do not take account NS_MOUSE_ENTER/EXIT so that loading a page
