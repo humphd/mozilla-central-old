@@ -1060,11 +1060,13 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       (NS_IS_MOUSE_EVENT_STRUCT(aEvent) &&
        IsMouseEventReal(aEvent)) ||
        aEvent->eventStructType == NS_MOUSE_SCROLL_EVENT) {
-    nsEventStateManager::sLastScreenPoint =
-      nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
+    if (!sPointerLockedElement) {
+      nsEventStateManager::sLastScreenPoint =
+        nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
 
-    nsEventStateManager::sLastClientPoint =
-      nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
+      nsEventStateManager::sLastClientPoint =
+        nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
+    }
   }
 
   // Do not take account NS_MOUSE_ENTER/EXIT so that loading a page
@@ -4019,7 +4021,9 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
     {
       if (sPointerLockedElement && aEvent->widget) {
         // Perform mouse lock by recentering the mouse directly, then remembering the deltas.
-        aEvent->lastRefPoint = GetMouseCoords();
+        nsIntRect bounds;
+        aEvent->widget->GetScreenBounds(bounds);
+        aEvent->lastRefPoint = GetMouseCoords(bounds);
 
         // refPoint should not be the centre on mousemove
         if (aEvent->refPoint.x == aEvent->lastRefPoint.x &&
@@ -4088,7 +4092,10 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   if (sPointerLockedElement) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
-    sLastRefPoint = GetMouseCoords();
+
+    nsIntRect bounds;
+    aWidget->GetScreenBounds(bounds);
+    sLastRefPoint = GetMouseCoords(bounds);
     aWidget->SynthesizeNativeMouseMove(sLastRefPoint);
 
     // Retarget all events to this element via capture.
@@ -4109,31 +4116,26 @@ nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset)
 }
 
 nsIntPoint
-nsEventStateManager::GetMouseCoords()
+nsEventStateManager::GetMouseCoords(nsIntRect aBounds)
 {
   NS_ASSERTION(sPointerLockedElement, "sPointerLockedElement is null in GetMouseCoords!");
 
-  nsIFrame* frame = sPointerLockedElement->GetPrimaryFrame();
-  NS_ASSERTION(frame, "sPointerLockedElement->GetPrimaryFrame() was null");
-  if (!frame) {
-    nsIDocument::UnLockPointer();
+  nsCOMPtr<nsIDocument> domDoc = sPointerLockedElement->OwnerDoc();
+  if (!domDoc) {
+    NS_WARNING("GetMouseCoords(): No Document");
     return nsIntPoint(0,0);
   }
+  
+  nsCOMPtr<nsPIDOMWindow> domWin = domDoc->GetInnerWindow();
+  if (!domWin) {
+    NS_WARNING("GetMouseCoords(): No Window");
+    return nsIntPoint(0,0);
+  }
+  int innerHeight;
+  domWin->GetInnerHeight(&innerHeight);
 
-  nsIntRect screenRect = frame->GetScreenRect();
-
-  nsCOMPtr<nsIDOMHTMLElement> lockedElement = do_QueryInterface(sPointerLockedElement);
-  nsCOMPtr<nsIDOMClientRect> elementRect;
-  lockedElement->GetBoundingClientRect(getter_AddRefs(elementRect));
-
-  float left, top, width, height;
-  elementRect->GetLeft(&left);
-  elementRect->GetTop(&top);
-  elementRect->GetWidth(&width);
-  elementRect->GetHeight(&height);
-
-  return nsIntPoint((width/2 + left) + screenRect.x,
-                    (height/2 + top) + screenRect.y);
+  return nsIntPoint((aBounds.width/2) + aBounds.x,
+                    (innerHeight/2) + (aBounds.y + (aBounds.height - innerHeight)));
 }
 
 void
