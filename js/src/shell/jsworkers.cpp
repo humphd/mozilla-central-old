@@ -827,7 +827,7 @@ class Worker MOZ_FINAL : public WorkerParent
         AutoLock hold(lock);
         terminateFlag = true;
         if (current)
-            JS_TriggerOperationCallback(context);
+            JS_TriggerOperationCallback(runtime);
     }
 
     void notifyTerminating() {
@@ -1120,8 +1120,9 @@ Worker::create(JSContext *parentcx, WorkerParent *parent, JSString *scriptName, 
         return NULL;
     }
 
-    JSStackFrame *frame = JS_GetScriptedCaller(parentcx, NULL);
-    const char *base = JS_GetScriptFilename(parentcx, JS_GetFrameScript(parentcx, frame));
+    JSScript *script;
+    JS_DescribeScriptedCaller(parentcx, &script, NULL);
+    const char *base = JS_GetScriptFilename(parentcx, script);
     JSString *scriptPath = ResolveRelativePath(parentcx, base, scriptName);
     if (!scriptPath)
         return NULL;

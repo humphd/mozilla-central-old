@@ -122,6 +122,13 @@ JSObject::setPrivate(void *data)
 }
 
 inline void
+JSObject::setPrivateUnbarriered(void *data)
+{
+    void **pprivate = &privateRef(numFixedSlots());
+    *pprivate = data;
+}
+
+inline void
 JSObject::initPrivate(void *data)
 {
     privateRef(numFixedSlots()) = data;
@@ -1069,8 +1076,10 @@ JSObject::createDenseArray(JSContext *cx, js::gc::AllocKind kind,
     uint32_t capacity = js::gc::GetGCKindSlots(kind) - js::ObjectElements::VALUES_PER_HEADER;
 
     JSObject *obj = js_NewGCObject(cx, kind);
-    if (!obj)
+    if (!obj) {
+        js_ReportOutOfMemory(cx);
         return NULL;
+    }
 
     obj->shape_.init(shape);
     obj->type_.init(type);
@@ -1111,9 +1120,8 @@ JSObject::isCallable()
 inline JSPrincipals *
 JSObject::principals(JSContext *cx)
 {
-    JSSecurityCallbacks *cb = JS_GetSecurityCallbacks(cx);
-    if (JSObjectPrincipalsFinder finder = cb ? cb->findObjectPrincipals : NULL)
-        return finder(cx, this);
+    if (JSObjectPrincipalsFinder find = cx->runtime->securityCallbacks->findObjectPrincipals)
+        return find(this);
     return cx->compartment ? cx->compartment->principals : NULL;
 }
 

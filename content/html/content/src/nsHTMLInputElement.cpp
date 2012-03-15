@@ -587,6 +587,9 @@ nsHTMLInputElement::nsHTMLInputElement(already_AddRefed<nsINodeInfo> aNodeInfo,
 
 nsHTMLInputElement::~nsHTMLInputElement()
 {
+  if (mFileList) {
+    mFileList->Disconnect();
+  }
   DestroyImageLoadingContent();
   FreeData();
 }
@@ -634,7 +637,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsHTMLInputElement,
                                                   nsGenericHTMLFormElement)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mControllers)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMARRAY(mFiles)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK_NSCOMPTR(mFileList);
+  if (tmp->mFileList) {
+    tmp->mFileList->Disconnect();
+    tmp->mFileList = nsnull;
+  }
   //XXX should unlink more?
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
                                                               
@@ -2773,7 +2779,7 @@ nsHTMLInputElement::GetFiles(nsIDOMFileList** aFileList)
   }
 
   if (!mFileList) {
-    mFileList = new nsDOMFileList();
+    mFileList = new nsDOMFileList(static_cast<nsIContent*>(this));
     if (!mFileList) return NS_ERROR_OUT_OF_MEMORY;
 
     UpdateFileList();
@@ -3830,7 +3836,7 @@ nsHTMLInputElement::GetValidationMessage(nsAString& aValidationMessage,
       const PRUnichar* params[] = { strMaxLength.get(), strTextLength.get() };
       rv = nsContentUtils::FormatLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                  "FormValidationTextTooLong",
-                                                 params, 2, message);
+                                                 params, message);
       aValidationMessage = message;
       break;
     }
@@ -3889,7 +3895,7 @@ nsHTMLInputElement::GetValidationMessage(nsAString& aValidationMessage,
         const PRUnichar* params[] = { title.get() };
         rv = nsContentUtils::FormatLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                    "FormValidationPatternMismatchWithTitle",
-                                                   params, 1, message);
+                                                   params, message);
       }
       aValidationMessage = message;
       break;

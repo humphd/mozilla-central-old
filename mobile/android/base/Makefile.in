@@ -87,40 +87,48 @@ FENNEC_JAVA_FILES = \
   GeckoEvent.java \
   GeckoEventListener.java \
   GeckoEventResponder.java \
+  GeckoHalDefines.java \
   GeckoInputConnection.java \
+	GeckoMessageReceiver.java \
   GeckoPreferences.java \
   GeckoProfile.java \
   GeckoStateListDrawable.java \
   GeckoThread.java \
   GlobalHistory.java \
   LinkPreference.java \
+  LinkTextView.java \
+	NSSBridge.java \
   ProfileMigrator.java \
   PromptService.java \
   sqlite/ByteBufferInputStream.java \
   sqlite/MatrixBlobCursor.java \
   sqlite/SQLiteBridge.java \
   sqlite/SQLiteBridgeException.java \
+  RemoteTabs.java \
   SetupScreen.java \
   SurfaceLockInfo.java \
   Tab.java \
   Tabs.java \
   TabsTray.java \
+  TabsAccessor.java \
   gfx/BitmapUtils.java \
   gfx/BufferedCairoImage.java \
   gfx/CairoGLInfo.java \
   gfx/CairoImage.java \
   gfx/CairoUtils.java \
   gfx/CheckerboardImage.java \
+  gfx/FlexibleGLSurfaceView.java \
   gfx/FloatSize.java \
-  gfx/GeckoSoftwareLayerClient.java \
+  gfx/GeckoLayerClient.java \
+  gfx/GLController.java \
+  gfx/GLThread.java \
+  gfx/ImmutableViewportMetrics.java \
   gfx/InputConnectionHandler.java \
   gfx/IntSize.java \
   gfx/Layer.java \
-  gfx/LayerClient.java \
   gfx/LayerController.java \
   gfx/LayerRenderer.java \
   gfx/LayerView.java \
-  gfx/MultiTileLayer.java \
   gfx/NinePatchTileLayer.java \
   gfx/PanningPerfAPI.java \
   gfx/PlaceholderLayerClient.java \
@@ -133,8 +141,9 @@ FENNEC_JAVA_FILES = \
   gfx/TextureGenerator.java \
   gfx/TextureReaper.java \
   gfx/TileLayer.java \
+  gfx/ViewTransform.java \
   gfx/ViewportMetrics.java \
-  gfx/WidgetTileLayer.java \
+  gfx/VirtualLayer.java \
   ui/Axis.java \
   ui/PanZoomController.java \
   ui/SimpleScaleGestureDetector.java \
@@ -227,6 +236,7 @@ RES_LAYOUT = \
   $(SYNC_RES_LAYOUT) \
   res/layout/autocomplete_list_item.xml \
   res/layout/awesomebar.xml \
+  res/layout/awesomebar_actionbar.xml \
   res/layout/awesomebar_folder_row.xml \
   res/layout/awesomebar_folder_header_row.xml \
   res/layout/awesomebar_header_row.xml \
@@ -234,6 +244,7 @@ RES_LAYOUT = \
   res/layout/awesomebar_search.xml \
   res/layout/awesomebar_tab_indicator.xml \
   res/layout/awesomebar_tabs.xml \
+  res/layout/bookmark_edit.xml \
   res/layout/browser_toolbar.xml \
   res/layout/doorhangerpopup.xml \
   res/layout/doorhanger.xml \
@@ -245,6 +256,9 @@ RES_LAYOUT = \
   res/layout/notification_progress_text.xml \
   res/layout/site_setting_title.xml \
   res/layout/setup_screen.xml \
+  res/layout/remote_tabs.xml \
+  res/layout/remote_tabs_child.xml \
+  res/layout/remote_tabs_group.xml \
   res/layout/tabs_row.xml \
   res/layout/tabs_tray.xml \
   res/layout/list_item_header.xml \
@@ -253,10 +267,10 @@ RES_LAYOUT = \
   res/layout/abouthome_topsite_item.xml \
   res/layout/abouthome_addon_row.xml \
   res/layout/abouthome_last_tabs_row.xml \
+  res/layout/abouthome_remote_tab_row.xml \
   $(NULL)
 
 RES_LAYOUT_V11 = \
-  res/layout-v11/awesomebar.xml \
   res/layout-v11/gecko_app.xml \
   $(NULL)
  
@@ -290,6 +304,7 @@ RES_ANIM = \
 RES_DRAWABLE_NODPI = \
   res/drawable-nodpi/abouthome_bg.png \
   res/drawable-nodpi/abouthome_topsites_bg.png \
+  res/drawable-nodpi/background.png \
   res/drawable-nodpi/tabs_tray_bg.png \
   res/drawable-nodpi/tabs_tray_pressed_bg.png \
   $(NULL)
@@ -525,7 +540,6 @@ MOZ_ANDROID_DRAWABLES += \
   mobile/android/base/resources/drawable/awesomebar_tab_press_selected.xml      \
   mobile/android/base/resources/drawable/awesomebar_tab_selected.xml            \
   mobile/android/base/resources/drawable/awesomebar_tab_unselected.xml          \
-  mobile/android/base/resources/drawable/background.png                         \
   mobile/android/base/resources/drawable/desktop_notification.png               \
   mobile/android/base/resources/drawable/gecko_actionbar_bg.xml                 \
   mobile/android/base/resources/drawable/progress_spinner.xml                   \
@@ -547,6 +561,7 @@ MOZ_ANDROID_DRAWABLES += \
   mobile/android/base/resources/drawable/progress_spinner_16.png                \
   mobile/android/base/resources/drawable/progress_spinner_17.png                \
   mobile/android/base/resources/drawable/progress_spinner_18.png                \
+  mobile/android/base/resources/drawable/remote_tabs_group_bg_repeat.xml        \
   mobile/android/base/resources/drawable/start.png                              \
   mobile/android/base/resources/drawable/site_security_level.xml                \
   mobile/android/base/resources/drawable/tabs_button.xml                        \

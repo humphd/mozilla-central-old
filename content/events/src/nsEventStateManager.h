@@ -228,7 +228,6 @@ public:
 
   static bool IsRemoteTarget(nsIContent* aTarget);
 
-  static bool sPointerLock;
   static nsIntPoint sLastScreenPoint;
   static nsIntPoint sLastClientPoint;
 
@@ -482,8 +481,7 @@ private:
                                   bool aAddState);
 
   PRInt32     mLockCursor;
-  // The element that is mouse locked, if any.
-  static nsCOMPtr<nsIContent> sPointerLockedElement;
+
   // Point when mouse was locked, used to reposition after unlocking.
   nsIntPoint  mPreLockPoint;
 
@@ -570,6 +568,9 @@ public:
   nsIntPoint GetMouseCoords(nsIntRect aBounds);
   static void sClickHoldCallback ( nsITimer* aTimer, void* aESM ) ;
   static void SetLastScreenOffset( nsIntPoint aScreenOffset ) ;
+
+  // The element that is mouse locked, if any.
+  static nsCOMPtr<nsIContent> sPointerLockedElement;
 };
 
 /**

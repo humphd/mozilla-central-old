@@ -148,9 +148,6 @@ protected:
   nsIntPoint mPagePoint;
   nsIntPoint mMovement;
   bool mIsPointerLocked;
-
-private:
-  nsIntPoint ScreenPointInternal();
 };
 
 #define NS_FORWARD_TO_NSDOMUIEVENT \

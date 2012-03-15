@@ -23,6 +23,7 @@
  * Contributor(s):
  *   Dave Camp <dcamp@mozilla.com> (Original Author)
  *   Rob Campbell <rcampbell@mozilla.com>
+ *   Mike Ratcliffe <mratcliffe@mozilla.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -356,10 +357,20 @@ function Rule(aElementStyle, aOptions)
   this.style = aOptions.style || this.domRule.style;
   this.selectorText = aOptions.selectorText || this.domRule.selectorText;
   this.inherited = aOptions.inherited || null;
+
+  if (this.domRule) {
+    let parentRule = this.domRule.parentRule;
+    if (parentRule && parentRule.type == Ci.nsIDOMCSSRule.MEDIA_RULE) {
+      this.mediaText = parentRule.media.mediaText;
+    }
+  }
+
   this._getTextProperties();
 }
 
 Rule.prototype = {
+  mediaText: "",
+
   get title()
   {
     if (this._title) {
@@ -380,7 +391,7 @@ Rule.prototype = {
                                                            args, args.length);
     }
 
-    return this._title;
+    return this._title + (this.mediaText ? " @media " + this.mediaText : "");
   },
 
   /**
@@ -722,8 +733,26 @@ CssRuleView.prototype = {
     }.bind(this);
 
     this._createEditors();
+
+    // When creating a new property, we fake the normal property
+    // editor behavior (focusing a property's value after entering its
+    // name) by responding to the name's blur event, creating the
+    // value editor, and grabbing focus to the value editor.  But if
+    // focus has already moved to another document, we won't be able
+    // to move focus to the new editor.
+    // Create a focusable item at the end of the editors to catch these
+    // cases.
+    this._focusBackstop = createChild(this.element, "div", {
+      tabindex: 0,
+    });
+    this._backstopHandler = function() {
+      // If this item is actually focused long enough to get the focus
+      // event, allow focus to move on out of this document.
+      moveFocus(this.doc.defaultView, FOCUS_FORWARD);
+    }.bind(this);
+    this._focusBackstop.addEventListener("focus", this._backstopHandler, false);
   },
-  
+
   /**
    * Update the rules for the currently highlighted element.
    */
@@ -752,6 +781,12 @@ CssRuleView.prototype = {
     this._clearRules();
     this._viewedElement = null;
     this._elementStyle = null;
+
+    if (this._focusBackstop) {
+      this._focusBackstop.removeEventListener("focus", this._backstopHandler, false);
+      this._backstopHandler = null;
+      this._focusBackstop = null;
+    }
   },
 
   /**
@@ -773,7 +808,7 @@ CssRuleView.prototype = {
     for each (let rule in this._elementStyle.rules) {
       // Don't hold a reference to this editor beyond the one held
       // by the node.
-      let editor = new RuleEditor(this.doc, rule);
+      let editor = new RuleEditor(this, rule);
       this.element.appendChild(editor.element);
     }
   },
@@ -782,15 +817,17 @@ CssRuleView.prototype = {
 /**
  * Create a RuleEditor.
  *
- * @param object aDoc
- *        The document holding this rule editor.
+ * @param CssRuleView aRuleView
+ *        The CssRuleView containg the document holding this rule editor and the
+ *        _selectionMode flag.
  * @param Rule aRule
  *        The Rule object we're editing.
  * @constructor
  */
-function RuleEditor(aDoc, aRule)
+function RuleEditor(aRuleView, aRule)
 {
-  this.doc = aDoc;
+  this.ruleView = aRuleView;
+  this.doc = this.ruleView.doc;
   this.rule = aRule;
 
   this._onNewProperty = this._onNewProperty.bind(this);
@@ -835,7 +872,6 @@ RuleEditor.prototype = {
 
     this.openBrace = createChild(header, "span", {
       class: "ruleview-ruleopen",
-      tabindex: "0",
       textContent: " {"
     });
 
@@ -860,8 +896,16 @@ RuleEditor.prototype = {
 
     // We made the close brace focusable, tabbing to it
     // or clicking on it should start the new property editor.
-    this.closeBrace.addEventListener("focus", function() {
-      this.newProperty();
+    this.closeBrace.addEventListener("focus", function(aEvent) {
+      if (!this.ruleView._selectionMode) {
+        this.newProperty();
+      }
+    }.bind(this), true);
+    this.closeBrace.addEventListener("mousedown", function(aEvent) {
+      aEvent.preventDefault();
+    }.bind(this), true);
+    this.closeBrace.addEventListener("click", function(aEvent) {
+      this.closeBrace.focus();
     }.bind(this), true);
   },
 
@@ -1227,6 +1271,21 @@ function editableField(aOptions)
 {
   aOptions.element.addEventListener("focus", function() {
     new InplaceEditor(aOptions);
+  }, false);
+
+  // In order to allow selection on the element, prevent focus on
+  // mousedown.  Focus on click instead.
+  aOptions.element.addEventListener("mousedown", function(evt) {
+    evt.preventDefault();
+  }, false);
+  aOptions.element.addEventListener("click", function(evt) {
+    let win = this.ownerDocument.defaultView;
+    let selection = win.getSelection();
+    if (selection.isCollapsed) {
+      aOptions.element.focus();
+    } else {
+      selection.removeAllRanges();
+    }
   }, false);
 }
 var _editableField = editableField;

@@ -181,6 +181,30 @@
       attrs = {"text-position": gComputedStyle.verticalAlign};
       testTextAttrs(ID, 55, attrs, defAttrs, 55, 64);
 
+      attrs = {};
+      testTextAttrs(ID, 64, attrs, defAttrs, 64, 69);
+
+      attrs = { "text-position": "super" };
+      testTextAttrs(ID, 69, attrs, defAttrs, 69, 84);
+
+      attrs = {};
+      testTextAttrs(ID, 84, attrs, defAttrs, 84, 89);
+
+      attrs = { "text-position": "sub" };
+      testTextAttrs(ID, 89, attrs, defAttrs, 89, 102);
+
+      attrs = {};
+      testTextAttrs(ID, 102, attrs, defAttrs, 102, 107);
+
+      attrs = { "text-position": "super" };
+      testTextAttrs(ID, 107, attrs, defAttrs, 107, 123);
+
+      attrs = {};
+      testTextAttrs(ID, 123, attrs, defAttrs, 123, 128);
+
+      attrs = { "text-position": "sub" };
+      testTextAttrs(ID, 128, attrs, defAttrs, 128, 142);
+
       //////////////////////////////////////////////////////////////////////////
       // area7
       ID = "area7";
@@ -269,13 +293,19 @@
       attrs = {};
       testTextAttrs(ID, 84, attrs, defAttrs, 83, 91);
 
-      attrs = { "text-underline-style": "solid" };
+      attrs = {
+        "text-underline-style": "solid",
+        "text-underline-color": gComputedStyle.color
+      };
       testTextAttrs(ID, 92, attrs, defAttrs, 91, 101);
 
       attrs = {};
       testTextAttrs(ID, 102, attrs, defAttrs, 101, 109);
 
-      attrs = { "text-line-through-style": "solid" };
+      attrs = {
+        "text-line-through-style": "solid",
+        "text-line-through-color": gComputedStyle.color
+      };
       testTextAttrs(ID, 110, attrs, defAttrs, 109, 122);
 
       attrs = {};
@@ -323,13 +353,19 @@
       attrs = {};
       testTextAttrs(ID, 85, attrs, defAttrs, 84, 92);
 
-      attrs = { "text-underline-style": "solid" };
+      attrs = {
+        "text-underline-style": "solid",
+        "text-underline-color": gComputedStyle.color
+      };
       testTextAttrs(ID, 93, attrs, defAttrs, 92, 102);
 
       attrs = {};
       testTextAttrs(ID, 103, attrs, defAttrs, 102, 110);
 
-      attrs = { "text-line-through-style": "solid" };
+      attrs = {
+        "text-line-through-style": "solid",
+        "text-line-through-color": gComputedStyle.color
+      };
       testTextAttrs(ID, 111, attrs, defAttrs, 110, 123);
 
       attrs = {};
@@ -437,6 +473,48 @@
       attrs = { };
       testTextAttrs(ID, 31, attrs, defAttrs, 31, 45);
 
+      //////////////////////////////////////////////////////////////////////////
+      // area17, "text-decoration" tests
+      ID = "area17";
+      defAttrs = buildDefaultTextAttrs(ID, "12pt");
+      testDefaultTextAttrs(ID, defAttrs);
+
+      attrs = {
+        "text-underline-style": "solid",
+        "text-underline-color": "rgb(0, 0, 0)",
+      };
+      testTextAttrs(ID, 0, attrs, defAttrs, 0, 10);
+
+      attrs = {
+        "text-underline-style": "solid",
+        "text-underline-color": "rgb(0, 0, 255)",
+      };
+      testTextAttrs(ID, 10, attrs, defAttrs, 10, 15);
+
+      attrs = {
+        "text-underline-style": "dotted",
+        "text-underline-color": "rgb(0, 0, 0)",
+      };
+      testTextAttrs(ID, 15, attrs, defAttrs, 15, 22);
+
+      attrs = {
+        "text-line-through-style": "solid",
+        "text-line-through-color": "rgb(0, 0, 0)",
+      };
+      testTextAttrs(ID, 22, attrs, defAttrs, 22, 34);
+
+      attrs = {
+        "text-line-through-style": "solid",
+        "text-line-through-color": "rgb(0, 0, 255)",
+      };
+      testTextAttrs(ID, 34, attrs, defAttrs, 34, 39);
+
+      attrs = {
+        "text-line-through-style": "wavy",
+        "text-line-through-color": "rgb(0, 0, 0)",
+      };
+      testTextAttrs(ID, 39, attrs, defAttrs, 39, 44);
+
       SimpleTest.finish();
     }
 
@@ -450,11 +528,21 @@
      href="https://bugzilla.mozilla.org/show_bug.cgi?id=345759"
      title="Implement text attributes">
     Mozilla Bug 345759
-  </a><br>
+  </a>
+  <a target="_blank"
+     href="https://bugzilla.mozilla.org/show_bug.cgi?id=473569"
+     title="Restrict text-position to allowed values">
+    Mozilla Bug 473569
+  </a>
   <a target="_blank"
      href="https://bugzilla.mozilla.org/show_bug.cgi?id=473576"
      title="font-family text attribute should expose actual font used">
     Mozilla Bug 473576
+  </a>
+  <a target="_blank"
+     href="https://bugzilla.mozilla.org/show_bug.cgi?id=523304"
+     title="expose text-underline-color and text-line-through-color text attributes">
+    Mozilla Bug 523304
   </a>
   <p id="display"></p>
   <div id="content" style="display: none"></div>
@@ -490,7 +578,11 @@
     This <sup>sentence</sup> has the word 
     <span style="vertical-align:super;">sentence</span> in 
     <sub>superscript</sub> and 
-    <span style="vertical-align:sub;">subscript</span>
+    <span style="vertical-align:sub;">subscript</span> and
+    <span style="vertical-align:20%;">superscript 20%</span> and
+    <span style="vertical-align:-20%;">subscript 20%</span> and
+    <span style="vertical-align:20px;">superscript 20px</span> and
+    <span style="vertical-align:-20px;">subscript 20px</span>
   </p>
 
   <p lang="en" id="area7">
@@ -545,6 +637,16 @@
     <span style="font-family: BodoniThatDoesntExist;">text</span>text
     <span style="font-family: Comic Sans MS, cursive;">text</span>text
     <span style="font-family: sans-serif, fantasy;">text</span>text
+  </p>
+
+  <p id="area17">
+    <span style="-moz-text-decoration-line: underline;">underline
+    </span><span style="text-decoration: underline; -moz-text-decoration-color: blue;">blue
+    </span><span style="text-decoration: underline; -moz-text-decoration-style: dotted;">dotted
+    </span><span style="-moz-text-decoration-line: line-through;">linethrough
+    </span><span style="text-decoration: line-through; -moz-text-decoration-color: blue;">blue
+    </span><span style="text-decoration: line-through; -moz-text-decoration-style: wavy;">wavy
+    </span>
   </p>
 </body>
 </html>

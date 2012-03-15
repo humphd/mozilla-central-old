@@ -376,31 +376,26 @@ PlacesViewBase.prototype = {
   _setLivemarkStatusMenuItem:
   function PVB_setLivemarkStatusMenuItem(aPopup, aStatus) {
     let statusMenuitem = aPopup._statusMenuitem;
-    let stringId = "";
-    if (aStatus == Ci.mozILivemark.STATUS_LOADING)
-      stringId = "bookmarksLivemarkLoading";
-    else if (aStatus == Ci.mozILivemark.STATUS_FAILED)
-      stringId = "bookmarksLivemarkFailed";
-
-    if (stringId && !statusMenuitem) {
+    if (!statusMenuitem) {
       // Create the status menuitem and cache it in the popup object.
       statusMenuitem = document.createElement("menuitem");
-      statusMenuitem.setAttribute("livemarkStatus", stringId);
       statusMenuitem.className = "livemarkstatus-menuitem";
-      statusMenuitem.setAttribute("label", PlacesUIUtils.getString(stringId));
       statusMenuitem.setAttribute("disabled", true);
-      aPopup.insertBefore(statusMenuitem, aPopup._startMarker.nextSibling);
       aPopup._statusMenuitem = statusMenuitem;
     }
-    else if (stringId &&
-             statusMenuitem.getAttribute("livemarkStatus") != stringId) {
+
+    if (aStatus == Ci.mozILivemark.STATUS_LOADING ||
+        aStatus == Ci.mozILivemark.STATUS_FAILED) {
       // Status has changed, update the cached status menuitem.
+      let stringId = aStatus == Ci.mozILivemark.STATUS_LOADING ?
+                       "bookmarksLivemarkLoading" : "bookmarksLivemarkFailed";
       statusMenuitem.setAttribute("label", PlacesUIUtils.getString(stringId));
+      if (aPopup._startMarker.nextSibling != statusMenuitem)
+        aPopup.insertBefore(statusMenuitem, aPopup._startMarker.nextSibling);
     }
-    else if (!stringId && statusMenuitem) {
+    else {
       // The livemark has finished loading.
       aPopup.removeChild(aPopup._statusMenuitem);
-      aPopup._statusMenuitem = null;
     }
   },
 
@@ -657,7 +652,9 @@ PlacesViewBase.prototype = {
               aPlacesNode._siteURI = aLivemark.siteURI;
               if (aNewState == Ci.nsINavHistoryContainerResultNode.STATE_OPENED) {
                 aLivemark.registerForUpdates(aPlacesNode, this);
+                // Prioritize the current livemark.
                 aLivemark.reload();
+                PlacesUtils.livemarks.reloadLivemarks();
                 if (shouldInvalidate)
                   this.invalidateContainer(aPlacesNode);
               }
@@ -890,6 +887,14 @@ function PlacesToolbar(aPlace) {
   this._addEventListeners(this._rootElt, ["overflow", "underflow"], true);
   this._addEventListeners(window, ["resize", "unload"], false);
 
+  // If personal-bookmarks has been dragged to the tabs toolbar,
+  // we have to track addition and removals of tabs, to properly
+  // recalculate the available space for bookmarks.
+  // TODO (bug 734730): Use a performant mutation listener when available.
+  if (this._viewElt.parentNode.parentNode == document.getElementById("TabsToolbar")) {
+    this._addEventListeners(gBrowser.tabContainer, ["TabOpen", "TabClose"], false);
+  }
+
   PlacesViewBase.call(this, aPlace);
 
   Services.telemetry.getHistogramById("FX_BOOKMARKS_TOOLBAR_INIT_MS")
@@ -900,11 +905,6 @@ PlacesToolbar.prototype = {
   __proto__: PlacesViewBase.prototype,
 
   _cbEvents: ["dragstart", "dragover", "dragexit", "dragend", "drop",
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-              "mousedown", "mouseup",
-#endif
-#endif
               "mousemove", "mouseover", "mouseout"],
 
   QueryInterface: function PT_QueryInterface(aIID) {
@@ -921,6 +921,7 @@ PlacesToolbar.prototype = {
                                true);
     this._removeEventListeners(this._rootElt, ["overflow", "underflow"], true);
     this._removeEventListeners(window, ["resize", "unload"], false);
+    this._removeEventListeners(gBrowser.tabContainer, ["TabOpen", "TabClose"], false);
 
     PlacesViewBase.prototype.uninit.apply(this, arguments);
   },
@@ -1020,9 +1021,10 @@ PlacesToolbar.prototype = {
 
   _updateChevronPopupNodesVisibility:
   function PT__updateChevronPopupNodesVisibility() {
-    for (let i = 0; i < this._chevronPopup.childNodes.length; i++) {
-      this._chevronPopup.childNodes[i].hidden =
-        this._rootElt.childNodes[i].style.visibility != "hidden";
+    for (let i = 0, node = this._chevronPopup._startMarker.nextSibling;
+         node != this._chevronPopup._endMarker;
+         i++, node = node.nextSibling) {
+      node.hidden = this._rootElt.childNodes[i].style.visibility != "hidden";
     }
   },
 
@@ -1074,7 +1076,11 @@ PlacesToolbar.prototype = {
         if (aEvent.detail == 0)
           return;
 
+        this.updateChevron();
         this._chevron.collapsed = true;
+        break;
+      case "TabOpen":
+      case "TabClose":
         this.updateChevron();
         break;
       case "dragstart":
@@ -1101,16 +1107,6 @@ PlacesToolbar.prototype = {
       case "mouseout":
         this._onMouseOut(aEvent);
         break;
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-      case "mouseup":
-        this._onMouseUp(aEvent);
-        break;
-      case "mousedown":
-        this._onMouseDown(aEvent);
-        break;
-#endif
-#endif
       case "popupshowing":
         this._onPopupShowing(aEvent);
         break;
@@ -1538,14 +1534,6 @@ PlacesToolbar.prototype = {
         draggedElt.getAttribute("type") == "menu") {
       // If the drag gesture on a container is toward down we open instead
       // of dragging.
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-      if (this._mouseDownTimer) {
-        this._mouseDownTimer.cancel();
-        this._mouseDownTimer = null;
-      }
-#endif
-#endif
       let translateY = this._cachedMouseMoveEvent.clientY - aEvent.clientY;
       let translateX = this._cachedMouseMoveEvent.clientX - aEvent.clientX;
       if ((translateY) >= Math.abs(translateX/2)) {
@@ -1717,47 +1705,6 @@ PlacesToolbar.prototype = {
         parent.removeAttribute("dragover");
     }
   },
-
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-  _onMouseDown: function PT__onMouseDown(aEvent) {
-    let target = aEvent.target;
-    if (aEvent.button == 0 &&
-        target.localName == "toolbarbutton" &&
-        target.getAttribute("type") == "menu") {
-      this._allowPopupShowing = false;
-      // On Linux we can open the popup only after a delay.
-      // Indeed as soon as the menupopup opens we are unable to start a
-      // drag aEvent.  See bug 500081 for details.
-      this._mouseDownTimer = Cc["@mozilla.org/timer;1"].
-                             createInstance(Ci.nsITimer);
-      let callback = {
-        _self: this,
-        _target: target,
-        notify: function(timer) {
-          this._target.open = true;
-          this._mouseDownTimer = null;
-        }
-      };
-
-      this._mouseDownTimer.initWithCallback(callback, 300,
-                                            Ci.nsITimer.TYPE_ONE_SHOT);
-    }
-  },
-
-  _onMouseUp: function PT__onMouseUp(aEvent) {
-    if (aEvent.button != 0)
-      return;
-
-    if (this._mouseDownTimer) {
-      // On a click (down/up), we should open the menu popup.
-      this._mouseDownTimer.cancel();
-      this._mouseDownTimer = null;
-      aEvent.target.open = true;
-    }
-  },
-#endif
-#endif
 
   _onMouseMove: function PT__onMouseMove(aEvent) {
     // Used in dragStart to prevent dragging folders when dragging down.

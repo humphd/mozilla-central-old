@@ -49,13 +49,15 @@
         ok(hasMovementY, "Mouse Event should have mozMovementY.");
       }
 
-      document.addEventListener("mousemove", function(e) {
+      function mouseMoveHandler(e) {
+        document.removeEventListener("mousemove", mouseMoveHandler, false);
+
         hasMovementX = "mozMovementX" in e;
         hasMovementY = "mozMovementY" in e;
 
         hasExitPointerLock = "mozExitPointerLock" in document;
         document.mozExitPointerLock();
-      }, false);
+      }
 
       document.addEventListener("mozpointerlockchange", function (e) {
         pointerLockChangeEventFired = true;
@@ -63,6 +65,7 @@
         if (document.mozPointerLockElement) {
           pointerLocked = true;
           pointerLockElement = document.mozPointerLockElement === div;
+          document.addEventListener("mousemove", mouseMoveHandler, false);
           synthesizeMouseAtCenter(div, {type: "mousemove"}, window);
         } else {
           pointerUnlocked = true;

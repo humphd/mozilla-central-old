@@ -26,12 +26,18 @@
 #define ELFCLASS ELFCLASS64
 #define ELF_R_TYPE ELF64_R_TYPE
 #define ELF_R_SYM ELF64_R_SYM
+#ifndef ELF_ST_BIND
+#define ELF_ST_BIND ELF64_ST_BIND
+#endif
 #define PRIxAddr "lx"
 #else
 #define Elf_(type) Elf32_ ## type
 #define ELFCLASS ELFCLASS32
 #define ELF_R_TYPE ELF32_R_TYPE
 #define ELF_R_SYM ELF32_R_SYM
+#ifndef ELF_ST_BIND
+#define ELF_ST_BIND ELF32_ST_BIND
+#endif
 #define PRIxAddr "x"
 #endif
 
@@ -152,6 +158,9 @@
 #endif
 #ifndef DF_SYMBOLIC
 #define DF_SYMBOLIC 0x00000002
+#endif
+#ifndef DF_TEXTREL
+#define DF_TEXTREL 0x00000004
 #endif
 
 namespace Elf {

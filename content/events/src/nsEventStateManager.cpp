@@ -165,7 +165,6 @@ nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastClientPoint = nsIntPoint(0,0);
-bool nsEventStateManager::sPointerLock = false;
 nsCOMPtr<nsIContent> nsEventStateManager::sPointerLockedElement = nsnull;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
@@ -4082,7 +4081,6 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   // Remember which element is locked so we don't dispatch events for
   // elements that aren't locked. aElement will be nsnull when unlocking.
   sPointerLockedElement = aElement;
-  sPointerLock = sPointerLockedElement ? true : false;
 
   if (!aWidget) {
     return;

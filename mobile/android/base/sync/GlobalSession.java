@@ -1,40 +1,6 @@
-// vim: ts=2:sw=2:expandtab:
-/* ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1/GPL 2.0/LGPL 2.1
- *
- * The contents of this file are subject to the Mozilla Public License Version
- * 1.1 (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- * http://www.mozilla.org/MPL/
- *
- * Software distributed under the License is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
- * for the specific language governing rights and limitations under the
- * License.
- *
- * The Original Code is Android Sync Client.
- *
- * The Initial Developer of the Original Code is
- * the Mozilla Foundation.
- * Portions created by the Initial Developer are Copyright (C) 2011
- * the Initial Developer. All Rights Reserved.
- *
- * Contributor(s):
- *   Richard Newman <rnewman@mozilla.com>
- *
- * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
- * in which case the provisions of the GPL or the LGPL are applicable instead
- * of those above. If you wish to allow use of your version of this file only
- * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the MPL, indicate your
- * decision by deleting the provisions above and replace them with the notice
- * and other provisions required by the GPL or the LGPL. If you do not delete
- * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the MPL, the GPL or the LGPL.
- *
- * ***** END LICENSE BLOCK ***** */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 package org.mozilla.gecko.sync;
 
@@ -55,6 +21,7 @@ import org.mozilla.gecko.sync.delegates.InfoCollectionsDelegate;
 import org.mozilla.gecko.sync.delegates.KeyUploadDelegate;
 import org.mozilla.gecko.sync.delegates.MetaGlobalDelegate;
 import org.mozilla.gecko.sync.delegates.WipeServerDelegate;
+import org.mozilla.gecko.sync.net.BaseResource;
 import org.mozilla.gecko.sync.net.SyncStorageRecordRequest;
 import org.mozilla.gecko.sync.net.SyncStorageRequest;
 import org.mozilla.gecko.sync.net.SyncStorageRequestDelegate;
@@ -65,6 +32,7 @@ import org.mozilla.gecko.sync.stage.CheckPreconditionsStage;
 import org.mozilla.gecko.sync.stage.CompletedStage;
 import org.mozilla.gecko.sync.stage.EnsureClusterURLStage;
 import org.mozilla.gecko.sync.stage.EnsureKeysStage;
+import org.mozilla.gecko.sync.stage.FennecTabsServerSyncStage;
 import org.mozilla.gecko.sync.stage.FetchInfoCollectionsStage;
 import org.mozilla.gecko.sync.stage.FetchMetaGlobalStage;
 import org.mozilla.gecko.sync.stage.GlobalSyncStage;
@@ -92,7 +60,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
   protected Map<Stage, GlobalSyncStage> stages;
   public Stage currentState = Stage.idle;
 
-  private GlobalSessionCallback callback;
+  public final GlobalSessionCallback callback;
   private Context context;
   private ClientsDataDelegate clientsDelegate;
 
@@ -162,7 +130,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
       throw new SyncConfigurationException();
     }
 
-    Log.i(LOG_TAG, "GlobalSession initialized with bundle " + extras);
+    Logger.info(LOG_TAG, "GlobalSession initialized with bundle " + extras);
     URI serverURI;
     try {
       serverURI = (serverURL == null) ? null : new URI(serverURL);
@@ -200,6 +168,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
     stages.put(Stage.syncClientsEngine,       new SyncClientsEngineStage());
 
     // TODO: more stages.
+    stages.put(Stage.syncTabs,                new FennecTabsServerSyncStage());
     stages.put(Stage.syncBookmarks,           new AndroidBrowserBookmarksServerSyncStage());
     stages.put(Stage.syncHistory,             new AndroidBrowserHistoryServerSyncStage());
     stages.put(Stage.completed,               new CompletedStage());
@@ -239,11 +208,11 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
       return;
     }
     this.currentState = next;
-    Log.i(LOG_TAG, "Running next stage " + next + " (" + nextStage + ")...");
+    Logger.info(LOG_TAG, "Running next stage " + next + " (" + nextStage + ")...");
     try {
       nextStage.execute(this);
     } catch (Exception ex) {
-      Log.w(LOG_TAG, "Caught exception " + ex + " running stage " + next);
+      Logger.warn(LOG_TAG, "Caught exception " + ex + " running stage " + next);
       this.abort(ex, "Uncaught exception in stage.");
     }
   }
@@ -308,14 +277,14 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
   }
 
   public void abort(Exception e, String reason) {
-    Log.w(LOG_TAG, "Aborting sync: " + reason, e);
+    Logger.warn(LOG_TAG, "Aborting sync: " + reason, e);
     this.callback.handleError(this, e);
   }
 
   public void handleHTTPError(SyncStorageResponse response, String reason) {
     // TODO: handling of 50x (backoff), 401 (node reassignment or auth error).
     // Fall back to aborting.
-    Log.w(LOG_TAG, "Aborting sync due to HTTP " + response.getStatusCode());
+    Logger.warn(LOG_TAG, "Aborting sync due to HTTP " + response.getStatusCode());
     this.interpretHTTPFailure(response.httpResponse());
     this.abort(new HTTPFailureException(response), reason);
   }
@@ -341,8 +310,16 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
     if (backoff > 0) {
       callback.requestBackoff(backoff);
     }
-  }
 
+    if (response.getStatusLine() != null && response.getStatusLine().getStatusCode() == 401) {
+      /*
+       * Alert our callback we have a 401 on a cluster URL. This GlobalSession
+       * will fail, but the next one will fetch a new cluster URL and will
+       * distinguish between "node reassignment" and "user password changed".
+       */
+      callback.informUnauthorizedResponse(this, config.getClusterURL());
+    }
+  }
 
   public void fetchMetaGlobal(MetaGlobalDelegate callback) throws URISyntaxException {
     if (this.config.metaGlobal == null) {
@@ -378,12 +355,14 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
 
       @Override
       public void handleRequestSuccess(SyncStorageResponse response) {
+        BaseResource.consumeEntity(response); // We don't need the response at all.
         keyUploadDelegate.onKeysUploaded();
       }
 
       @Override
       public void handleRequestFailure(SyncStorageResponse response) {
         self.interpretHTTPFailure(response.httpResponse());
+        BaseResource.consumeEntity(response); // The exception thrown should not need the body of the response.
         keyUploadDelegate.onKeyUploadFailed(new HTTPFailureException(response));
       }
 
@@ -469,7 +448,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
           globalSession.config.persistToPrefs();
           globalSession.restart();
         } catch (Exception e) {
-          Log.w(LOG_TAG, "Got exception when restarting sync after freshStart.", e);
+          Logger.warn(LOG_TAG, "Got exception when restarting sync after freshStart.", e);
           globalSession.abort(e, "Got exception after freshStart.");
         }
       }
@@ -506,7 +485,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
           @Override
           public void handleSuccess(MetaGlobal global, SyncStorageResponse response) {
             session.config.metaGlobal = global;
-            Log.i(LOG_TAG, "New meta/global uploaded with sync ID " + newSyncID);
+            Logger.info(LOG_TAG, "New meta/global uploaded with sync ID " + newSyncID);
 
             // Generate and upload new keys.
             try {
@@ -535,21 +514,21 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
           @Override
           public void handleMissing(MetaGlobal global, SyncStorageResponse response) {
             // Shouldn't happen.
-            Log.w(LOG_TAG, "Got 'missing' response uploading new meta/global.");
+            Logger.warn(LOG_TAG, "Got 'missing' response uploading new meta/global.");
             freshStartDelegate.onFreshStartFailed(new Exception("meta/global missing"));
           }
 
           @Override
           public void handleFailure(SyncStorageResponse response) {
             // TODO: respect backoffs etc.
-            Log.w(LOG_TAG, "Got failure " + response.getStatusCode() + " uploading new meta/global.");
+            Logger.warn(LOG_TAG, "Got failure " + response.getStatusCode() + " uploading new meta/global.");
             session.interpretHTTPFailure(response.httpResponse());
             freshStartDelegate.onFreshStartFailed(new HTTPFailureException(response));
           }
 
           @Override
           public void handleError(Exception e) {
-            Log.w(LOG_TAG, "Got error uploading new meta/global.", e);
+            Logger.warn(LOG_TAG, "Got error uploading new meta/global.", e);
             freshStartDelegate.onFreshStartFailed(e);
           }
 
@@ -605,7 +584,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
 
       @Override
       public void onWipeFailed(Exception e) {
-        Log.w(LOG_TAG, "Wipe failed.");
+        Logger.warn(LOG_TAG, "Wipe failed.");
         freshStartDelegate.onFreshStartFailed(e);
       }
     });
@@ -619,7 +598,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
     try {
       request = new SyncStorageRequest(config.storageURL(false));
     } catch (URISyntaxException ex) {
-      Log.w(LOG_TAG, "Invalid URI in wipeServer.");
+      Logger.warn(LOG_TAG, "Invalid URI in wipeServer.");
       wipeDelegate.onWipeFailed(ex);
       return;
     }
@@ -633,20 +612,22 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
 
       @Override
       public void handleRequestSuccess(SyncStorageResponse response) {
+        BaseResource.consumeEntity(response);
         wipeDelegate.onWiped(response.normalizedWeaveTimestamp());
       }
 
       @Override
       public void handleRequestFailure(SyncStorageResponse response) {
-        Log.w(LOG_TAG, "Got request failure " + response.getStatusCode() + " in wipeServer.");
+        Logger.warn(LOG_TAG, "Got request failure " + response.getStatusCode() + " in wipeServer.");
         // Process HTTP failures here to pick up backoffs, etc.
         self.interpretHTTPFailure(response.httpResponse());
+        BaseResource.consumeEntity(response); // The exception thrown should not need the body of the response.
         wipeDelegate.onWipeFailed(new HTTPFailureException(response));
       }
 
       @Override
       public void handleRequestError(Exception ex) {
-        Log.w(LOG_TAG, "Got exception in wipeServer.", ex);
+        Logger.warn(LOG_TAG, "Got exception in wipeServer.", ex);
         wipeDelegate.onWipeFailed(ex);
       }
 
@@ -673,7 +654,7 @@ public class GlobalSession implements CredentialsSource, PrefsSource {
    * with this server.
    */
   public void requiresUpgrade() {
-    Log.i(LOG_TAG, "Client outdated storage version; requires update.");
+    Logger.info(LOG_TAG, "Client outdated storage version; requires update.");
     // TODO: notify UI.
   }
 

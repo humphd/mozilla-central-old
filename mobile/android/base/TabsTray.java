@@ -1,46 +1,16 @@
 /* -*- Mode: Java; c-basic-offset: 4; tab-width: 20; indent-tabs-mode: nil; -*-
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1/GPL 2.0/LGPL 2.1
- *
- * The contents of this file are subject to the Mozilla Public License Version
- * 1.1 (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- * http://www.mozilla.org/MPL/
- *
- * Software distributed under the License is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
- * for the specific language governing rights and limitations under the
- * License.
- *
- * The Original Code is Mozilla Android code.
- *
- * The Initial Developer of the Original Code is Mozilla Foundation.
- * Portions created by the Initial Developer are Copyright (C) 2011
- * the Initial Developer. All Rights Reserved.
- *
- * Contributor(s):
- *   Sriram Ramasubramanian <sriram@mozilla.com>
- *
- * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
- * in which case the provisions of the GPL or the LGPL are applicable instead
- * of those above. If you wish to allow use of your version of this file only
- * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the MPL, indicate your
- * decision by deleting the provisions above and replace them with the notice
- * and other provisions required by the GPL or the LGPL. If you do not delete
- * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the MPL, the GPL or the LGPL.
- *
- * ***** END LICENSE BLOCK ***** */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 package org.mozilla.gecko;
 
 import java.util.ArrayList;
 
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Build;
@@ -58,6 +28,8 @@ import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import org.mozilla.gecko.sync.setup.SyncAccounts;
+
 public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
 
     private static int sPreferredHeight;
@@ -66,6 +38,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
     private static int sAddTabHeight;
     private static ListView mList;
     private static TabsListContainer mListContainer;
+    private static LinkTextView mRemoteTabs;
     private TabsAdapter mTabsAdapter;
     private boolean mWaitingForClose;
 
@@ -84,14 +57,21 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         mList = (ListView) findViewById(R.id.list);
         mListContainer = (TabsListContainer) findViewById(R.id.list_container);
 
-        LinearLayout addTab = (LinearLayout) findViewById(R.id.add_tab);
+        ImageButton addTab = (ImageButton) findViewById(R.id.add_tab);
         addTab.setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
                 GeckoApp.mAppContext.addTab();
                 finishActivity();
             }
         });
-        
+
+        mRemoteTabs = (LinkTextView) findViewById(R.id.remote_tabs);
+        mRemoteTabs.setOnClickListener(new Button.OnClickListener() {
+            public void onClick(View v) {
+                showRemoteTabs();
+            }
+        });
+
         LinearLayout container = (LinearLayout) findViewById(R.id.container);
         container.setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
@@ -103,7 +83,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
 
         sListItemHeight = (int) (TABS_LIST_ITEM_HEIGHT * metrics.density);
-        sAddTabHeight = (int) (TABS_ADD_TAB_HEIGHT * metrics.density); 
+        sAddTabHeight = (int) (TABS_ADD_TAB_HEIGHT * metrics.density);
         sPreferredHeight = (int) (0.67 * metrics.heightPixels);
         sMaxHeight = (int) (sPreferredHeight + (0.33 * sListItemHeight));
 
@@ -111,6 +91,24 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         tabs.registerOnTabsChangedListener(this);
         tabs.refreshThumbnails();
         onTabChanged(null, null);
+
+        // If Sync is set up, query the database for remote clients.
+        final Context context = getApplicationContext();
+        new SyncAccounts.AccountsExistTask() {
+            @Override
+            protected void onPostExecute(Boolean result) {
+                if (!result.booleanValue()) {
+                    return;
+                }
+                TabsAccessor.areClientsAvailable(context, new TabsAccessor.OnClientsAvailableListener() {
+                    @Override
+                    public void areAvailable(boolean available) {
+                        final int visibility = available ? View.VISIBLE : View.GONE;
+                        mRemoteTabs.setVisibility(visibility);
+                    }
+                });
+            }
+        }.execute(context);
     }
 
     @Override
@@ -118,7 +116,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         super.onDestroy();
         Tabs.getInstance().unregisterOnTabsChangedListener(this);
     }
-   
+
     public void onTabChanged(Tab tab, Tabs.TabEvents msg) {
         if (Tabs.getInstance().getCount() == 1)
             finishActivity();
@@ -135,7 +133,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             mList.setSelection(selected);
             return;
         }
-        
+
         int position = mTabsAdapter.getPositionForTab(tab);
         if (position == -1)
             return;
@@ -157,6 +155,14 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Tab:Screenshot:Cancel",""));
     }
 
+    void showRemoteTabs() {
+        Intent intent = new Intent(this, RemoteTabs.class);
+        intent.putExtra("exit-to-tabs-tray", true);
+        startActivity(intent);
+        overridePendingTransition(R.anim.grow_fade_in, R.anim.shrink_fade_out);
+        finishActivity();
+    }
+
     // Tabs List Container holds the ListView and the New Tab button
     public static class TabsListContainer extends LinearLayout {
         public TabsListContainer(Context context, AttributeSet attrs) {
@@ -176,7 +182,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             if (childrenHeight <= sPreferredHeight) {
                 restrictedHeightSpec = MeasureSpec.makeMeasureSpec(childrenHeight, MeasureSpec.EXACTLY);
             } else {
-                if ((childrenHeight - sAddTabHeight) % sListItemHeight == 0)
+                if (((childrenHeight - sAddTabHeight) % sListItemHeight == 0) && (childrenHeight >= sMaxHeight))
                     restrictedHeightSpec = MeasureSpec.makeMeasureSpec(sMaxHeight, MeasureSpec.EXACTLY);
                 else
                     restrictedHeightSpec = MeasureSpec.makeMeasureSpec(sPreferredHeight, MeasureSpec.EXACTLY);
@@ -186,7 +192,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         }
     }
 
-    // Adapter to bind tabs into a list 
+    // Adapter to bind tabs into a list
     private class TabsAdapter extends BaseAdapter {
         public TabsAdapter(Context context, ArrayList<Tab> tabs) {
             mContext = context;
@@ -199,7 +205,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             for (int i = 0; i < tabs.size(); i++) {
                 mTabs.add(tabs.get(i));
             }
-            
+
             mOnInfoClickListener = new View.OnClickListener() {
                 public void onClick(View v) {
                     Tabs.getInstance().selectTab(Integer.parseInt((String) v.getTag()));
@@ -225,7 +231,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         public int getCount() {
             return mTabs.size();
         }
-    
+
         public Tab getItem(int position) {
             return mTabs.get(position);
         }
@@ -274,7 +280,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             info.setOnClickListener(mOnInfoClickListener);
 
             assignValues(convertView, tab);
-            
+
             ImageButton close = (ImageButton) convertView.findViewById(R.id.close);
             if (mTabs.size() > 1) {
                 close.setTag(String.valueOf(tab.getId()));
@@ -293,7 +299,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         @Override
         public void notifyDataSetInvalidated() {
         }
-    
+
         private Context mContext;
         private ArrayList<Tab> mTabs;
         private LayoutInflater mInflater;
