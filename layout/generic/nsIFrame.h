@@ -1057,12 +1057,8 @@ public:
    * @return  the child list.  If the requested list is unsupported by this
    *          frame type, an empty list will be returned.
    */
-  // XXXbz if all our frame storage were actually backed by nsFrameList, we
-  // could make this return a const reference...  nsBlockFrame is the only real
-  // culprit here.  Make sure to assign the return value of this function into
-  // a |const nsFrameList&|, not an nsFrameList.
-  virtual nsFrameList GetChildList(ChildListID aListID) const = 0;
-  nsFrameList PrincipalChildList() { return GetChildList(kPrincipalList); }
+  virtual const nsFrameList& GetChildList(ChildListID aListID) const = 0;
+  const nsFrameList& PrincipalChildList() { return GetChildList(kPrincipalList); }
   virtual void GetChildLists(nsTArray<ChildList>* aLists) const = 0;
   // XXXbz this method should go away
   nsIFrame* GetFirstChild(ChildListID aListID) const {
@@ -1249,10 +1245,12 @@ public:
 
   bool HasPerspective() const;
 
+  bool ChildrenHavePerspective() const;
+
   // Calculate the overflow size of all child frames, taking preserve-3d into account
   void ComputePreserve3DChildrenOverflow(nsOverflowAreas& aOverflowAreas, const nsRect& aBounds);
 
-  void RecomputePerspectiveChildrenOverflow(const nsIFrame* aStartFrame, const nsRect* aBounds);
+  void RecomputePerspectiveChildrenOverflow(const nsStyleContext* aStartStyle, const nsRect* aBounds);
 
   /**
    * Event handling of GUI events.
@@ -2426,8 +2424,9 @@ public:
    * Get the frame whose style context should be the parent of this
    * frame's style context (i.e., provide the parent style context).
    * This frame must either be an ancestor of this frame or a child.  If
-   * this frame returns a child frame, then the child frame must be sure
-   * to return a grandparent or higher!
+   * this returns a child frame, then the child frame must be sure to
+   * return a grandparent or higher!  Furthermore, if a child frame is
+   * returned it must have the same GetContent() as this frame.
    *
    * @return The frame whose style context should be the parent of this frame's
    *         style context.  Null is permitted, and means that this frame's

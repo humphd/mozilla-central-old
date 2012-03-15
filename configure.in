@@ -1838,6 +1838,33 @@ if test -n "$CLANG_CXX"; then
 fi
 
 dnl ========================================================
+dnl = Use Address Sanitizer
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(address-sanitizer,
+[  --enable-address-sanitizer       Enable Address Sanitizer (default=no)],
+    MOZ_ASAN=1,
+    MOZ_ASAN= )
+if test -n "$MOZ_ASAN"; then
+    MOZ_LLVM_HACKS=1
+    AC_DEFINE(MOZ_ASAN)
+fi
+AC_SUBST(MOZ_ASAN)
+
+dnl ========================================================
+dnl = Enable hacks required for LLVM instrumentations
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(llvm-hacks,
+[  --enable-llvm-hacks       Enable workarounds required for several LLVM instrumentations (default=no)],
+    MOZ_LLVM_HACKS=1,
+    MOZ_LLVM_HACKS= )
+if test -n "$MOZ_LLVM_HACKS"; then
+    MOZ_NO_WLZDEFS=1
+    MOZ_CFLAGS_NSS=1
+fi
+AC_SUBST(MOZ_NO_WLZDEFS)
+AC_SUBST(MOZ_CFLAGS_NSS)
+
+dnl ========================================================
 dnl GNU specific defaults
 dnl ========================================================
 if test "$GNU_CC"; then
@@ -1847,8 +1874,13 @@ if test "$GNU_CC"; then
     MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$@ -o $@'
     DSO_LDOPTS='-shared'
     if test "$GCC_USE_GNU_LD"; then
-        # Don't allow undefined symbols in libraries
-        DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
+        # Some tools like ASan use a runtime library that is only
+        # linked against executables, so we must allow undefined
+        # symbols for shared objects in some cases.
+        if test -z "$MOZ_NO_WLZDEFS"; then
+            # Don't allow undefined symbols in libraries
+            DSO_LDOPTS="$DSO_LDOPTS -Wl,-z,defs"
+        fi
     fi
     WARNINGS_AS_ERRORS='-Werror -Wno-error=uninitialized'
     DSO_CFLAGS=''
@@ -2142,10 +2174,33 @@ fi
 dnl ========================================================
 dnl SPS Profiler
 dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(sps,
-[  --enable-sps          Enable sps profiling tool.],
-    MOZ_ENABLE_PROFILER_SPS=1,
-    MOZ_ENABLE_PROFILER_SPS= )
+MOZ_ENABLE_PROFILER_SPS=1
+
+case "${OS_TARGET}" in
+Android)
+    case "${CPU_ARCH}" in
+    x86 | arm) ;;
+    *)
+        MOZ_ENABLE_PROFILER_SPS=
+    esac
+    ;;
+Linux)
+    case "${CPU_ARCH}" in
+    x86 | x86_64) ;;
+    *)
+        MOZ_ENABLE_PROFILER_SPS=
+    esac
+    ;;
+WINNT|Darwin) ;;
+*)
+    MOZ_ENABLE_PROFILER_SPS=
+    ;;
+esac
+
+MOZ_ARG_DISABLE_BOOL(sps,
+[  --disable-sps         Disable sps profiling tool.],
+    MOZ_ENABLE_PROFILER_SPS=,
+    MOZ_ENABLE_PROFILER_SPS=1)
 if test -n "$MOZ_ENABLE_PROFILER_SPS"; then
     AC_DEFINE(MOZ_ENABLE_PROFILER_SPS)
 fi
@@ -2492,6 +2547,8 @@ ia64*-hpux*)
     no_x=yes
     if test -n "$gonkdir"; then
         _PLATFORM_DEFAULT_TOOLKIT=cairo-gonk
+        MOZ_B2G_RIL=1
+        MOZ_B2G_BT=1
     else
         _PLATFORM_DEFAULT_TOOLKIT=cairo-android
         MOZ_LINKER=1
@@ -4897,6 +4954,10 @@ MOZ_ARG_HEADER(Toolkit Options)
         AC_MSG_ERROR([You must specify a default toolkit (perhaps $_PLATFORM_DEFAULT_TOOLKIT).])
     fi
 
+MOZ_ARG_WITHOUT_BOOL(x,
+[  --without-x              Build without X11],
+    WITHOUT_X11=1)
+
 dnl ========================================================
 dnl = Enable the toolkit as needed                         =
 dnl ========================================================
@@ -4931,16 +4992,17 @@ cairo-gtk2|cairo-gtk2-x11)
 cairo-qt)
     MOZ_WIDGET_TOOLKIT=qt
     MOZ_ENABLE_QT=1
-    MOZ_ENABLE_XREMOTE=1
+    if test -z "$WITHOUT_X11"; then
+      MOZ_ENABLE_XREMOTE=1
+      MOZ_WEBGL_GLX=1
+      MOZ_X11=1
+      AC_DEFINE(MOZ_X11)
+      XT_LIBS=
+    fi
+
     MOZ_WEBGL=1
-    MOZ_WEBGL_GLX=1
     USE_ELF_DYNSTR_GC=
-
-    AC_DEFINE(MOZ_X11)
-    MOZ_X11=1
     USE_FC_FREETYPE=1
-    XT_LIBS=
-
     TK_CFLAGS='$(MOZ_QT_CFLAGS)'
     TK_LIBS='$(MOZ_QT_LIBS)'
     AC_DEFINE(MOZ_WIDGET_QT)
@@ -5006,7 +5068,6 @@ cairo-gonk)
     TK_LIBS='$(MOZ_CAIRO_LIBS)'
     MOZ_WEBGL=1
     MOZ_PDF_PRINTING=1
-    MOZ_B2G_RIL=1
     MOZ_TOUCH=1
     ;;
 
@@ -7148,78 +7209,6 @@ if test -n "$MOZ_DEBUG" -o -n "$MOZ_DEBUG_SYMBOLS"; then
 fi
 
 dnl ========================================================
-dnl = Identical Code Folding
-dnl ========================================================
-
-MOZ_ARG_DISABLE_BOOL(icf,
-[  --disable-icf          Disable Identical Code Folding],
-    MOZ_DISABLE_ICF=1,
-    MOZ_DISABLE_ICF= )
-
-if test "$GNU_CC" -a "$GCC_USE_GNU_LD" -a -z "$MOZ_DISABLE_ICF"; then
-    AC_CACHE_CHECK([whether the linker supports Identical Code Folding],
-        LD_SUPPORTS_ICF,
-        [echo 'int foo() {return 42;}' \
-              'int bar() {return 42;}' \
-              'int main() {return foo() - bar();}' > conftest.${ac_ext}
-        # If the linker supports ICF, foo and bar symbols will have
-        # the same address
-        if AC_TRY_COMMAND([${CC-cc} -o conftest${ac_exeext} $LDFLAGS -Wl,--icf=safe -ffunction-sections conftest.${ac_ext} $LIBS 1>&2]) &&
-           test -s conftest${ac_exeext} &&
-           objdump -t conftest${ac_exeext} | awk '{a[[$6]] = $1} END {if (a[["foo"]] && (a[["foo"]] != a[["bar"]])) { exit 1 }}'; then
-            LD_SUPPORTS_ICF=yes
-        else
-            LD_SUPPORTS_ICF=no
-        fi
-        rm -rf conftest*])
-    if test "$LD_SUPPORTS_ICF" = yes; then
-        LDFLAGS="$LDFLAGS -Wl,--icf=safe"
-        CFLAGS="$CFLAGS -ffunction-sections"
-        CXXFLAGS="$CXXFLAGS -ffunction-sections"
-    fi
-fi
-
-dnl ========================================================
-dnl = Automatically remove dead symbols
-dnl ========================================================
-
-if test "$GNU_CC" -a "$GCC_USE_GNU_LD" -a -n "$MOZ_DEBUG_FLAGS"; then
-   dnl See bug 670659
-   AC_CACHE_CHECK([whether removing dead symbols breaks debugging],
-       GC_SECTIONS_BREAKS_DEBUG_RANGES,
-       [echo 'int foo() {return 42;}' \
-             'int bar() {return 1;}' \
-             'int main() {return foo();}' > conftest.${ac_ext}
-        if AC_TRY_COMMAND([${CC-cc} -o conftest.${ac_objext} $CFLAGS $MOZ_DEBUG_FLAGS -ffunction-sections -c conftest.${ac_ext} 1>&2]) &&
-           AC_TRY_COMMAND([${CC-cc} -o conftest${ac_exeext} $LDFLAGS $MOZ_DEBUG_FLAGS -Wl,--gc-sections conftest.${ac_objext} $LIBS 1>&2]) &&
-           test -s conftest${ac_exeext} -a -s conftest.${ac_objext}; then
-            if test "`$PYTHON "$_topsrcdir"/build/unix/check_debug_ranges.py conftest.${ac_objext} conftest.${ac_ext}`" = \
-                    "`$PYTHON "$_topsrcdir"/build/unix/check_debug_ranges.py conftest${ac_exeext} conftest.${ac_ext}`"; then
-                GC_SECTIONS_BREAKS_DEBUG_RANGES=no
-            else
-                GC_SECTIONS_BREAKS_DEBUG_RANGES=yes
-            fi
-        else
-             dnl We really don't expect to get here, but just in case
-             GC_SECTIONS_BREAKS_DEBUG_RANGES="no, but it's broken in some other way"
-        fi
-        rm -rf conftest*])
-    if test "$GC_SECTIONS_BREAKS_DEBUG_RANGES" = no; then
-        DSO_LDOPTS="$DSO_LDOPTS -Wl,--gc-sections"
-        case "$CFLAGS" in
-        *-ffunction-sections*)
-            CFLAGS="$CFLAGS -fdata-sections"
-            CXXFLAGS="$CXXFLAGS -fdata-sections"
-            ;;
-        *)
-            CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
-            CXXFLAGS="$CXXFLAGS -ffunction-sections -fdata-sections"
-            ;;
-        esac
-    fi
-fi
-
-dnl ========================================================
 dnl = Enable any treating of compile warnings as errors
 dnl ========================================================
 MOZ_ARG_ENABLE_BOOL(warnings-as-errors,
@@ -8040,37 +8029,7 @@ fi # ! SKIP_COMPILER_CHECKS
 AC_DEFINE(CPP_THROW_NEW, [throw()])
 AC_LANG_C
 
-dnl ========================================================
-dnl =
-dnl = Check what kind of list files are supported by the
-dnl = linker
-dnl =
-dnl ========================================================
-
-AC_CACHE_CHECK(what kind of list files are supported by the linker,
-    EXPAND_LIBS_LIST_STYLE,
-    [echo "int main() {return 0;}" > conftest.${ac_ext}
-     if AC_TRY_COMMAND(${CC-cc} -o conftest.${OBJ_SUFFIX} -c $CFLAGS $CPPFLAGS conftest.${ac_ext} 1>&2) && test -s conftest.${OBJ_SUFFIX}; then
-         echo "INPUT(conftest.${OBJ_SUFFIX})" > conftest.list
-         if AC_TRY_COMMAND(${CC-cc} -o conftest${ac_exeext} $LDFLAGS conftest.list $LIBS 1>&2) && test -s conftest${ac_exeext}; then
-             EXPAND_LIBS_LIST_STYLE=linkerscript
-         else
-             echo "conftest.${OBJ_SUFFIX}" > conftest.list
-             if AC_TRY_COMMAND(${CC-cc} -o conftest${ac_exeext} $LDFLAGS @conftest.list $LIBS 1>&2) && test -s conftest${ac_exeext}; then
-                 EXPAND_LIBS_LIST_STYLE=list
-             else
-                 EXPAND_LIBS_LIST_STYLE=none
-             fi
-         fi
-     else
-         dnl We really don't expect to get here, but just in case
-         AC_ERROR([couldn't compile a simple C file])
-     fi
-     rm -rf conftest*])
-
-LIBS_DESC_SUFFIX=desc
-AC_SUBST(LIBS_DESC_SUFFIX)
-AC_SUBST(EXPAND_LIBS_LIST_STYLE)
+MOZ_EXPAND_LIBS
 
 dnl ========================================================
 dnl =
@@ -8895,6 +8854,8 @@ AC_SUBST(LIBJPEG_TURBO_X86_ASM)
 AC_SUBST(LIBJPEG_TURBO_X64_ASM)
 AC_SUBST(LIBJPEG_TURBO_ARM_ASM)
 
+AC_SUBST(MOZ_PACKAGE_JSSHELL)
+
 AC_MSG_CHECKING([for posix_fallocate])
 AC_TRY_LINK([#define _XOPEN_SOURCE 600
   #include <fcntl.h>],
@@ -8912,6 +8873,9 @@ fi
 dnl Check for missing components
 if test "$COMPILE_ENVIRONMENT"; then
 if test "$MOZ_X11"; then
+    if test "$WITHOUT_X11"; then
+        AC_MSG_ERROR([--without-x specified and MOZ_X11 still defined])
+    fi
     dnl ====================================================
     dnl = Check if X headers exist
     dnl ====================================================

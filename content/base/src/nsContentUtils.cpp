@@ -1192,6 +1192,72 @@ nsContentUtils::IsHTMLWhitespace(PRUnichar aChar)
 
 /* static */
 bool
+nsContentUtils::IsHTMLBlock(nsIAtom* aLocalName)
+{
+  return
+    (aLocalName == nsGkAtoms::address) ||
+    (aLocalName == nsGkAtoms::article) ||
+    (aLocalName == nsGkAtoms::aside) ||
+    (aLocalName == nsGkAtoms::blockquote) ||
+    (aLocalName == nsGkAtoms::center) ||
+    (aLocalName == nsGkAtoms::dir) ||
+    (aLocalName == nsGkAtoms::div) ||
+    (aLocalName == nsGkAtoms::dl) || // XXX why not dt and dd?
+    (aLocalName == nsGkAtoms::fieldset) ||
+    (aLocalName == nsGkAtoms::figure) || // XXX shouldn't figcaption be on this list
+    (aLocalName == nsGkAtoms::footer) ||
+    (aLocalName == nsGkAtoms::form) ||
+    (aLocalName == nsGkAtoms::h1) ||
+    (aLocalName == nsGkAtoms::h2) ||
+    (aLocalName == nsGkAtoms::h3) ||
+    (aLocalName == nsGkAtoms::h4) ||
+    (aLocalName == nsGkAtoms::h5) ||
+    (aLocalName == nsGkAtoms::h6) ||
+    (aLocalName == nsGkAtoms::header) ||
+    (aLocalName == nsGkAtoms::hgroup) ||
+    (aLocalName == nsGkAtoms::hr) ||
+    (aLocalName == nsGkAtoms::li) ||
+    (aLocalName == nsGkAtoms::listing) ||
+    (aLocalName == nsGkAtoms::menu) ||
+    (aLocalName == nsGkAtoms::multicol) || // XXX get rid of this one?
+    (aLocalName == nsGkAtoms::nav) ||
+    (aLocalName == nsGkAtoms::ol) ||
+    (aLocalName == nsGkAtoms::p) ||
+    (aLocalName == nsGkAtoms::pre) ||
+    (aLocalName == nsGkAtoms::section) ||
+    (aLocalName == nsGkAtoms::table) ||
+    (aLocalName == nsGkAtoms::ul) ||
+    (aLocalName == nsGkAtoms::xmp);
+}
+
+/* static */
+bool
+nsContentUtils::IsHTMLVoid(nsIAtom* aLocalName)
+{
+  return
+    (aLocalName == nsGkAtoms::area) ||
+    (aLocalName == nsGkAtoms::base) ||
+    (aLocalName == nsGkAtoms::basefont) ||
+    (aLocalName == nsGkAtoms::bgsound) ||
+    (aLocalName == nsGkAtoms::br) ||
+    (aLocalName == nsGkAtoms::col) ||
+    (aLocalName == nsGkAtoms::command) ||
+    (aLocalName == nsGkAtoms::embed) ||
+    (aLocalName == nsGkAtoms::frame) ||
+    (aLocalName == nsGkAtoms::hr) ||
+    (aLocalName == nsGkAtoms::img) ||
+    (aLocalName == nsGkAtoms::input) ||
+    (aLocalName == nsGkAtoms::keygen) ||
+    (aLocalName == nsGkAtoms::link) ||
+    (aLocalName == nsGkAtoms::meta) ||
+    (aLocalName == nsGkAtoms::param) ||
+    (aLocalName == nsGkAtoms::source) ||
+    (aLocalName == nsGkAtoms::track) ||
+    (aLocalName == nsGkAtoms::wbr);
+}
+
+/* static */
+bool
 nsContentUtils::ParseIntMarginValue(const nsAString& aString, nsIntMargin& result)
 {
   nsAutoString marginStr(aString);
@@ -5327,6 +5393,7 @@ nsContentUtils::ASCIIToUpper(const nsAString& aSource, nsAString& aDest)
   }
 }
 
+/* static */
 bool
 nsContentUtils::EqualsIgnoreASCIICase(const nsAString& aStr1,
                                       const nsAString& aStr2)
@@ -5349,7 +5416,7 @@ nsContentUtils::EqualsIgnoreASCIICase(const nsAString& aStr1,
       return false;
     }
 
-    // We know they only differ in the 0x0020 bit.
+    // We know they can only differ in the 0x0020 bit.
     // Likely the two chars are the same, so check that first
     if (c1 != c2) {
       // They do differ, but since it's only in the 0x0020 bit, check if it's
@@ -5361,6 +5428,44 @@ nsContentUtils::EqualsIgnoreASCIICase(const nsAString& aStr1,
     }
   }
 
+  return true;
+}
+
+/* static */
+bool
+nsContentUtils::EqualsLiteralIgnoreASCIICase(const nsAString& aStr1,
+                                             const char* aStr2,
+                                             const PRUint32 len)
+{
+  if (aStr1.Length() != len) {
+    return false;
+  }
+  
+  const PRUnichar* str1 = aStr1.BeginReading();
+  const char*      str2 = aStr2;
+  const PRUnichar* end = str1 + len;
+  
+  while (str1 < end) {
+    PRUnichar c1 = *str1++;
+    PRUnichar c2 = *str2++;
+
+    // First check if any bits other than the 0x0020 differs
+    if ((c1 ^ c2) & 0xffdf) {
+      return false;
+    }
+    
+    // We know they can only differ in the 0x0020 bit.
+    // Likely the two chars are the same, so check that first
+    if (c1 != c2) {
+      // They do differ, but since it's only in the 0x0020 bit, check if it's
+      // the same ascii char, but just differing in case
+      PRUnichar c1Upper = c1 & 0xffdf;
+      if (!('A' <= c1Upper && c1Upper <= 'Z')) {
+        return false;
+      }
+    }
+  }
+  
   return true;
 }
 

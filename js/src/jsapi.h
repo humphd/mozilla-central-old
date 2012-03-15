@@ -861,7 +861,8 @@ class JS_PUBLIC_API(AutoGCRooter) {
         DESCRIPTOR =  -13, /* js::AutoPropertyDescriptorRooter */
         STRING =      -14, /* js::AutoStringRooter */
         IDVECTOR =    -15, /* js::AutoIdVector */
-        OBJVECTOR =   -16  /* js::AutoObjectVector */
+        OBJVECTOR =   -16, /* js::AutoObjectVector */
+        SCRIPTVECTOR =-17  /* js::AutoScriptVector */
     };
 
   private:
@@ -1132,6 +1133,19 @@ class AutoIdVector : public AutoVectorRooter<jsid>
     explicit AutoIdVector(JSContext *cx
                           JS_GUARD_OBJECT_NOTIFIER_PARAM)
         : AutoVectorRooter<jsid>(cx, IDVECTOR)
+    {
+        JS_GUARD_OBJECT_NOTIFIER_INIT;
+    }
+
+    JS_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
+class AutoScriptVector : public AutoVectorRooter<JSScript *>
+{
+  public:
+    explicit AutoScriptVector(JSContext *cx
+                              JS_GUARD_OBJECT_NOTIFIER_PARAM)
+        : AutoVectorRooter<JSScript *>(cx, SCRIPTVECTOR)
     {
         JS_GUARD_OBJECT_NOTIFIER_INIT;
     }
@@ -1520,6 +1534,12 @@ typedef JSBool
  * Security protocol types.
  */
 
+typedef void
+(* JSDestroyPrincipalsOp)(JSPrincipals *principals);
+
+typedef JSBool
+(* JSSubsumePrincipalsOp)(JSPrincipals *principals1, JSPrincipals *principals2);
+
 /*
  * XDR-encode or -decode a principals instance, based on whether xdr->mode is
  * JSXDR_ENCODE, in which case *principalsp should be encoded; or JSXDR_DECODE,
@@ -1539,7 +1559,7 @@ typedef JSBool
  * callback's implementation.
  */
 typedef JSPrincipals *
-(* JSObjectPrincipalsFinder)(JSContext *cx, JSObject *obj);
+(* JSObjectPrincipalsFinder)(JSObject *obj);
 
 /*
  * Used to check if a CSP instance wants to disable eval() and friends.
@@ -2879,6 +2899,12 @@ JS_THIS(JSContext *cx, jsval *vp)
  */
 #define JS_THIS_VALUE(cx,vp)    ((vp)[1])
 
+extern JS_PUBLIC_API(void)
+JS_MallocInCompartment(JSCompartment *comp, size_t nbytes);
+
+extern JS_PUBLIC_API(void)
+JS_FreeInCompartment(JSCompartment *comp, size_t nbytes);
+
 extern JS_PUBLIC_API(void *)
 JS_malloc(JSContext *cx, size_t nbytes);
 
@@ -4082,52 +4108,48 @@ JS_SetReservedSlot(JSObject *obj, uint32_t index, jsval v);
  * Security protocol.
  */
 struct JSPrincipals {
-    char *codebase;
-
     /* Don't call "destroy"; use reference counting macros below. */
     int refcount;
 
-    void   (* destroy)(JSContext *cx, JSPrincipals *);
-    JSBool (* subsume)(JSPrincipals *, JSPrincipals *);
-};
-
-#ifdef JS_THREADSAFE
-#define JSPRINCIPALS_HOLD(cx, principals)   JS_HoldPrincipals(cx,principals)
-#define JSPRINCIPALS_DROP(cx, principals)   JS_DropPrincipals(cx,principals)
-
-extern JS_PUBLIC_API(int)
-JS_HoldPrincipals(JSContext *cx, JSPrincipals *principals);
-
-extern JS_PUBLIC_API(int)
-JS_DropPrincipals(JSContext *cx, JSPrincipals *principals);
-
-#else
-#define JSPRINCIPALS_HOLD(cx, principals)   (++(principals)->refcount)
-#define JSPRINCIPALS_DROP(cx, principals)                                     \
-    ((--(principals)->refcount == 0)                                          \
-     ? ((*(principals)->destroy)((cx), (principals)), 0)                      \
-     : (principals)->refcount)
+#ifdef DEBUG
+    /* A helper to facilitate principals debugging. */
+    uint32_t    debugToken;
 #endif
 
+#ifdef __cplusplus
+    void setDebugToken(uint32_t token) {
+# ifdef DEBUG
+        debugToken = token;
+# endif
+    }
+
+    /*
+     * This is not defined by the JS engine but should be provided by the
+     * embedding.
+     */
+    JS_PUBLIC_API(void) dump();
+#endif
+};
+
+extern JS_PUBLIC_API(void)
+JS_HoldPrincipals(JSPrincipals *principals);
+
+extern JS_PUBLIC_API(void)
+JS_DropPrincipals(JSRuntime *rt, JSPrincipals *principals);
 
 struct JSSecurityCallbacks {
     JSCheckAccessOp            checkObjectAccess;
+    JSSubsumePrincipalsOp      subsumePrincipals;
     JSPrincipalsTranscoder     principalsTranscoder;
     JSObjectPrincipalsFinder   findObjectPrincipals;
     JSCSPEvalChecker           contentSecurityPolicyAllows;
 };
 
-extern JS_PUBLIC_API(JSSecurityCallbacks *)
-JS_SetRuntimeSecurityCallbacks(JSRuntime *rt, JSSecurityCallbacks *callbacks);
+extern JS_PUBLIC_API(void)
+JS_SetSecurityCallbacks(JSRuntime *rt, const JSSecurityCallbacks *callbacks);
 
-extern JS_PUBLIC_API(JSSecurityCallbacks *)
-JS_GetRuntimeSecurityCallbacks(JSRuntime *rt);
-
-extern JS_PUBLIC_API(JSSecurityCallbacks *)
-JS_SetContextSecurityCallbacks(JSContext *cx, JSSecurityCallbacks *callbacks);
-
-extern JS_PUBLIC_API(JSSecurityCallbacks *)
-JS_GetSecurityCallbacks(JSContext *cx);
+extern JS_PUBLIC_API(const JSSecurityCallbacks *)
+JS_GetSecurityCallbacks(JSRuntime *rt);
 
 /*
  * Code running with "trusted" principals will be given a deeper stack
@@ -4143,6 +4165,14 @@ JS_GetSecurityCallbacks(JSContext *cx);
  */
 extern JS_PUBLIC_API(void)
 JS_SetTrustedPrincipals(JSRuntime *rt, JSPrincipals *prin);
+
+/*
+ * Initialize the callback that is called to destroy JSPrincipals instance
+ * when its reference counter drops to zero. The initialization can be done
+ * only once per JS runtime.
+ */
+extern JS_PUBLIC_API(void)
+JS_InitDestroyPrincipalsCallback(JSRuntime *rt, JSDestroyPrincipalsOp destroyPrincipals);
 
 /************************************************************************/
 
@@ -4498,21 +4528,17 @@ JS_BEGIN_EXTERN_C
 
 /*
  * These functions allow setting an operation callback that will be called
- * from the thread the context is associated with some time after any thread
- * triggered the callback using JS_TriggerOperationCallback(cx).
+ * from the JS thread some time after any thread triggered the callback using
+ * JS_TriggerOperationCallback(rt).
  *
- * In a threadsafe build the engine internally triggers operation callbacks
- * under certain circumstances (i.e. GC and title transfer) to force the
- * context to yield its current request, which the engine always
- * automatically does immediately prior to calling the callback function.
- * The embedding should thus not rely on callbacks being triggered through
- * the external API only.
+ * To schedule the GC and for other activities the engine internally triggers
+ * operation callbacks. The embedding should thus not rely on callbacks being
+ * triggered through the external API only.
  *
  * Important note: Additional callbacks can occur inside the callback handler
  * if it re-enters the JS engine. The embedding must ensure that the callback
  * is disconnected before attempting such re-entry.
  */
-
 extern JS_PUBLIC_API(JSOperationCallback)
 JS_SetOperationCallback(JSContext *cx, JSOperationCallback callback);
 
@@ -4520,10 +4546,7 @@ extern JS_PUBLIC_API(JSOperationCallback)
 JS_GetOperationCallback(JSContext *cx);
 
 extern JS_PUBLIC_API(void)
-JS_TriggerOperationCallback(JSContext *cx);
-
-extern JS_PUBLIC_API(void)
-JS_TriggerRuntimeOperationCallback(JSRuntime *rt);
+JS_TriggerOperationCallback(JSRuntime *rt);
 
 extern JS_PUBLIC_API(JSBool)
 JS_IsRunning(JSContext *cx);
@@ -5402,6 +5425,14 @@ JS_IndexToId(JSContext *cx, uint32_t index, jsid *id);
  */
 extern JS_PUBLIC_API(JSBool)
 JS_IsIdentifier(JSContext *cx, JSString *str, JSBool *isIdentifier);
+
+/*
+ * Return the current script and line number of the most currently running
+ * frame. Returns true if a scripted frame was found, false otherwise.
+ */
+extern JS_PUBLIC_API(JSBool)
+JS_DescribeScriptedCaller(JSContext *cx, JSScript **script, unsigned *lineno);
+
 
 JS_END_EXTERN_C
 

@@ -550,6 +550,11 @@ CustomElf::InitDyn(const Phdr *pt_dyn)
       case DT_FLAGS:
         {
            Word flags = dyn->d_un.d_val;
+           /* Treat as a DT_TEXTREL tag */
+           if (flags & DF_TEXTREL) {
+             log("%s: Text relocations are not supported", GetPath());
+             return false;
+           }
            /* we can treat this like having a DT_SYMBOLIC tag */
            flags &= ~DF_SYMBOLIC;
            if (flags)
@@ -679,9 +684,12 @@ CustomElf::RelocateJumps()
       symptr = GetSymbolPtrInDeps(strtab.GetStringAt(sym.st_name));
 
     if (symptr == NULL) {
-      log("%s: Error: relocation to NULL @0x%08" PRIxAddr " for symbol \"%s\"",
-          GetPath(), rel->r_offset, strtab.GetStringAt(sym.st_name));
-      return false;
+      log("%s: %s: relocation to NULL @0x%08" PRIxAddr " for symbol \"%s\"",
+          GetPath(),
+          (ELF_ST_BIND(sym.st_info) == STB_WEAK) ? "Warning" : "Error",
+          rel->r_offset, strtab.GetStringAt(sym.st_name));
+      if (ELF_ST_BIND(sym.st_info) != STB_WEAK)
+        return false;
     }
     /* Apply relocation */
     *(void **) ptr = symptr;

@@ -68,9 +68,14 @@
 
 #include "sampler.h"
 
+#ifdef MOZ_WIDGET_ANDROID
+#include <android/log.h>
+#endif
+
 namespace mozilla {
 namespace layers {
 
+using namespace mozilla::gfx;
 using namespace mozilla::gl;
 
 #ifdef CHECK_CURRENT_PROGRAM
@@ -677,7 +682,8 @@ void
 LayerManagerOGL::BindAndDrawQuadWithTextureRect(LayerProgram *aProg,
                                                 const nsIntRect& aTexCoordRect,
                                                 const nsIntSize& aTexSize,
-                                                GLenum aWrapMode)
+                                                GLenum aWrapMode /* = LOCAL_GL_REPEAT */,
+                                                bool aFlipped /* = false */)
 {
   GLuint vertAttribIndex =
     aProg->AttribLocation(LayerProgram::VertexAttrib);
@@ -698,16 +704,24 @@ LayerManagerOGL::BindAndDrawQuadWithTextureRect(LayerProgram *aProg,
 
   GLContext::RectTriangles rects;
 
+  nsIntSize realTexSize = aTexSize;
+  if (!mGLContext->CanUploadNonPowerOfTwo()) {
+    realTexSize = nsIntSize(NextPowerOfTwo(aTexSize.width),
+                            NextPowerOfTwo(aTexSize.height));
+  }
+
   if (aWrapMode == LOCAL_GL_REPEAT) {
     rects.addRect(/* dest rectangle */
                   0.0f, 0.0f, 1.0f, 1.0f,
                   /* tex coords */
-                  aTexCoordRect.x / GLfloat(aTexSize.width),
-                  aTexCoordRect.y / GLfloat(aTexSize.height),
-                  aTexCoordRect.XMost() / GLfloat(aTexSize.width),
-                  aTexCoordRect.YMost() / GLfloat(aTexSize.height));
+                  aTexCoordRect.x / GLfloat(realTexSize.width),
+                  aTexCoordRect.y / GLfloat(realTexSize.height),
+                  aTexCoordRect.XMost() / GLfloat(realTexSize.width),
+                  aTexCoordRect.YMost() / GLfloat(realTexSize.height),
+                  aFlipped);
   } else {
-    GLContext::DecomposeIntoNoRepeatTriangles(aTexCoordRect, aTexSize, rects);
+    GLContext::DecomposeIntoNoRepeatTriangles(aTexCoordRect, realTexSize,
+                                              rects, aFlipped);
   }
 
   mGLContext->fVertexAttribPointer(vertAttribIndex, 2,
@@ -788,10 +802,14 @@ LayerManagerOGL::Render()
   mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
   mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
 
+  // Allow widget to render a custom background.
+  mWidget->DrawWindowUnderlay(this, rect);
+
   // Render our layers.
   RootLayer()->RenderLayer(mGLContext->IsDoubleBuffered() ? 0 : mBackBufferFBO,
                            nsIntPoint(0, 0));
 
+  // Allow widget to render a custom foreground too.
   mWidget->DrawWindowOverlay(this, rect);
 
 #ifdef MOZ_DUMP_PAINTING
@@ -1043,39 +1061,10 @@ LayerManagerOGL::CopyToTarget(gfxContext *aTarget)
   }
 #endif
 
-  GLenum format = LOCAL_GL_RGBA;
-  if (mHasBGRA)
-    format = LOCAL_GL_BGRA;
-
   NS_ASSERTION(imageSurface->Stride() == width * 4,
                "Image Surfaces being created with weird stride!");
 
-  PRUint32 currentPackAlignment = 0;
-  mGLContext->fGetIntegerv(LOCAL_GL_PACK_ALIGNMENT, (GLint*)&currentPackAlignment);
-  if (currentPackAlignment != 4) {
-    mGLContext->fPixelStorei(LOCAL_GL_PACK_ALIGNMENT, 4);
-  }
-
-  mGLContext->fReadPixels(0, 0,
-                          width, height,
-                          format,
-                          LOCAL_GL_UNSIGNED_BYTE,
-                          imageSurface->Data());
-
-  if (currentPackAlignment != 4) {
-    mGLContext->fPixelStorei(LOCAL_GL_PACK_ALIGNMENT, currentPackAlignment);
-  }
-
-  if (!mHasBGRA) {
-    // need to swap B and R bytes
-    for (int j = 0; j < height; ++j) {
-      PRUint32 *row = (PRUint32*) (imageSurface->Data() + imageSurface->Stride() * j);
-      for (int i = 0; i < width; ++i) {
-        *row = (*row & 0xff00ff00) | ((*row & 0xff) << 16) | ((*row & 0xff0000) >> 16);
-        row++;
-      }
-    }
-  }
+  mGLContext->ReadPixelsIntoImageSurface(0, 0, width, height, imageSurface);
 
   aTarget->SetOperator(gfxContext::OPERATOR_SOURCE);
   aTarget->Scale(1.0, -1.0);

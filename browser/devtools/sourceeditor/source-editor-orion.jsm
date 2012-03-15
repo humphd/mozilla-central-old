@@ -23,6 +23,8 @@
  *   Mihai Sucan <mihai.sucan@gmail.com> (original author)
  *   Kenny Heaton <kennyheaton@gmail.com>
  *   Spyros Livathinos <livathinos.spyros@gmail.com>
+ *   Allen Eubank <adeubank@gmail.com>
+ *   Girish Sharma <scrapmachines@gmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -61,6 +63,14 @@ const ORION_IFRAME = "data:text/html;charset=utf8,<!DOCTYPE html>" +
   "</body></html>";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/**
+ * Maximum allowed vertical offset for the line index when you call
+ * SourceEditor.setCaretPosition().
+ *
+ * @type number
+ */
+const VERTICAL_OFFSET = 3;
 
 /**
  * The primary selection update delay. On Linux, the X11 primary selection is
@@ -109,6 +119,10 @@ const ORION_ANNOTATION_TYPES = {
  */
 const DEFAULT_KEYBINDINGS = [
   {
+    action: "enter",
+    code: Ci.nsIDOMKeyEvent.DOM_VK_ENTER,
+  },
+  {
     action: "undo",
     code: Ci.nsIDOMKeyEvent.DOM_VK_Z,
     accel: true,
@@ -123,6 +137,18 @@ const DEFAULT_KEYBINDINGS = [
     action: "Unindent Lines",
     code: Ci.nsIDOMKeyEvent.DOM_VK_TAB,
     shift: true,
+  },
+  {
+    action: "Move Lines Up",
+    code: Ci.nsIDOMKeyEvent.DOM_VK_UP,
+    ctrl: Services.appinfo.OS == "Darwin",
+    alt: true,
+  },
+  {
+    action: "Move Lines Down",
+    code: Ci.nsIDOMKeyEvent.DOM_VK_DOWN,
+    ctrl: Services.appinfo.OS == "Darwin",
+    alt: true,
   },
 ];
 
@@ -367,6 +393,7 @@ SourceEditor.prototype = {
       "Find Next Occurrence": [this.ui.findNext, this.ui],
       "Find Previous Occurrence": [this.ui.findPrevious, this.ui],
       "Goto Line...": [this.ui.gotoLine, this.ui],
+      "Move Lines Down": [this._moveLines, this],
     };
 
     for (let name in actions) {
@@ -374,9 +401,17 @@ SourceEditor.prototype = {
       this._view.setAction(name, action[0].bind(action[1]));
     }
 
+    this._view.setAction("Move Lines Up", this._moveLines.bind(this, true));
+
     let keys = (config.keys || []).concat(DEFAULT_KEYBINDINGS);
     keys.forEach(function(aKey) {
-      let binding = new KeyBinding(aKey.code, aKey.accel, aKey.shift, aKey.alt);
+      // In Orion mod1 refers to Cmd on Macs and Ctrl on Windows and Linux.
+      // So, if ctrl is in aKey we use it on Windows and Linux, otherwise
+      // we use aKey.accel for mod1.
+      let mod1 = Services.appinfo.OS != "Darwin" &&
+                 "ctrl" in aKey ? aKey.ctrl : aKey.accel;
+      let binding = new KeyBinding(aKey.code, mod1, aKey.shift, aKey.alt,
+                                  aKey.ctrl);
       this._view.setKeyBinding(binding, aKey.action);
 
       if (aKey.callback) {
@@ -443,6 +478,10 @@ SourceEditor.prototype = {
    */
   _doTab: function SE__doTab()
   {
+    if (this.readOnly) {
+      return false;
+    }
+
     let indent = "\t";
     let selection = this.getSelection();
     let model = this._model;
@@ -493,6 +532,10 @@ SourceEditor.prototype = {
    */
   _doUnindentLines: function SE__doUnindentLines()
   {
+    if (this.readOnly) {
+      return true;
+    }
+
     let indent = "\t";
 
     let selection = this.getSelection();
@@ -547,6 +590,10 @@ SourceEditor.prototype = {
    */
   _doEnter: function SE__doEnter()
   {
+    if (this.readOnly) {
+      return false;
+    }
+
     let selection = this.getSelection();
     if (selection.start != selection.end) {
       return false;
@@ -575,6 +622,78 @@ SourceEditor.prototype = {
 
     this.setText(this.getLineDelimiter() + prefix, selection.start,
                  selection.end);
+    return true;
+  },
+
+  /**
+   * Move lines upwards or downwards, relative to the current caret location.
+   *
+   * @private
+   * @param boolean aLineAbove
+   *        True if moving lines up, false to move lines down.
+   */
+  _moveLines: function SE__moveLines(aLineAbove)
+  {
+    if (this.readOnly) {
+      return false;
+    }
+
+    let model = this._model;
+    let selection = this.getSelection();
+    let firstLine = model.getLineAtOffset(selection.start);
+    if (firstLine == 0 && aLineAbove) {
+      return true;
+    }
+
+    let lastLine = model.getLineAtOffset(selection.end);
+    let firstLineStart = model.getLineStart(firstLine);
+    let lastLineStart = model.getLineStart(lastLine);
+    if (selection.start != selection.end && lastLineStart == selection.end) {
+      lastLine--;
+    }
+    if (!aLineAbove && (lastLine + 1) == this.getLineCount()) {
+      return true;
+    }
+
+    let lastLineEnd = model.getLineEnd(lastLine, true);
+    let text = this.getText(firstLineStart, lastLineEnd);
+
+    if (aLineAbove) {
+      let aboveLine = firstLine - 1;
+      let aboveLineStart = model.getLineStart(aboveLine);
+
+      this.startCompoundChange();
+      if (lastLine == (this.getLineCount() - 1)) {
+        let delimiterStart = model.getLineEnd(aboveLine);
+        let delimiterEnd = model.getLineEnd(aboveLine, true);
+        let lineDelimiter = this.getText(delimiterStart, delimiterEnd);
+        text += lineDelimiter;
+        this.setText("", firstLineStart - lineDelimiter.length, lastLineEnd);
+      } else {
+        this.setText("", firstLineStart, lastLineEnd);
+      }
+      this.setText(text, aboveLineStart, aboveLineStart);
+      this.endCompoundChange();
+      this.setSelection(aboveLineStart, aboveLineStart + text.length);
+    } else {
+      let belowLine = lastLine + 1;
+      let belowLineEnd = model.getLineEnd(belowLine, true);
+
+      let insertAt = belowLineEnd - lastLineEnd + firstLineStart;
+      let lineDelimiter = "";
+      if (belowLine == this.getLineCount() - 1) {
+        let delimiterStart = model.getLineEnd(lastLine);
+        lineDelimiter = this.getText(delimiterStart, lastLineEnd);
+        text = lineDelimiter + text.substr(0, text.length -
+                                              lineDelimiter.length);
+      }
+      this.startCompoundChange();
+      this.setText("", firstLineStart, lastLineEnd);
+      this.setText(text, insertAt, insertAt);
+      this.endCompoundChange();
+      this.setSelection(insertAt + lineDelimiter.length,
+                        insertAt + text.length);
+    }
     return true;
   },
 
@@ -789,7 +908,8 @@ SourceEditor.prototype = {
    *
    * @private
    * @param string aType
-   *        The annotation type to filter annotations for.
+   *        The annotation type to filter annotations for. Use one of the keys
+   *        in ORION_ANNOTATION_TYPES.
    * @param number aStart
    *        Offset from where to start finding the annotations.
    * @param number aEnd
@@ -1215,10 +1335,56 @@ SourceEditor.prototype = {
    *        The new caret line location. Line numbers start from 0.
    * @param number [aColumn=0]
    *        Optional. The new caret column location. Columns start from 0.
+   * @param number [aAlign=0]
+   *        Optional. Position of the line with respect to viewport.
+   *        Allowed values are:
+   *          SourceEditor.VERTICAL_ALIGN.TOP     target line at top of view.
+   *          SourceEditor.VERTICAL_ALIGN.CENTER  target line at center of view.
+   *          SourceEditor.VERTICAL_ALIGN.BOTTOM  target line at bottom of view.
    */
-  setCaretPosition: function SE_setCaretPosition(aLine, aColumn)
+  setCaretPosition: function SE_setCaretPosition(aLine, aColumn, aAlign)
   {
-    this.setCaretOffset(this._model.getLineStart(aLine) + (aColumn || 0));
+    let editorHeight = this._view.getClientArea().height;
+    let lineHeight = this._view.getLineHeight();
+    let linesVisible = Math.floor(editorHeight/lineHeight);
+    let halfVisible = Math.round(linesVisible/2);
+    let firstVisible = this.getTopIndex();
+    let lastVisible = this._view.getBottomIndex();
+    let caretOffset = this._model.getLineStart(aLine) + (aColumn || 0);
+
+    this._view.setSelection(caretOffset, caretOffset, false);
+
+    // If the target line is in view, skip the vertical alignment part.
+    if (aLine <= lastVisible && aLine >= firstVisible) {
+      this._view.showSelection();
+      return;
+    }
+
+    // Setting the offset so that the line always falls in the upper half
+    // of visible lines (lower half for BOTTOM aligned).
+    // VERTICAL_OFFSET is the maximum allowed value.
+    let offset = Math.min(halfVisible, VERTICAL_OFFSET);
+
+    let topIndex;
+    switch (aAlign) {
+      case this.VERTICAL_ALIGN.CENTER:
+        topIndex = Math.max(aLine - halfVisible, 0);
+        break;
+
+      case this.VERTICAL_ALIGN.BOTTOM:
+        topIndex = Math.max(aLine - linesVisible + offset, 0);
+        break;
+
+      default: // this.VERTICAL_ALIGN.TOP.
+        topIndex = Math.max(aLine - offset, 0);
+        break;
+    }
+    // Bringing down the topIndex to total lines in the editor if exceeding.
+    topIndex = Math.min(topIndex, this.getLineCount());
+    this.setTopIndex(topIndex);
+
+    let location = this._view.getLocationAtOffset(caretOffset);
+    this._view.setHorizontalPixel(location.x);
   },
 
   /**

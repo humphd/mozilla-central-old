@@ -35,6 +35,10 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include "mozilla/Util.h"
+#include "mozilla/layers/CompositorChild.h"
+#include "mozilla/layers/CompositorParent.h"
+
 #include <android/log.h>
 #include <dlfcn.h>
 
@@ -111,14 +115,9 @@ AndroidBridge::Init(JNIEnv *jEnv,
     jNotifyScreenShot = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "notifyScreenShot", "(Ljava/nio/ByteBuffer;III)V");
     jAcknowledgeEventSync = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "acknowledgeEventSync", "()V");
 
-    jEnableDeviceMotion = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableDeviceMotion", "(Z)V");
     jEnableLocation = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableLocation", "(Z)V");
-    jEnableSensor =
-        (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass,
-                                            "enableSensor", "(I)V");
-    jDisableSensor =
-        (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass,
-                                            "disableSensor", "(I)V");
+    jEnableSensor = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableSensor", "(I)V");
+    jDisableSensor = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "disableSensor", "(I)V");
     jReturnIMEQueryResult = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "returnIMEQueryResult", "(Ljava/lang/String;II)V");
     jScheduleRestart = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "scheduleRestart", "()V");
     jNotifyXreExit = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "onXreExit", "()V");
@@ -178,6 +177,7 @@ AndroidBridge::Init(JNIEnv *jEnv,
     jGetCurrentNetworkInformation = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "getCurrentNetworkInformation", "()[D");
     jEnableNetworkNotifications = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "enableNetworkNotifications", "()V");
     jDisableNetworkNotifications = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "disableNetworkNotifications", "()V");
+    jEmitGeckoAccessibilityEvent = (jmethodID) jEnv->GetStaticMethodID(jGeckoAppShellClass, "emitGeckoAccessibilityEvent", "(I[Ljava/lang/String;Ljava/lang/String;ZZZ)V");
 
     jEGLContextClass = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("javax/microedition/khronos/egl/EGLContext"));
     jEGL10Class = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("javax/microedition/khronos/egl/EGL10"));
@@ -185,6 +185,15 @@ AndroidBridge::Init(JNIEnv *jEnv,
     jEGLContextImplClass = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("com/google/android/gles_jni/EGLContextImpl"));
     jEGLConfigImplClass = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("com/google/android/gles_jni/EGLConfigImpl"));
     jEGLDisplayImplClass = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("com/google/android/gles_jni/EGLDisplayImpl"));
+
+    jStringClass = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("java/lang/String"));
+
+#ifdef MOZ_JAVA_COMPOSITOR
+    jFlexSurfaceView = (jclass) jEnv->NewGlobalRef(jEnv->FindClass("org/mozilla/gecko/gfx/FlexibleGLSurfaceView"));
+
+    AndroidGLController::Init(jEnv);
+    AndroidEGLObject::Init(jEnv);
+#endif
 
     InitAndroidJavaWrappers(jEnv);
 
@@ -308,12 +317,22 @@ AndroidBridge::EnableDeviceMotion(bool aEnable)
 {
     ALOG_BRIDGE("AndroidBridge::EnableDeviceMotion");
 
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
-
-    env->CallStaticVoidMethod(mGeckoAppShellClass, jEnableDeviceMotion, aEnable);
+    // bug 734855 - we probably can make this finer grain based on
+    // the DOM APIs that are being invoked.
+    if (aEnable) {
+        EnableSensor(hal::SENSOR_ORIENTATION);
+        EnableSensor(hal::SENSOR_ACCELERATION);
+        EnableSensor(hal::SENSOR_LINEAR_ACCELERATION);
+        EnableSensor(hal::SENSOR_GYROSCOPE);
+    }
+    else {
+        DisableSensor(hal::SENSOR_ORIENTATION);
+        DisableSensor(hal::SENSOR_ACCELERATION);
+        DisableSensor(hal::SENSOR_LINEAR_ACCELERATION);
+        DisableSensor(hal::SENSOR_GYROSCOPE);
+    }
 }
+
 
 void
 AndroidBridge::EnableLocation(bool aEnable)
@@ -323,22 +342,30 @@ AndroidBridge::EnableLocation(bool aEnable)
     JNIEnv *env = GetJNIEnv();
     if (!env)
         return;
-    
+
+    AutoLocalJNIFrame jniFrame(env, 1);
     env->CallStaticVoidMethod(mGeckoAppShellClass, jEnableLocation, aEnable);
 }
 
 void
 AndroidBridge::EnableSensor(int aSensorType) {
     ALOG_BRIDGE("AndroidBridge::EnableSensor");
-    mJNIEnv->CallStaticVoidMethod(mGeckoAppShellClass, jEnableSensor,
-                                  aSensorType);
+    JNIEnv *env = GetJNIEnv();
+    if (!env)
+        return;
+
+    AutoLocalJNIFrame jniFrame(env, 1);
+    env->CallStaticVoidMethod(mGeckoAppShellClass, jEnableSensor, aSensorType);
 }
 
 void
 AndroidBridge::DisableSensor(int aSensorType) {
     ALOG_BRIDGE("AndroidBridge::DisableSensor");
-    mJNIEnv->CallStaticVoidMethod(mGeckoAppShellClass, jDisableSensor,
-                                  aSensorType);
+    JNIEnv *env = GetJNIEnv();
+    if (!env)
+        return;
+    AutoLocalJNIFrame jniFrame(env, 1);
+    env->CallStaticVoidMethod(mGeckoAppShellClass, jDisableSensor, aSensorType);
 }
 
 void
@@ -978,9 +1005,11 @@ AndroidBridge::SetSurfaceView(jobject obj)
 }
 
 void
-AndroidBridge::SetSoftwareLayerClient(jobject obj)
+AndroidBridge::SetLayerClient(jobject obj)
 {
-    mSoftwareLayerClient.Init(obj);
+    AndroidGeckoLayerClient *client = new AndroidGeckoLayerClient();
+    client->Init(obj);
+    mLayerClient = client;
 }
 
 void
@@ -1000,11 +1029,10 @@ AndroidBridge::CallEglCreateWindowSurface(void *dpy, void *config, AndroidGeckoS
 {
     ALOG_BRIDGE("AndroidBridge::CallEglCreateWindowSurface");
 
-    JNIEnv *env = GetJNIEnv();
+    // Called off the main thread by the compositor
+    JNIEnv *env = GetJNIForThread();
     if (!env)
         return NULL;
-
-    AutoLocalJNIFrame jniFrame(env); 
 
     /*
      * This is basically:
@@ -1043,6 +1071,33 @@ AndroidBridge::CallEglCreateWindowSurface(void *dpy, void *config, AndroidGeckoS
     jint realSurface = env->GetIntField(surf, sfield);
 
     return (void*) realSurface;
+}
+
+static AndroidGLController sController;
+
+void
+AndroidBridge::RegisterCompositor()
+{
+    ALOG_BRIDGE("AndroidBridge::RegisterCompositor");
+    JNIEnv *env = GetJNIForThread();    // called on the compositor thread
+    if (!env)
+        return;
+
+    AutoLocalJNIFrame jniFrame(env, 3);
+
+    jmethodID registerCompositor = env->GetStaticMethodID(jFlexSurfaceView, "registerCxxCompositor", "()Lorg/mozilla/gecko/gfx/GLController;");
+
+    jobject glController = env->CallStaticObjectMethod(jFlexSurfaceView, registerCompositor);
+
+    sController.Acquire(env, glController);
+    sController.SetGLVersion(2);
+}
+
+EGLSurface
+AndroidBridge::ProvideEGLSurface()
+{
+    sController.WaitForValidSurface();
+    return sController.ProvideEGLSurface();
 }
 
 bool
@@ -1487,17 +1542,17 @@ AndroidBridge::MarkURIVisited(const nsAString& aURI)
     env->CallStaticVoidMethod(mGeckoAppShellClass, jMarkUriVisited, jstrURI);
 }
 
-void AndroidBridge::EmitGeckoAccessibilityEvent (PRInt32 eventType, const nsAString& role, const nsAString& text, const nsAString& description, bool enabled, bool checked, bool password) {
-
-    JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
-
-    AutoLocalJNIFrame jniFrame(env); 
-    jstring jstrRole = env->NewString(nsPromiseFlatString(role).get(), role.Length());
-    jstring jstrText = env->NewString(nsPromiseFlatString(text).get(), text.Length());
-    jstring jstrDescription = env->NewString(nsPromiseFlatString(description).get(), description.Length());
-    env->CallStaticVoidMethod(mGeckoAppShellClass, jEmitGeckoAccessibilityEvent, eventType, jstrRole, jstrText, jstrDescription, enabled, checked, password);
+void AndroidBridge::EmitGeckoAccessibilityEvent (PRInt32 eventType, const nsTArray<nsString>& text, const nsAString& description, bool enabled, bool checked, bool password) {
+    AutoLocalJNIFrame jniFrame;
+    jobjectArray jarrayText = mJNIEnv->NewObjectArray(text.Length(),
+                                                      jStringClass, 0);
+    for (PRUint32 i = 0; i < text.Length() ; i++) {
+        jstring jstrText = mJNIEnv->NewString(nsPromiseFlatString(text[i]).get(),
+                                              text[i].Length());
+        mJNIEnv->SetObjectArrayElement(jarrayText, i, jstrText);
+    }
+    jstring jstrDescription = mJNIEnv->NewString(nsPromiseFlatString(description).get(), description.Length());
+    mJNIEnv->CallStaticVoidMethod(mGeckoAppShellClass, jEmitGeckoAccessibilityEvent, eventType, jarrayText, jstrDescription, enabled, checked, password);
 }
 
 PRUint16
@@ -1584,8 +1639,8 @@ AndroidBridge::CreateMessageList(const dom::sms::SmsFilterData& aFilter, bool aR
 
     jobjectArray numbers =
       (jobjectArray)env->NewObjectArray(aFilter.numbers().Length(),
-                                          env->FindClass("java/lang/String"),
-                                          env->NewStringUTF(""));
+                                        jStringClass,
+                                        env->NewStringUTF(""));
 
     for (PRUint32 i = 0; i < aFilter.numbers().Length(); ++i) {
       env->SetObjectArrayElement(numbers, i,
@@ -1806,6 +1861,54 @@ AndroidBridge::IsTablet()
     return env->CallStaticBooleanMethod(mGeckoAppShellClass, jIsTablet);
 }
 
+void
+AndroidBridge::SetCompositorParent(mozilla::layers::CompositorParent* aCompositorParent,
+                                   ::base::Thread* aCompositorThread)
+{
+#ifdef MOZ_JAVA_COMPOSITOR
+    nsWindow::SetCompositorParent(aCompositorParent, aCompositorThread);
+#endif
+}
+
+void
+AndroidBridge::SetFirstPaintViewport(float aOffsetX, float aOffsetY, float aZoom, float aPageWidth, float aPageHeight)
+{
+    AndroidGeckoLayerClient *client = mLayerClient;
+    if (!client)
+        return;
+
+    client->SetFirstPaintViewport(aOffsetX, aOffsetY, aZoom, aPageWidth, aPageHeight);
+}
+
+void
+AndroidBridge::SetPageSize(float aZoom, float aPageWidth, float aPageHeight)
+{
+    AndroidGeckoLayerClient *client = mLayerClient;
+    if (!client)
+        return;
+
+    client->SetPageSize(aZoom, aPageWidth, aPageHeight);
+}
+
+void
+AndroidBridge::GetViewTransform(nsIntPoint& aScrollOffset, float& aScaleX, float& aScaleY)
+{
+    AndroidGeckoLayerClient *client = mLayerClient;
+    if (!client)
+        return;
+
+    client->GetViewTransform(aScrollOffset, aScaleX, aScaleY);
+}
+
+AndroidBridge::AndroidBridge()
+: mLayerClient(NULL)
+{
+}
+
+AndroidBridge::~AndroidBridge()
+{
+}
+
 /* Implementation file */
 NS_IMPL_ISUPPORTS1(nsAndroidBridge, nsIAndroidBridge)
 
@@ -1987,7 +2090,7 @@ jobject JNICALL
 Java_org_mozilla_gecko_GeckoAppShell_allocateDirectBuffer(JNIEnv *jenv, jclass, jlong size);
 
 
-nsresult AndroidBridge::TakeScreenshot(nsIDOMWindow *window, PRInt32 srcX, PRInt32 srcY, PRInt32 srcW, PRInt32 srcH, PRInt32 dstW, PRInt32 dstH, PRInt32 tabId)
+nsresult AndroidBridge::TakeScreenshot(nsIDOMWindow *window, PRInt32 srcX, PRInt32 srcY, PRInt32 srcW, PRInt32 srcH, PRInt32 dstW, PRInt32 dstH, PRInt32 tabId, float scale)
 {
     nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(window);
     if (!win)
@@ -2020,8 +2123,10 @@ nsresult AndroidBridge::TakeScreenshot(nsIDOMWindow *window, PRInt32 srcX, PRInt
         return NS_OK;
 
     void* data = jenv->GetDirectBufferAddress(buffer);
+    memset(data, 0, bufferSize);
     nsRefPtr<gfxImageSurface> surf = new gfxImageSurface(static_cast<unsigned char*>(data), nsIntSize(dstW, dstH), stride, gfxASurface::ImageFormatRGB16_565);
     nsRefPtr<gfxContext> context = new gfxContext(surf);
+    context->Scale(scale * dstW / srcW, scale * dstH / srcH);
     nsresult rv = presShell->RenderDocument(r, renderDocFlags, bgColor, context);
     NS_ENSURE_SUCCESS(rv, rv);
     AndroidBridge::AutoLocalJNIFrame jniFrame(jenv, 1);

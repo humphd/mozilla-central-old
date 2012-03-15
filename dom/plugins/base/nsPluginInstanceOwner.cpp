@@ -804,12 +804,12 @@ NPBool nsPluginInstanceOwner::ConvertPoint(double sourceX, double sourceY, NPCoo
 NPError nsPluginInstanceOwner::InitAsyncSurface(NPSize *size, NPImageFormat format,
                                                 void *initData, NPAsyncSurface *surface)
 {
-  return NPERR_GENERIC_ERROR;
+  return NPERR_INCOMPATIBLE_VERSION_ERROR;
 }
 
 NPError nsPluginInstanceOwner::FinalizeAsyncSurface(NPAsyncSurface *)
 {
-  return NPERR_GENERIC_ERROR;
+  return NPERR_INCOMPATIBLE_VERSION_ERROR;
 }
 
 void nsPluginInstanceOwner::SetCurrentAsyncSurface(NPAsyncSurface *, NPRect*)
@@ -2917,8 +2917,14 @@ void nsPluginInstanceOwner::Paint(gfxContext* aContext,
 
   PRInt32 model = mInstance->GetANPDrawingModel();
 
+  float xResolution = mObjectFrame->PresContext()->GetRootPresContext()->PresShell()->GetXResolution();
+  float yResolution = mObjectFrame->PresContext()->GetRootPresContext()->PresShell()->GetYResolution();
+
+  gfxRect scaledFrameRect = aFrameRect;
+  scaledFrameRect.Scale(xResolution, yResolution);
+
   if (model == kSurface_ANPDrawingModel) {
-    if (!AddPluginView(aFrameRect)) {
+    if (!AddPluginView(scaledFrameRect)) {
       Invalidate();
     }
     return;
@@ -2928,11 +2934,9 @@ void nsPluginInstanceOwner::Paint(gfxContext* aContext,
     if (!mLayer)
       mLayer = new AndroidMediaLayer();
 
-    // FIXME: this is gross
-    float zoomLevel = aFrameRect.width / (float)mPluginWindow->width;
-    mLayer->UpdatePosition(aFrameRect, zoomLevel);
+    mLayer->UpdatePosition(scaledFrameRect, xResolution);
 
-    SendSize((int)aFrameRect.width, (int)aFrameRect.height);
+    SendSize((int)scaledFrameRect.width, (int)scaledFrameRect.height);
     return;
   }
 

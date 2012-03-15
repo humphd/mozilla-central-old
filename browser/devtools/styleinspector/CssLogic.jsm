@@ -927,7 +927,8 @@ CssLogic.shortSource = function CssLogic_shortSource(aSheet)
     return url.query;
   }
 
-  return aSheet.href;
+  let dataUrl = aSheet.href.match(/^(data:[^,]*),/);
+  return dataUrl ? dataUrl[1] : aSheet.href;
 }
 
 /**
@@ -1198,11 +1199,19 @@ function CssRule(aCssSheet, aDomRule, aElement)
   this._cssSheet = aCssSheet;
   this._domRule = aDomRule;
 
+  let parentRule = aDomRule.parentRule;
+  if (parentRule && parentRule.type == Ci.nsIDOMCSSRule.MEDIA_RULE) {
+    this.mediaText = parentRule.media.mediaText;
+  }
+
   if (this._cssSheet) {
     // parse _domRule.selectorText on call to this.selectors
     this._selectors = null;
     this.line = this._cssSheet._cssLogic.domUtils.getRuleLine(this._domRule);
     this.source = this._cssSheet.shortSource + ":" + this.line;
+    if (this.mediaText) {
+      this.source += " @media " + this.mediaText;
+    }
     this.href = this._cssSheet.href;
     this.contentRule = this._cssSheet.contentSheet;
   } else if (aElement) {
@@ -1217,6 +1226,13 @@ function CssRule(aCssSheet, aDomRule, aElement)
 
 CssRule.prototype = {
   _passId: null,
+
+  mediaText: "",
+
+  get isMediaRule()
+  {
+    return !!this.mediaText;
+  },
 
   /**
    * Check if the parent stylesheet is allowed by the CssLogic.sourceFilter.

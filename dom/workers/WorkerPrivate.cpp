@@ -157,6 +157,22 @@ SwapToISupportsArray(SmartPtr<T>& aSrc,
 
 NS_MEMORY_REPORTER_MALLOC_SIZEOF_FUN(JsWorkerMallocSizeOf, "js-worker")
 
+struct WorkerJSRuntimeStats : public JS::RuntimeStats
+{
+  WorkerJSRuntimeStats()
+   : JS::RuntimeStats(JsWorkerMallocSizeOf) { }
+
+  virtual void initExtraCompartmentStats(JSCompartment *c,
+                                         JS::CompartmentStats *cstats) MOZ_OVERRIDE
+  {
+    MOZ_ASSERT(!cstats->extra);
+    
+    // ReportJSRuntimeExplicitTreeStats expects that cstats->extra is a char pointer
+    const char *name = js::IsAtomsCompartment(c) ? "Web Worker Atoms" : "Web Worker";
+    cstats->extra = const_cast<char *>(name);
+  }
+};
+  
 class WorkerMemoryReporter : public nsIMemoryMultiReporter
 {
   WorkerPrivate* mWorkerPrivate;
@@ -240,8 +256,7 @@ public:
   {
     AssertIsOnMainThread();
 
-    JS::RuntimeStats rtStats(JsWorkerMallocSizeOf, xpc::GetCompartmentName,
-                             xpc::DestroyCompartmentName);
+    WorkerJSRuntimeStats rtStats;
     nsresult rv = CollectForRuntime(/* isQuick = */false, &rtStats);
     if (NS_FAILED(rv)) {
       return rv;
@@ -249,7 +264,10 @@ public:
 
     // Always report, even if we're disabled, so that we at least get an entry
     // in about::memory.
-    ReportJSRuntimeExplicitTreeStats(rtStats, mPathPrefix, aCallback, aClosure);
+    rv = ReportJSRuntimeExplicitTreeStats(rtStats, mPathPrefix, aCallback, aClosure);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
 
     return NS_OK;
   }
@@ -2510,13 +2528,8 @@ WorkerPrivate::Create(JSContext* aCx, JSObject* aObj, WorkerPrivate* aParent,
 
       // We're being created outside of a window. Need to figure out the script
       // that is creating us in order for us to use relative URIs later on.
-      JSStackFrame* frame = JS_GetScriptedCaller(aCx, nsnull);
-      if (frame) {
-        JSScript* script = JS_GetFrameScript(aCx, frame);
-        if (!script) {
-          JS_ReportError(aCx, "Could not get frame script!");
-          return nsnull;
-        }
+      JSScript *script;
+      if (JS_DescribeScriptedCaller(aCx, &script, nsnull)) {
         if (NS_FAILED(NS_NewURI(getter_AddRefs(baseURI),
                                 JS_GetScriptFilename(aCx, script)))) {
           JS_ReportError(aCx, "Failed to construct base URI!");
@@ -2925,7 +2938,7 @@ WorkerPrivate::Dispatch(WorkerRunnable* aEvent, EventQueue* aQueue)
     }
 
     if (aQueue == &mControlQueue && mJSContext) {
-      JS_TriggerOperationCallback(mJSContext);
+      JS_TriggerOperationCallback(JS_GetRuntime(mJSContext));
     }
 
     mCondVar.Notify();

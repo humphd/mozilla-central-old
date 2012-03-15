@@ -64,6 +64,12 @@ XPCOMUtils.defineLazyGetter(this, "PlacesUtils", function() {
   return PlacesUtils;
 });
 
+XPCOMUtils.defineLazyModuleGetter(this, "KeywordURLResetPrompter",
+                                  "resource:///modules/KeywordURLResetPrompter.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "webappsUI", 
+                                  "resource://gre/modules/webappsUI.jsm");
+
 const PREF_PLUGINS_NOTIFYUSER = "plugins.update.notifyUser";
 const PREF_PLUGINS_UPDATEURL  = "plugins.update.url";
 
@@ -277,6 +283,13 @@ BrowserGlue.prototype = {
           this._initPlaces();
         }
         break;
+      case "defaultURIFixup-using-keyword-pref":
+        if (KeywordURLResetPrompter.shouldPrompt) {
+          let keywordURI = subject.QueryInterface(Ci.nsIURI);
+          KeywordURLResetPrompter.prompt(this.getMostRecentBrowserWindow(),
+                                         keywordURI);
+        }
+        break;
     }
   }, 
 
@@ -306,6 +319,7 @@ BrowserGlue.prototype = {
     os.addObserver(this, "distribution-customization-complete", false);
     os.addObserver(this, "places-shutdown", false);
     this._isPlacesShutdownObserver = true;
+    os.addObserver(this, "defaultURIFixup-using-keyword-pref", false);
   },
 
   // cleanup (called on application shutdown)
@@ -334,6 +348,8 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "places-database-locked");
     if (this._isPlacesShutdownObserver)
       os.removeObserver(this, "places-shutdown");
+    os.removeObserver(this, "defaultURIFixup-using-keyword-pref");
+    webappsUI.uninit();
   },
 
   _onAppDefaults: function BG__onAppDefaults() {
@@ -357,6 +373,9 @@ BrowserGlue.prototype = {
 
     // handle any UI migration
     this._migrateUI();
+
+    // Initialize webapps UI
+    webappsUI.init();
 
     Services.obs.notifyObservers(null, "browser-ui-startup-complete", "");
   },
@@ -393,7 +412,6 @@ BrowserGlue.prototype = {
 #endif
     }
 
-
     // Show update notification, if needed.
     if (Services.prefs.prefHasUserValue("app.update.postupdate"))
       this._showUpdateNotification();
@@ -411,18 +429,20 @@ BrowserGlue.prototype = {
 
     // For any add-ons that were installed disabled and can be enabled offer
     // them to the user
-    var win = this.getMostRecentBrowserWindow();
-    var browser = win.gBrowser;
     var changedIDs = AddonManager.getStartupChanges(AddonManager.STARTUP_CHANGE_INSTALLED);
-    AddonManager.getAddonsByIDs(changedIDs, function(aAddons) {
-      aAddons.forEach(function(aAddon) {
-        // If the add-on isn't user disabled or can't be enabled then skip it
-        if (!aAddon.userDisabled || !(aAddon.permissions & AddonManager.PERM_CAN_ENABLE))
-          return;
+    if (changedIDs.length > 0) {
+      AddonManager.getAddonsByIDs(changedIDs, function(aAddons) {
+        var win = this.getMostRecentBrowserWindow();
+        var browser = win.gBrowser;
+        aAddons.forEach(function(aAddon) {
+          // If the add-on isn't user disabled or can't be enabled then skip it.
+          if (!aAddon.userDisabled || !(aAddon.permissions & AddonManager.PERM_CAN_ENABLE))
+            return;
 
-        browser.selectedTab = browser.addTab("about:newaddon?id=" + aAddon.id);
-      })
-    });
+          browser.selectedTab = browser.addTab("about:newaddon?id=" + aAddon.id);
+        })
+      });
+    }
 
     let keywordURLUserSet = Services.prefs.prefHasUserValue("keyword.URL");
     Services.telemetry.getHistogramById("FX_KEYWORD_URL_USERSET").add(keywordURLUserSet);

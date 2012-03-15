@@ -506,6 +506,18 @@ public:
   nsCOMPtr<nsIDocument> mTop;
 };
 
+class nsBeforeFirstPaintDispatcher : public nsRunnable
+{
+public:
+  nsBeforeFirstPaintDispatcher(nsIDocument* aDocument)
+  : mDocument(aDocument) {}
+
+  NS_IMETHOD Run();
+
+private:
+  nsCOMPtr<nsIDocument> mDocument;
+};
+
 class nsDocumentShownDispatcher : public nsRunnable
 {
 public:
@@ -1282,7 +1294,7 @@ DocumentViewerImpl::PageHide(bool aIsUnload)
 
   if (aIsUnload) {
     // Poke the GC. The window might be collectable garbage now.
-    nsJSContext::PokeGC(js::gcreason::PAGE_HIDE);
+    nsJSContext::PokeGC(js::gcreason::PAGE_HIDE, NS_GC_DELAY * 2);
 
     // if Destroy() was called during OnPageHide(), mDocument is nsnull.
     NS_ENSURE_STATE(mDocument);
@@ -2047,8 +2059,13 @@ DocumentViewerImpl::Show(void)
     }
   }
 
-  // Notify observers that a new page has been shown. (But not right now;
-  // running JS at this time is not safe.)
+  // Notify observers that a new page is about to be drawn. Execute this
+  // as soon as it is safe to run JS, which is guaranteed to be before we
+  // go back to the event loop and actually draw the page.
+  nsContentUtils::AddScriptRunner(new nsBeforeFirstPaintDispatcher(mDocument));
+
+  // Notify observers that a new page has been shown. This will get run
+  // from the event loop after we actually draw the page.
   NS_DispatchToMainThread(new nsDocumentShownDispatcher(mDocument));
 
   return NS_OK;
@@ -4370,8 +4387,20 @@ DocumentViewerImpl::SetPrintPreviewPresentation(nsIViewManager* aViewManager,
   mPresShell = aPresShell;
 }
 
-// Fires the "document-shown" event so that interested parties (right now, the
+// Fires the "before-first-paint" event so that interested parties (right now, the
 // mobile browser) are aware of it.
+NS_IMETHODIMP
+nsBeforeFirstPaintDispatcher::Run()
+{
+  nsCOMPtr<nsIObserverService> observerService =
+    mozilla::services::GetObserverService();
+  if (observerService) {
+    observerService->NotifyObservers(mDocument, "before-first-paint", NULL);
+  }
+  return NS_OK;
+}
+
+// Fires the "document-shown" event so that interested parties are aware of it.
 NS_IMETHODIMP
 nsDocumentShownDispatcher::Run()
 {

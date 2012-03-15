@@ -45,6 +45,7 @@ let Cr = Components.results;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm")
 Cu.import("resource://gre/modules/AddonManager.jsm");
+Cu.import("resource://gre/modules/FileUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "PluralForm", function() {
   Cu.import("resource://gre/modules/PluralForm.jsm");
@@ -73,33 +74,6 @@ const kStateActive = 0x00000001; // :active pseudoclass for elements
 
 const kXLinkNamespace = "http://www.w3.org/1999/xlink";
 
-// TODO: Take into account ppi in these units?
-
-// The ratio of velocity that is retained every ms.
-const kPanDeceleration = 0.999;
-
-// The number of ms to consider events over for a swipe gesture.
-const kSwipeLength = 500;
-
-// The number of pixels to move before we consider a drag to be more than
-// just a click with jitter.
-const kDragThreshold = 10;
-
-// The number of pixels to move to break out of axis-lock
-const kLockBreakThreshold = 100;
-
-// Minimum speed to move during kinetic panning. 0.015 pixels/ms is roughly
-// equivalent to a pixel every 4 frames at 60fps.
-const kMinKineticSpeed = 0.015;
-
-// Maximum kinetic panning speed. 9 pixels/ms is equivalent to 150 pixels per
-// frame at 60fps.
-const kMaxKineticSpeed = 9;
-
-// The maximum magnitude of disparity allowed between axes acceleration. If
-// it's larger than this, lock the slow-moving axis.
-const kAxisLockRatio = 5;
-
 // The element tag names that are considered to receive input. Mouse-down
 // events directed to one of these are allowed to go through.
 const kElementsReceivingInput = {
@@ -113,6 +87,9 @@ const kElementsReceivingInput = {
     textarea: true,
     video: true
 };
+
+const kDefaultCSSViewportWidth = 980;
+const kDefaultCSSViewportHeight = 480;
 
 function dump(a) {
   Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).logStringMessage(a);
@@ -171,35 +148,11 @@ var Strings = {};
 
 var MetadataProvider = {
   getDrawMetadata: function getDrawMetadata() {
-    return BrowserApp.getDrawMetadata();
+    return JSON.stringify(BrowserApp.selectedTab.getViewport());
   },
 
   paintingSuppressed: function paintingSuppressed() {
-    // Get the current tab. Don't suppress painting if there are no tabs yet.
-    let tab = BrowserApp.selectedTab;
-    if (!tab)
-      return false;
-
-    // If the viewport metadata has not yet been updated (and therefore the browser size has not
-    // been changed accordingly), do not draw yet. We'll get an unsightly flash on page transitions
-    // otherwise, because we receive a paint event after the new document is shown but before the
-    // correct browser size for the new document has been set.
-    //
-    // This whole situation exists because the docshell and the browser element are unaware of the
-    // existence of <meta viewport>. Therefore they dispatch paint events without knowledge of the
-    // invariant that the page must not be drawn until the browser size has been appropriately set.
-    // It would be easier if the docshell were made aware of the existence of <meta viewport> so
-    // that this logic could be removed.
-
-    let viewportDocumentId = tab.documentIdForCurrentViewport;
-    let contentDocumentId = ViewportHandler.getIdForDocument(tab.browser.contentDocument);
-    if (viewportDocumentId != null && viewportDocumentId != contentDocumentId)
-      return true;
-
-    // Suppress painting if the current presentation shell is suppressing painting.
-    let cwu = tab.browser.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                                       .getInterface(Ci.nsIDOMWindowUtils);
-    return cwu.paintingSuppressed;
+    return false;
   }
 };
 
@@ -238,7 +191,6 @@ var BrowserApp = {
     Services.obs.addObserver(this, "PanZoom:PanZoom", false);
     Services.obs.addObserver(this, "FullScreen:Exit", false);
     Services.obs.addObserver(this, "Viewport:Change", false);
-    Services.obs.addObserver(this, "SearchEngines:Get", false);
     Services.obs.addObserver(this, "Passwords:Init", false);
     Services.obs.addObserver(this, "FormHistory:Init", false);
 
@@ -281,6 +233,7 @@ var BrowserApp = {
     ClipboardHelper.init();
     PermissionsHelper.init();
     CharacterEncoding.init();
+    SearchEngines.init();
 
     // Init LoginManager
     Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
@@ -377,10 +330,12 @@ var BrowserApp = {
     const PREF_TELEMETRY_PROMPTED = "toolkit.telemetry.prompted";
     const PREF_TELEMETRY_ENABLED = "toolkit.telemetry.enabled";
     const PREF_TELEMETRY_REJECTED = "toolkit.telemetry.rejected";
+    const PREF_TELEMETRY_SERVER_OWNER = "toolkit.telemetry.server_owner";
 
     // This is used to reprompt users when privacy message changes
     const TELEMETRY_PROMPT_REV = 2;
 
+    let serverOwner = Services.prefs.getCharPref(PREF_TELEMETRY_SERVER_OWNER);
     let telemetryPrompted = null;
     try {
       telemetryPrompted = Services.prefs.getIntPref(PREF_TELEMETRY_PROMPTED);
@@ -412,8 +367,17 @@ var BrowserApp = {
     ];
 
     let brandShortName = Strings.brand.GetStringFromName("brandShortName");
-    let message = Strings.browser.formatStringFromName("telemetry.optin.message", [brandShortName], 1);
-    NativeWindow.doorhanger.show(message, "telemetry-optin", buttons);
+    let message = Strings.browser.formatStringFromName("telemetry.optin.message", [serverOwner, brandShortName], 2);
+    let learnMoreLabel = Strings.browser.GetStringFromName("telemetry.optin.learnMore");
+    let learnMoreUrl = Services.urlFormatter.formatURLPref("app.support.baseURL");
+    learnMoreUrl += "how-can-i-help-submitting-performance-data";
+    let options = {
+      link: {
+        label: learnMoreLabel,
+        url: learnMoreUrl
+      }
+    };
+    NativeWindow.doorhanger.show(message, "telemetry-optin", buttons, this.selectedTab.id, options);
   },
 
   shutdown: function shutdown() {
@@ -425,6 +389,25 @@ var BrowserApp = {
     XPInstallObserver.uninit();
     ConsoleAPI.uninit();
     CharacterEncoding.uninit();
+    SearchEngines.uninit();
+  },
+
+  // This function returns false during periods where the browser displayed document is
+  // different from the browser content document, so user actions and some kinds of viewport
+  // updates should be ignored. This period starts when we start loading a new page or
+  // switch tabs, and ends when the new browser content document has been drawn and handed
+  // off to the compositor.
+  isBrowserContentDocumentDisplayed: function() {
+    if (window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils).isFirstPaint)
+      return false;
+    let tab = this.selectedTab;
+    if (!tab)
+      return true;
+    return tab.contentDocumentIsDisplayed;
+  },
+
+  displayedDocumentChanged: function() {
+    window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils).isFirstPaint = true;
   },
 
   get tabs() {
@@ -444,8 +427,9 @@ var BrowserApp = {
       return;
 
     aTab.setActive(true);
-    aTab.updateViewport(false);
-    this.deck.selectedPanel = aTab.vbox;
+    aTab.setResolution(aTab._zoom, true);
+    this.displayedDocumentChanged();
+    this.deck.selectedPanel = aTab.browser;
   },
 
   get selectedBrowser() {
@@ -507,7 +491,7 @@ var BrowserApp = {
     aParams = aParams || {};
 
     let flags = "flags" in aParams ? aParams.flags : Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
-    let postData = ("postData" in aParams && aParams.postData) ? aParams.postData.value : null;
+    let postData = ("postData" in aParams && aParams.postData) ? aParams.postData : null;
     let referrerURI = "referrerURI" in aParams ? aParams.referrerURI : null;
     let charset = "charset" in aParams ? aParams.charset : null;
 
@@ -813,33 +797,6 @@ var BrowserApp = {
     }
   },
 
-  getSearchEngines: function() {
-    let engineData = Services.search.getVisibleEngines({});
-    let searchEngines = engineData.map(function (engine) {
-      return {
-        name: engine.name,
-        iconURI: engine.iconURI.spec
-      };
-    });
-
-    sendMessageToJava({
-      gecko: {
-        type: "SearchEngines:Data",
-        searchEngines: searchEngines
-      }
-    });
-  },
-
-  getSearchOrURI: function getSearchOrURI(aParams) {
-    let uri;
-    if (aParams.engine) {
-      let engine = Services.search.getEngineByName(aParams.engine);
-      if (engine)
-        uri = engine.getSubmission(aParams.url).uri;
-    }
-    return uri ? uri.spec : aParams.url;
-  },
-
   scrollToFocusedInput: function(aBrowser) {
     let doc = aBrowser.contentDocument;
     if (!doc)
@@ -853,78 +810,46 @@ var BrowserApp = {
       // as well as the browser's content window, and modify the scrollX and scrollY on the content window.
       focused.scrollIntoView(false);
 
+      // As Gecko isn't aware of the zoom level we're drawing with, the element may not entirely be in view
+      // yet. Check for that, and scroll some extra to compensate, if necessary.
+      let focusedRect = focused.getBoundingClientRect();
+      let visibleContentWidth = gScreenWidth / tab._zoom;
+      let visibleContentHeight = gScreenHeight / tab._zoom;
+
+      let positionChanged = false;
+      let scrollX = win.scrollX;
+      let scrollY = win.scrollY;
+
+      if (focusedRect.right >= visibleContentWidth && focusedRect.left > 0) {
+        // the element is too far off the right side, so we need to scroll to the right more
+        scrollX += Math.min(focusedRect.left, focusedRect.right - visibleContentWidth);
+        positionChanged = true;
+      } else if (focusedRect.left < 0) {
+        // the element is too far off the left side, so we need to scroll to the left more
+        scrollX += focusedRect.left;
+        positionChanged = true;
+      }
+      if (focusedRect.bottom >= visibleContentHeight && focusedRect.top > 0) {
+        // the element is too far down, so we need to scroll down more
+        scrollY += Math.min(focusedRect.top, focusedRect.bottom - visibleContentHeight);
+        positionChanged = true;
+      } else if (focusedRect.top < 0) {
+        // the element is too far up, so we need to scroll up more
+        scrollY += focusedRect.top;
+        positionChanged = true;
+      }
+
+      if (positionChanged)
+        win.scrollTo(scrollX, scrollY);
+
       // update userScrollPos so that we don't send a duplicate viewport update by triggering
       // our scroll listener
       tab.userScrollPos.x = win.scrollX;
       tab.userScrollPos.y = win.scrollY;
 
-      // note that:
-      // 1. because of the way we do zooming using a CSS transform, gecko does not take into
-      // account the effect of the zoom on the viewport size.
-      // 2. if the input element is near the bottom/right of the page (less than one viewport
-      // height/width away from the bottom/right), the scrollIntoView call will make gecko scroll to the
-      // bottom/right of the page in an attempt to align the input field with the top of the viewport.
-      // however, since gecko doesn't know about the zoom, what it thinks is the "bottom/right of
-      // the page" isn't actually the bottom/right of the page at the current zoom level, and we 
-      // need to adjust this further.
-      // 3. we can't actually adjust this by changing the window scroll position, as gecko already thinks
-      // we're at the bottom/right, so instead we do it by changing the viewportExcess on the tab and
-      // moving the browser element.
-
-      let visibleContentWidth = tab._viewport.width / tab._viewport.zoom;
-      let visibleContentHeight = tab._viewport.height / tab._viewport.zoom;
-      // get the rect that the focused element occupies relative to what gecko thinks the viewport is,
-      // and adjust it by viewportExcess to so that it is relative to what the user sees as the viewport.
-      let focusedRect = focused.getBoundingClientRect();
-      focusedRect = {
-        left: focusedRect.left - tab.viewportExcess.x,
-        right: focusedRect.right - tab.viewportExcess.x,
-        top: focusedRect.top - tab.viewportExcess.y,
-        bottom: focusedRect.bottom - tab.viewportExcess.y
-      };
-      let transformChanged = false;
-      if (focusedRect.right >= visibleContentWidth && focusedRect.left > 0) {
-        // the element is too far off the right side, so we need to scroll to the right more
-        tab.viewportExcess.x += Math.min(focusedRect.left, focusedRect.right - visibleContentWidth);
-        transformChanged = true;
-      } else if (focusedRect.left < 0) {
-        // the element is too far off the left side, so we need to scroll to the left more
-        tab.viewportExcess.x += focusedRect.left;
-        transformChanged = true;
-      }
-      if (focusedRect.bottom >= visibleContentHeight && focusedRect.top > 0) {
-        // the element is too far down, so we need to scroll down more
-        tab.viewportExcess.y += Math.min(focusedRect.top, focusedRect.bottom - visibleContentHeight);
-        transformChanged = true;
-      } else if (focusedRect.top < 0) {
-        // the element is too far up, so we need to scroll up more
-        tab.viewportExcess.y += focusedRect.top;
-        transformChanged = true;
-      }
-      if (transformChanged)
-        tab.updateTransform();
       // finally, let java know where we ended up
       tab.sendViewportUpdate();
     }
-  },
-
-  getDrawMetadata: function getDrawMetadata() {
-    let viewport = this.selectedTab.viewport;
-
-    // Sample the background color of the page and pass it along. (This is used to draw the
-    // checkerboard.)
-    try {
-      let browser = this.selectedBrowser;
-      if (browser) {
-        let { contentDocument, contentWindow } = browser;
-        let computedStyle = contentWindow.getComputedStyle(contentDocument.body);
-        viewport.backgroundColor = computedStyle.backgroundColor;
-      }
-    } catch (e) {
-      // Ignore. Catching and ignoring exceptions here ensures that Talos succeeds.
-    }
-
-    return JSON.stringify(viewport);
   },
 
   observe: function(aSubject, aTopic, aData) {
@@ -955,7 +880,15 @@ var BrowserApp = {
         flags: flags
       };
 
-      let url = this.getSearchOrURI(data);
+      let url = data.url;
+      if (data.engine) {
+        let engine = Services.search.getEngineByName(data.engine);
+        if (engine) {
+          let submission = engine.getSubmission(url);
+          url = submission.uri.spec;
+          params.postData = submission.postData;
+        }
+      }
 
       // Don't show progress throbber for about:home
       if (url == "about:home")
@@ -984,8 +917,8 @@ var BrowserApp = {
     } else if (aTopic == "FullScreen:Exit") {
       browser.contentDocument.mozCancelFullScreen();
     } else if (aTopic == "Viewport:Change") {
-      this.selectedTab.viewport = JSON.parse(aData);
-      ViewportHandler.onResize();
+      if (this.isBrowserContentDocumentDisplayed())
+        this.selectedTab.setViewport(JSON.parse(aData));
     } else if (aTopic == "SearchEngines:Get") {
       this.getSearchEngines();
     } else if (aTopic == "Passwords:Init") {
@@ -1013,13 +946,9 @@ var BrowserApp = {
   },
 
   // nsIAndroidBrowserApp
-  getWindowForTab: function(tabId) {
-      let tab = this.getTabForId(tabId);
-      if (!tab.browser)
-	  return null;
-      return tab.browser.contentWindow;
+  getBrowserTab: function(tabId) {
+    return this.getTabForId(tabId);
   }
-
 };
 
 var NativeWindow = {
@@ -1505,17 +1434,14 @@ let gScreenHeight = 1;
 
 function Tab(aURL, aParams) {
   this.browser = null;
-  this.vbox = null;
   this.id = 0;
   this.showProgress = true;
   this.create(aURL, aParams);
-  this._viewport = { x: 0, y: 0, width: gScreenWidth, height: gScreenHeight, offsetX: 0, offsetY: 0,
-                     pageWidth: gScreenWidth, pageHeight: gScreenHeight, zoom: 1.0 };
-  this.viewportExcess = { x: 0, y: 0 };
-  this.documentIdForCurrentViewport = null;
+  this._zoom = 1.0;
   this.userScrollPos = { x: 0, y: 0 };
   this._pluginCount = 0;
   this._pluginOverlayShowing = false;
+  this.contentDocumentIsDisplayed = true;
 }
 
 Tab.prototype = {
@@ -1525,21 +1451,16 @@ Tab.prototype = {
 
     aParams = aParams || {};
 
-    this.vbox = document.createElement("vbox");
-    this.vbox.align = "start";
-    BrowserApp.deck.appendChild(this.vbox);
-
     this.browser = document.createElement("browser");
     this.browser.setAttribute("type", "content-targetable");
-    this.setBrowserSize(980, 480);
-    this.browser.style.MozTransformOrigin = "0 0";
-    this.vbox.appendChild(this.browser);
+    this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight);
+    BrowserApp.deck.appendChild(this.browser);
 
     this.browser.stop();
 
-    // Turn off clipping so we can buffer areas outside of the browser element.
     let frameLoader = this.browser.QueryInterface(Ci.nsIFrameLoaderOwner).frameLoader;
-    frameLoader.clipSubdocument = false;
+    frameLoader.renderMode = Ci.nsIFrameLoader.RENDER_MODE_ASYNC_SCROLL;
+    frameLoader.clampScrollPosition = false;
 
     // only set tab uri if uri is valid
     let uri = null;
@@ -1563,6 +1484,10 @@ Tab.prototype = {
     };
     sendMessageToJava(message);
 
+    this.overscrollController = new OverscrollController(this);
+    this.browser.contentWindow.controllers
+      .insertControllerAt(0, this.overscrollController);
+
     let flags = Ci.nsIWebProgress.NOTIFY_STATE_ALL |
                 Ci.nsIWebProgress.NOTIFY_LOCATION |
                 Ci.nsIWebProgress.NOTIFY_SECURITY;
@@ -1579,7 +1504,7 @@ Tab.prototype = {
     this.browser.addEventListener("pagehide", this, true);
     this.browser.addEventListener("pageshow", this, true);
 
-    Services.obs.addObserver(this, "document-shown", false);
+    Services.obs.addObserver(this, "before-first-paint", false);
 
     if (!aParams.delayLoad) {
       let flags = "flags" in aParams ? aParams.flags : Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
@@ -1611,6 +1536,9 @@ Tab.prototype = {
     if (!this.browser)
       return;
 
+    this.browser.controllers.contentWindow
+      .removeController(this.overscrollController);
+
     this.browser.removeProgressListener(this);
     this.browser.removeEventListener("DOMContentLoaded", this, true);
     this.browser.removeEventListener("DOMLinkAdded", this, true);
@@ -1622,17 +1550,15 @@ Tab.prototype = {
     this.browser.removeEventListener("pagehide", this, true);
     this.browser.removeEventListener("pageshow", this, true);
 
-    Services.obs.removeObserver(this, "document-shown");
+    Services.obs.removeObserver(this, "before-first-paint");
 
     // Make sure the previously selected panel remains selected. The selected panel of a deck is
     // not stable when panels are removed.
     let selectedPanel = BrowserApp.deck.selectedPanel;
-    BrowserApp.deck.removeChild(this.vbox);
+    BrowserApp.deck.removeChild(this.browser);
     BrowserApp.deck.selectedPanel = selectedPanel;
 
     this.browser = null;
-    this.vbox = null;
-    this.documentIdForCurrentViewport = null;
   },
 
   // This should be called to update the browser when the tab gets selected/unselected
@@ -1650,76 +1576,68 @@ Tab.prototype = {
     }
   },
 
-  set viewport(aViewport) {
+  setDisplayPort: function(aViewportX, aViewportY, aDisplayPortRect) {
+    let zoom = this._zoom;
+    if (zoom <= 0)
+      return;
+
+    let element = this.browser.contentDocument.documentElement;
+    if (!element)
+      return;
+
+    let cwu = window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    cwu.setDisplayPortForElement((aDisplayPortRect.left - aViewportX) / zoom,
+                                 (aDisplayPortRect.top - aViewportY) / zoom,
+                                 (aDisplayPortRect.right - aDisplayPortRect.left) / zoom,
+                                 (aDisplayPortRect.bottom - aDisplayPortRect.top) / zoom,
+                                 element);
+  },
+
+  setViewport: function(aViewport) {
     // Transform coordinates based on zoom
-    aViewport.x /= aViewport.zoom;
-    aViewport.y /= aViewport.zoom;
+    let x = aViewport.x / aViewport.zoom;
+    let y = aViewport.y / aViewport.zoom;
 
     // Set scroll position
     let win = this.browser.contentWindow;
-    win.scrollTo(aViewport.x, aViewport.y);
+    win.scrollTo(x, y);
     this.userScrollPos.x = win.scrollX;
     this.userScrollPos.y = win.scrollY;
-
-    // If we've been asked to over-scroll, do it via the transformation
-    // and store it separately to the viewport.
-    let excessX = aViewport.x - win.scrollX;
-    let excessY = aViewport.y - win.scrollY;
-
-    this._viewport.width = gScreenWidth = aViewport.width;
-    this._viewport.height = gScreenHeight = aViewport.height;
-
-    let transformChanged = false;
-
-    if ((aViewport.offsetX != this._viewport.offsetX) ||
-        (excessX != this.viewportExcess.x)) {
-      this._viewport.offsetX = aViewport.offsetX;
-      this.viewportExcess.x = excessX;
-      transformChanged = true;
-    }
-    if ((aViewport.offsetY != this._viewport.offsetY) ||
-        (excessY != this.viewportExcess.y)) {
-      this._viewport.offsetY = aViewport.offsetY;
-      this.viewportExcess.y = excessY;
-      transformChanged = true;
-    }
-    if (Math.abs(aViewport.zoom - this._viewport.zoom) >= 1e-6) {
-      this._viewport.zoom = aViewport.zoom;
-      transformChanged = true;
-    }
-
-    if (transformChanged)
-      this.updateTransform();
+    this.setResolution(aViewport.zoom, false);
+    this.setDisplayPort(aViewport.x, aViewport.y, aViewport.displayPort);
   },
 
-  updateTransform: function() {
-    let hasZoom = (Math.abs(this._viewport.zoom - 1.0) >= 1e-6);
-    let x = this._viewport.offsetX + Math.round(-this.viewportExcess.x * this._viewport.zoom);
-    let y = this._viewport.offsetY + Math.round(-this.viewportExcess.y * this._viewport.zoom);
-
-    let transform =
-      "translate(" + x + "px, " +
-                     y + "px)";
-    if (hasZoom)
-      transform += " scale(" + this._viewport.zoom + ")";
-
-    this.browser.style.MozTransform = transform;
+  setResolution: function(aZoom, aForce) {
+    // Set zoom level
+    if (aForce || Math.abs(aZoom - this._zoom) >= 1e-6) {
+      this._zoom = aZoom;
+      if (BrowserApp.selectedTab == this) {
+        let cwu = window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+        cwu.setResolution(aZoom, aZoom);
+      }
+    }
   },
 
-  get viewport() {
-    // Update the viewport to current dimensions
-    this._viewport.x = (this.browser.contentWindow.scrollX +
-                        this.viewportExcess.x) || 0;
-    this._viewport.y = (this.browser.contentWindow.scrollY +
-                        this.viewportExcess.y) || 0;
+  getViewport: function() {
+    let viewport = {
+      width: gScreenWidth,
+      height: gScreenHeight,
+      pageWidth: gScreenWidth,
+      pageHeight: gScreenHeight,
+      zoom: this._zoom
+    };
+
+    // Set the viewport offset to current scroll offset
+    viewport.x = this.browser.contentWindow.scrollX || 0;
+    viewport.y = this.browser.contentWindow.scrollY || 0;
 
     // Transform coordinates based on zoom
-    this._viewport.x = Math.round(this._viewport.x * this._viewport.zoom);
-    this._viewport.y = Math.round(this._viewport.y * this._viewport.zoom);
+    viewport.x = Math.round(viewport.x * viewport.zoom);
+    viewport.y = Math.round(viewport.y * viewport.zoom);
 
     let doc = this.browser.contentDocument;
     if (doc != null) {
-      let pageWidth = this._viewport.width, pageHeight = this._viewport.height;
+      let pageWidth = viewport.width, pageHeight = viewport.height;
       if (doc instanceof SVGDocument) {
         let rect = doc.rootElement.getBoundingClientRect();
         // we need to add rect.left and rect.top twice so that the SVG is drawn
@@ -1736,8 +1654,8 @@ Tab.prototype = {
       }
 
       /* Transform the page width and height based on the zoom factor. */
-      pageWidth *= this._viewport.zoom;
-      pageHeight *= this._viewport.zoom;
+      pageWidth *= viewport.zoom;
+      pageHeight *= viewport.zoom;
 
       /*
        * Avoid sending page sizes of less than screen size before we hit DOMContentLoaded, because
@@ -1745,40 +1663,24 @@ Tab.prototype = {
        * send updates regardless of page size; we'll zoom to fit the content as needed.
        */
       if (doc.readyState === 'complete' || (pageWidth >= gScreenWidth && pageHeight >= gScreenHeight)) {
-        this._viewport.pageWidth = pageWidth;
-        this._viewport.pageHeight = pageHeight;
+        viewport.pageWidth = pageWidth;
+        viewport.pageHeight = pageHeight;
       }
     }
 
-    return this._viewport;
-  },
-
-  updateViewport: function(aReset, aZoomLevel) {
-    if (!aZoomLevel)
-      aZoomLevel = this.getDefaultZoomLevel();
-
-    let win = this.browser.contentWindow;
-    let zoom = (aReset ? aZoomLevel : this._viewport.zoom);
-    let xpos = ((aReset && win) ? win.scrollX * zoom : this._viewport.x);
-    let ypos = ((aReset && win) ? win.scrollY * zoom : this._viewport.y);
-
-    this.viewportExcess = { x: 0, y: 0 };
-    this.viewport = { x: xpos, y: ypos,
-                      offsetX: 0, offsetY: 0,
-                      width: this._viewport.width, height: this._viewport.height,
-                      pageWidth: gScreenWidth, pageHeight: gScreenHeight,
-                      zoom: zoom };
-    this.sendViewportUpdate();
+    return viewport;
   },
 
   sendViewportUpdate: function() {
     if (BrowserApp.selectedTab != this)
       return;
-    sendMessageToJava({
-      gecko: {
-        type: "Viewport:UpdateAndDraw"
-      }
-    });
+    if (!BrowserApp.isBrowserContentDocumentDisplayed())
+      return;
+    let message = this.getViewport();
+    message.type = "Viewport:Update";
+    let displayPort = sendMessageToJava({ gecko: message });
+    if (displayPort != null)
+      this.setDisplayPort(message.x, message.y, JSON.parse(displayPort));
   },
 
   handleEvent: function(aEvent) {
@@ -1790,13 +1692,29 @@ Tab.prototype = {
         if (target.defaultView != this.browser.contentWindow)
           return;
 
+        // Sample the background color of the page and pass it along. (This is used to draw the
+        // checkerboard.) Right now we don't detect changes in the background color after this
+        // event fires; it's not clear that doing so is worth the effort.
+        var backgroundColor = null;
+        try {
+          let browser = this.selectedBrowser;
+          if (browser) {
+            let { contentDocument, contentWindow } = browser;
+            let computedStyle = contentWindow.getComputedStyle(contentDocument.body);
+            backgroundColor = computedStyle.backgroundColor;
+          }
+        } catch (e) {
+          // Ignore. Catching and ignoring exceptions here ensures that Talos succeeds.
+        }
+
         sendMessageToJava({
           gecko: {
             type: "DOMContentLoaded",
             tabID: this.id,
             windowID: 0,
             uri: this.browser.currentURI.spec,
-            title: this.browser.contentTitle
+            title: this.browser.contentTitle,
+            bgColor: backgroundColor
           }
         });
 
@@ -1908,11 +1826,7 @@ Tab.prototype = {
       case "scroll": {
         let win = this.browser.contentWindow;
         if (this.userScrollPos.x != win.scrollX || this.userScrollPos.y != win.scrollY) {
-          sendMessageToJava({
-            gecko: {
-              type: "Viewport:UpdateLater"
-            }
-          });
+          this.sendViewportUpdate();
         }
         break;
       }
@@ -1973,13 +1887,20 @@ Tab.prototype = {
       let restoring = aStateFlags & Ci.nsIWebProgressListener.STATE_RESTORING;
       let showProgress = restoring ? false : this.showProgress;
 
+      // true if the page loaded successfully (i.e., no 404s or other errors)
+      let success = false; 
+      try {
+        success = aRequest.QueryInterface(Components.interfaces.nsIHttpChannel).requestSucceeded;
+      } catch (e) { }
+
       let message = {
         gecko: {
           type: "Content:StateChange",
           tabID: this.id,
           uri: uri,
           state: aStateFlags,
-          showProgress: showProgress
+          showProgress: showProgress,
+          success: success
         }
       };
       sendMessageToJava(message);
@@ -2016,7 +1937,9 @@ Tab.prototype = {
     sendMessageToJava(message);
 
     if ((aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) == 0) {
-      this.updateViewport(true);
+      // XXX This code assumes that this is the earliest hook we have at which
+      // browser.contentDocument is changed to the new document we're loading
+      this.contentDocumentIsDisplayed = false;
     } else {
       this.sendViewportUpdate();
     }
@@ -2114,17 +2037,32 @@ Tab.prototype = {
     }
     ViewportHandler.setMetadataForDocument(this.browser.contentDocument, aMetadata);
     this.updateViewportSize();
-    this.updateViewport(true);
   },
 
   /** Update viewport when the metadata or the window size changes. */
   updateViewportSize: function updateViewportSize() {
+    // When this function gets called on window resize, we must execute
+    // this.sendViewportUpdate() so that refreshDisplayPort is called.
+    // Ensure that when making changes to this function that code path
+    // is not accidentally removed (the call to sendViewportUpdate() is
+    // at the very end).
+
+    if (window.outerWidth == 0 || window.outerHeight == 0) {
+        // this happens sometimes when starting up fennec. we don't want zero
+        // values corrupting our viewport numbers, so ignore this one.
+        return;
+    }
+
+    let oldScreenWidth = gScreenWidth;
+    gScreenWidth = window.outerWidth;
+    gScreenHeight = window.outerHeight;
+
     let browser = this.browser;
     if (!browser)
       return;
 
-    let screenW = this._viewport.width;
-    let screenH = this._viewport.height;
+    let screenW = gScreenWidth;
+    let screenH = gScreenHeight;
     let viewportW, viewportH;
 
     let metadata = this.metadata;
@@ -2156,10 +2094,10 @@ Tab.prototype = {
 
     // Make sure the viewport height is not shorter than the window when
     // the page is zoomed out to show its full width.
-    let minScale = this.getPageZoomLevel(screenW);
+    let minScale = this.getPageZoomLevel();
     viewportH = Math.max(viewportH, screenH / minScale);
 
-    let oldBrowserWidth = parseInt(this.browser.style.minWidth);
+    let oldBrowserWidth = this.browserWidth;
     this.setBrowserSize(viewportW, viewportH);
 
     // Avoid having the scroll position jump around after device rotation.
@@ -2167,24 +2105,21 @@ Tab.prototype = {
     this.userScrollPos.x = win.scrollX;
     this.userScrollPos.y = win.scrollY;
 
-    // If the browser width changes, we change the zoom proportionally. This ensures sensible
-    // behavior when rotating the device on pages with automatically-resizing viewports.
-
-    if (viewportW == oldBrowserWidth)
-      return;
-
-    let viewport = this.viewport;
-    let newZoom = oldBrowserWidth * viewport.zoom / viewportW;
-    this.updateViewport(true, newZoom);
-  },
-
-  getDefaultZoomLevel: function getDefaultZoomLevel() {
-    let md = this.metadata;
-    if ("defaultZoom" in md && md.defaultZoom)
-      return md.defaultZoom;
-
-    let browserWidth = parseInt(this.browser.style.minWidth);
-    return gScreenWidth / browserWidth;
+    // This change to the zoom accounts for all types of changes I can conceive:
+    // 1. screen size changes, CSS viewport does not (pages with no meta viewport
+    //    or a fixed size viewport)
+    // 2. screen size changes, CSS viewport also does (pages with a device-width
+    //    viewport)
+    // 3. screen size remains constant, but CSS viewport changes (meta viewport
+    //    tag is added or removed)
+    // 4. neither screen size nor CSS viewport changes
+    //
+    // In all of these cases, we maintain how much actual content is visible
+    // within the screen width. Note that "actual content" may be different
+    // with respect to CSS pixels because of the CSS viewport size changing.
+    let zoomScale = (screenW * oldBrowserWidth) / (oldScreenWidth * viewportW);
+    this.setResolution(this._zoom * zoomScale, false);
+    this.sendViewportUpdate();
   },
 
   getPageZoomLevel: function getPageZoomLevel() {
@@ -2193,14 +2128,16 @@ Tab.prototype = {
     if (!this.browser.contentDocument || !this.browser.contentDocument.body)
       return 1.0;
 
-    return this._viewport.width / this.browser.contentDocument.body.clientWidth;
+    return gScreenWidth / this.browser.contentDocument.body.clientWidth;
   },
 
   setBrowserSize: function(aWidth, aHeight) {
-    // Using min width/height so as not to conflict with the fullscreen style rule.
-    // See Bug #709813.
-    this.browser.style.minWidth = aWidth + "px";
-    this.browser.style.minHeight = aHeight + "px";
+    this.browserWidth = aWidth;
+
+    if (!this.browser.contentWindow)
+      return;
+    let cwu = this.browser.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    cwu.setCSSViewport(aWidth, aHeight);
   },
 
   getRequestLoadContext: function(aRequest) {
@@ -2228,22 +2165,46 @@ Tab.prototype = {
 
   observe: function(aSubject, aTopic, aData) {
     switch (aTopic) {
-      case "document-shown":
+      case "before-first-paint":
         // Is it on the top level?
         let contentDocument = aSubject;
         if (contentDocument == this.browser.contentDocument) {
+          // reset CSS viewport and zoom to default on new page
+          this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight);
+          this.setResolution(gScreenWidth / this.browserWidth, false);
+          // and then use the metadata to figure out how it needs to be updated
           ViewportHandler.updateMetadata(this);
-          this.documentIdForCurrentViewport = ViewportHandler.getIdForDocument(contentDocument);
+
+          // The document element must have a display port on it whenever we are about to
+          // paint. This is the point just before the first paint, so we set the display port
+          // to a default value here. Once Java is aware of this document it will overwrite
+          // it with a better-calculated display port.
+          this.setDisplayPort(0, 0, {left: 0, top: 0, right: gScreenWidth, bottom: gScreenHeight });
+
+          BrowserApp.displayedDocumentChanged();
+          this.contentDocumentIsDisplayed = true;
         }
         break;
     }
+  },
+
+  // nsIBrowserTab
+  get window() {
+    if (!this.browser)
+      return null;
+    return this.browser.contentWindow;
+  },
+
+  get scale() {
+    return this._zoom;
   },
 
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIWebProgressListener,
     Ci.nsISHistoryListener,
     Ci.nsIObserver,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
+    Ci.nsIBrowserTab
   ])
 };
 
@@ -2260,6 +2221,26 @@ var BrowserEventHandler = {
   },
 
   observe: function(aSubject, aTopic, aData) {
+    if (aTopic == "dom-touch-listener-added") {
+      let tab = BrowserApp.getTabForWindow(aSubject);
+      if (!tab)
+        return;
+
+      sendMessageToJava({
+        gecko: {
+          type: "Tab:HasTouchListener",
+          tabID: tab.id
+        }
+      });
+      return;
+    }
+
+    // the remaining events are all dependent on the browser content document being the
+    // same as the browser displayed document. if they are not the same, we should ignore
+    // the event.
+    if (!BrowserApp.isBrowserContentDocumentDisplayed())
+      return;
+
     if (aTopic == "Gesture:Scroll") {
       // If we've lost our scrollable element, return. Don't cancel the
       // override, as we probably don't want Java to handle panning until the
@@ -2318,7 +2299,6 @@ var BrowserEventHandler = {
       if (element && !SelectHelper.handleClick(element)) {
         try {
           let data = JSON.parse(aData);
-          [data.x, data.y] = ElementTouchHelper.toScreenCoords(element.ownerDocument.defaultView, data.x, data.y);
   
           this._sendMouseEvent("mousemove", element, data.x, data.y);
           this._sendMouseEvent("mousedown", element, data.x, data.y);
@@ -2334,17 +2314,6 @@ var BrowserEventHandler = {
     } else if (aTopic == "Gesture:DoubleTap") {
       this._cancelTapHighlight();
       this.onDoubleTap(aData);
-    } else if (aTopic == "dom-touch-listener-added") {
-      let tab = BrowserApp.getTabForWindow(aSubject);
-      if (!tab)
-        return;
-
-      sendMessageToJava({
-        gecko: {
-          type: "Tab:HasTouchListener",
-          tabID: tab.id
-        }
-      });
     }
   },
  
@@ -2357,7 +2326,7 @@ var BrowserEventHandler = {
 
     let win = BrowserApp.selectedBrowser.contentWindow;
     
-    let zoom = BrowserApp.selectedTab._viewport.zoom;
+    let zoom = BrowserApp.selectedTab._zoom;
     let element = ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
     if (!element) {
       this._zoomOut();
@@ -2376,7 +2345,7 @@ var BrowserEventHandler = {
       const maxDifference = 20;
       let rect = ElementTouchHelper.getBoundingContentRect(element);
 
-      let viewport = BrowserApp.selectedTab.viewport;
+      let viewport = BrowserApp.selectedTab.getViewport();
       let vRect = new Rect(viewport.x, viewport.y, viewport.width, viewport.height);
 
       let zoom = viewport.zoom;
@@ -2467,7 +2436,6 @@ var BrowserEventHandler = {
 
     let window = aElement.ownerDocument.defaultView;
     try {
-      [aX, aY] = ElementTouchHelper.toBrowserCoords(window, aX, aY);
       let cwu = window.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
       aButton = aButton || 0;
       cwu.sendMouseEventToWindow(aName, Math.round(aX), Math.round(aY), aButton, 1, 0, true);
@@ -2574,38 +2542,7 @@ var BrowserEventHandler = {
 const kReferenceDpi = 240; // standard "pixel" size used in some preferences
 
 const ElementTouchHelper = {
-  toBrowserCoords: function(aWindow, aX, aY) {
-    if (!aWindow)
-      throw "Must provide a window";
-  
-    let tab = BrowserApp.getTabForWindow(aWindow.top);
-    if (!tab)
-      throw "Unable to find a tab";
-
-    let viewport = tab.viewport;
-    return [
-        ((aX - tab.viewportExcess.x) * viewport.zoom + viewport.offsetX),
-        ((aY - tab.viewportExcess.y) * viewport.zoom + viewport.offsetY)
-    ];
-  },
-
-  toScreenCoords: function(aWindow, aX, aY) {
-    if (!aWindow)
-      throw "Must provide a window";
-
-    let tab = BrowserApp.getTabForWindow(aWindow.top);
-    if (!tab)
-      throw "Unable to find a tab";
-
-    let viewport = tab.viewport;
-    return [
-        (aX - viewport.offsetX)/viewport.zoom + tab.viewportExcess.x,
-        (aY - viewport.offsetY)/viewport.zoom + tab.viewportExcess.y
-    ];
-  },
-
   anyElementFromPoint: function(aWindow, aX, aY) {
-    [aX, aY] = this.toScreenCoords(aWindow, aX, aY);
     let cwu = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
     let elem = cwu.elementFromPoint(aX, aY, false, true);
 
@@ -2621,7 +2558,6 @@ const ElementTouchHelper = {
   },
 
   elementFromPoint: function(aWindow, aX, aY) {
-    [aX, aY] = this.toScreenCoords(aWindow, aX, aY);
     // browser's elementFromPoint expect browser-relative client coordinates.
     // subtract browser's scroll values to adjust
     let cwu = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
@@ -2913,7 +2849,13 @@ var FormAssistant = {
     switch (aEvent.type) {
       case "focus":
         let currentElement = aEvent.target;
-        this._showValidationMessage(currentElement);
+
+        // Prioritize a form validation message over autocomplete suggestions
+        // when the element is first focused (a form validation message will
+        // only be available if an invalid form was submitted)
+        if (this._showValidationMessage(currentElement))
+          break;
+        this._showAutoCompleteSuggestions(currentElement)
         break;
 
       case "input":
@@ -3010,7 +2952,7 @@ var FormAssistant = {
   // the form assist popup.
   _getElementPositionData: function _getElementPositionData(aElement) {
     let rect = ElementTouchHelper.getBoundingContentRect(aElement);
-    let viewport = BrowserApp.selectedTab.viewport;
+    let viewport = BrowserApp.selectedTab.getViewport();
     
     return { rect: [rect.x - (viewport.x / viewport.zoom),
                     rect.y - (viewport.y / viewport.zoom),
@@ -3241,11 +3183,6 @@ var ViewportHandler = {
   // ES6 weak map lets us avoid leaks.
   _metadata: new WeakMap(),
 
-  // A list of document IDs, arbitrarily assigned. We use IDs to refer to content documents instead
-  // of strong references to avoid leaking them.
-  _documentIds: new WeakMap(),
-  _nextDocumentId: 0,
-
   init: function init() {
     addEventListener("DOMMetaAdded", this, false);
     addEventListener("resize", this, false);
@@ -3257,21 +3194,23 @@ var ViewportHandler = {
   },
 
   handleEvent: function handleEvent(aEvent) {
-    let target = aEvent.originalTarget;
-    let document = target.ownerDocument || target;
-    let browser = BrowserApp.getBrowserForDocument(document);
-    let tab = BrowserApp.getTabForBrowser(browser);
-    if (!tab)
-      return;
-
     switch (aEvent.type) {
       case "DOMMetaAdded":
-        if (target.name == "viewport")
+        let target = aEvent.originalTarget;
+        if (target.name != "viewport")
+          break;
+        let document = target.ownerDocument;
+        let browser = BrowserApp.getBrowserForDocument(document);
+        let tab = BrowserApp.getTabForBrowser(browser);
+        if (tab)
           this.updateMetadata(tab);
         break;
 
       case "resize":
-        this.onResize();
+        // check dimensions changed to avoid infinite loop because updateViewportSize
+        // triggers a resize on the content window and will trigger this listener again
+        if (window.outerWidth != gScreenWidth || window.outerHeight != gScreenHeight)
+          BrowserApp.selectedTab.updateViewportSize();
         break;
     }
   },
@@ -3347,11 +3286,6 @@ var ViewportHandler = {
     };
   },
 
-  onResize: function onResize() {
-    for (let i = 0; i < BrowserApp.tabs.length; i++)
-      BrowserApp.tabs[i].updateViewportSize();
-  },
-
   clamp: function(num, min, max) {
     return Math.max(min, Math.min(max, num));
   },
@@ -3404,19 +3338,6 @@ var ViewportHandler = {
       autoScale: true,
       scaleRatio: ViewportHandler.getScaleRatio()
     };
-  },
-
-  /**
-   * Returns a globally unique ID for the given content document. Using IDs to refer to documents
-   * allows content documents to be identified without any possibility of leaking them.
-   */
-  getIdForDocument: function getIdForDocument(aDocument) {
-    let id = this._documentIds.get(aDocument, null);
-    if (id == null) {
-      id = this._nextDocumentId++;
-      this._documentIds.set(aDocument, id);
-    }
-    return id;
   }
 };
 
@@ -3500,7 +3421,8 @@ var PopupBlockerObserver = {
         let popupFeatures = pageReport[i].popupWindowFeatures;
         let popupName = pageReport[i].popupWindowName;
 
-        BrowserApp.addTab(popupURIspec);
+        let parent = BrowserApp.selectedTab;
+        BrowserApp.addTab(popupURIspec, { parentId: parent.id });
       }
     }
   }
@@ -4309,3 +4231,143 @@ var CharacterEncoding = {
   }
 };
 
+function OverscrollController(aTab) {
+  this.tab = aTab;
+}
+
+OverscrollController.prototype = {
+  supportsCommand : function supportsCommand(aCommand) {
+    if (aCommand != "cmd_linePrevious" && aCommand != "cmd_scrollPageUp")
+      return false;
+
+    return (this.tab.getViewport().y == 0);
+  },
+
+  isCommandEnabled : function isCommandEnabled(aCommand) {
+    return this.supportsCommand(aCommand);
+  },
+
+  doCommand : function doCommand(aCommand){
+    sendMessageToJava({ gecko: { type: "ToggleChrome:Focus" } });
+  },
+
+  onEvent : function onEvent(aEvent) { }
+};
+
+var SearchEngines = {
+  _contextMenuId: null,
+
+  init: function init() {
+    Services.obs.addObserver(this, "SearchEngines:Get", false);
+    let contextName = Strings.browser.GetStringFromName("contextmenu.addSearchEngine");
+    let filter = {
+      matches: function (aElement) {
+        return (aElement.form && NativeWindow.contextmenus.textContext.matches(aElement));
+      }
+    };
+    this._contextMenuId = NativeWindow.contextmenus.add(contextName, filter, this.addEngine);
+  },
+
+  uninit: function uninit() {
+    Services.obs.removeObserver(this, "SearchEngines:Get", false);
+    if (this._contextMenuId != null)
+      NativeWindow.contextmenus.remove(this._contextMenuId);
+  },
+
+  observe: function observe(aSubject, aTopic, aData) {
+    if (aTopic == "SearchEngines:Get") {
+      let engineData = Services.search.getVisibleEngines({});
+      let searchEngines = engineData.map(function (engine) {
+        return {
+          name: engine.name,
+          iconURI: (engine.iconURI ? engine.iconURI.spec : null)
+        };
+      });
+
+      sendMessageToJava({
+        gecko: {
+          type: "SearchEngines:Data",
+          searchEngines: searchEngines
+        }
+      });
+    }
+  },
+
+  addEngine: function addEngine(aElement) {
+    let form = aElement.form;
+    let charset = aElement.ownerDocument.characterSet;
+    let docURI = Services.io.newURI(aElement.ownerDocument.URL, charset, null);
+    let formURL = Services.io.newURI(form.getAttribute("action"), charset, docURI).spec;
+    let method = form.method.toUpperCase();
+    let formData = [];
+
+    for each (let el in form.elements) {
+      if (!el.type)
+        continue;
+
+      // make this text field a generic search parameter
+      if (aElement == el) {
+        formData.push({ name: el.name, value: "{searchTerms}" });
+        continue;
+      }
+
+      let type = el.type.toLowerCase();
+      let escapedName = escape(el.name);
+      let escapedValue = escape(el.value);
+
+      // add other form elements as parameters
+      switch (el.type) {
+        case "checkbox":
+        case "radio":
+          if (!el.checked) break;
+        case "text":
+        case "hidden":
+        case "textarea":
+          formData.push({ name: escapedName, value: escapedValue });
+          break;
+        case "select-one":
+          for each (let option in el.options) {
+            if (option.selected) {
+              formData.push({ name: escapedName, value: escapedValue });
+              break;
+            }
+          }
+      }
+    }
+
+    // prompt user for name of search engine
+    let promptTitle = Strings.browser.GetStringFromName("contextmenu.addSearchEngine");
+    let title = { value: (aElement.ownerDocument.title || docURI.host) };
+    if (!Services.prompt.prompt(null, promptTitle, null, title, null, {}))
+      return;
+
+    // fetch the favicon for this page
+    let dbFile = FileUtils.getFile("ProfD", ["browser.db"]);
+    let mDBConn = Services.storage.openDatabase(dbFile);
+    let stmts = [];
+    stmts[0] = mDBConn.createStatement("SELECT favicon FROM images WHERE url_key = ?");
+    stmts[0].bindStringParameter(0, docURI.spec);
+    let favicon = null;
+    mDBConn.executeAsync(stmts, stmts.length, {
+      handleResult: function (results) {
+        let bytes = results.getNextRow().getResultByName("favicon");
+        favicon = "data:image/png;base64," + btoa(String.fromCharCode.apply(null, bytes));
+      },
+      handleCompletion: function (reason) {
+        // if there's already an engine with this name, add a number to
+        // make the name unique (e.g., "Google" becomes "Google 2")
+        let name = title.value;
+        for (let i = 2; Services.search.getEngineByName(name); i++)
+          name = title.value + " " + i;
+
+        Services.search.addEngineWithDetails(name, favicon, null, null, method, formURL);
+        let engine = Services.search.getEngineByName(name);
+        engine.wrappedJSObject._queryCharset = charset;
+        for each (let param in formData) {
+          if (param.name && param.value)
+            engine.addParam(param.name, param.value, null);
+        }
+      }
+    });
+  }
+};

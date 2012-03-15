@@ -778,6 +778,13 @@ function do_get_profile() {
   };
   dirSvc.QueryInterface(Components.interfaces.nsIDirectoryService)
         .registerProvider(provider);
+
+  // The methods of 'provider' will entrain this scope so null out everything
+  // to avoid spurious leak reports.
+  env = null;
+  profd = null;
+  dirSvc = null;
+  provider = null;
   return file.clone();
 }
 
@@ -843,7 +850,9 @@ function run_test_in_child(testFile, optionalCallback)
 
   var testPath = do_get_file(testFile).path.replace(/\\/g, "/");
   do_test_pending();
-  sendCommand("const _TEST_FILE=['" + testPath + "']; _execute_test();", 
+  sendCommand("_dump('CHILD-TEST-STARTED'); "
+              + "const _TEST_FILE=['" + testPath + "']; _execute_test(); "
+              + "_dump('CHILD-TEST-COMPLETED');", 
               callback);
 }
 

@@ -304,8 +304,7 @@ InitExnPrivate(JSContext *cx, JSObject *exnObject, JSString *message,
     JS_ASSERT(exnObject->isError());
     JS_ASSERT(!exnObject->getPrivate());
 
-    JSSecurityCallbacks *callbacks = JS_GetSecurityCallbacks(cx);
-    JSCheckAccessOp checkAccess = callbacks ? callbacks->checkObjectAccess : NULL;
+    JSCheckAccessOp checkAccess = cx->runtime->securityCallbacks->checkObjectAccess;
 
     Vector<JSStackTraceElem> frames(cx);
     Vector<Value> values(cx);
@@ -443,7 +442,7 @@ SetExnPrivate(JSContext *cx, JSObject *exnObject, JSExnPrivate *priv)
     JS_ASSERT(exnObject->isError());
     if (JSErrorReport *report = priv->errorReport) {
         if (JSPrincipals *prin = report->originPrincipals)
-            JSPRINCIPALS_HOLD(cx, prin);
+            JS_HoldPrincipals(prin);
     }
     exnObject->setPrivate(priv);
 }
@@ -455,7 +454,7 @@ exn_finalize(JSContext *cx, JSObject *obj)
         if (JSErrorReport *report = priv->errorReport) {
             /* HOLD called by SetExnPrivate. */
             if (JSPrincipals *prin = report->originPrincipals)
-                JSPRINCIPALS_DROP(cx, prin);
+                JS_DropPrincipals(cx->runtime, prin);
             cx->free_(report);
         }
         cx->free_(priv);
@@ -1075,7 +1074,6 @@ js_ErrorToException(JSContext *cx, const char *message, JSErrorReport *reportp,
     const JSErrorFormatString *errorString;
     JSExnType exn;
     jsval tv[4];
-    JSBool ok;
     JSObject *errProto, *errObject;
     JSString *messageStr, *filenameStr;
 
@@ -1112,7 +1110,7 @@ js_ErrorToException(JSContext *cx, const char *message, JSErrorReport *reportp,
     /* Prevent infinite recursion. */
     if (cx->generatingError)
         return false;
-    AutoScopedAssign<bool> asa(&cx->generatingError, false);
+    AutoScopedAssign<bool> asa(&cx->generatingError, true);
 
     /* Protect the newly-created strings below from nesting GCs. */
     PodArrayZero(tv);
@@ -1123,30 +1121,26 @@ js_ErrorToException(JSContext *cx, const char *message, JSErrorReport *reportp,
      * exception constructor name in the scope chain of the current context's
      * top stack frame, or in the global object if no frame is active.
      */
-    ok = js_GetClassPrototype(cx, NULL, GetExceptionProtoKey(exn), &errProto);
-    if (!ok)
+    if (!js_GetClassPrototype(cx, NULL, GetExceptionProtoKey(exn), &errProto))
         return false;
     tv[0] = OBJECT_TO_JSVAL(errProto);
 
-    errObject = NewObjectWithGivenProto(cx, &ErrorClass, errProto, NULL);
-    if (!errObject)
+    if (!(errObject = NewObjectWithGivenProto(cx, &ErrorClass, errProto, NULL)))
         return false;
     tv[1] = OBJECT_TO_JSVAL(errObject);
 
-    messageStr = JS_NewStringCopyZ(cx, message);
-    if (!messageStr)
+    if (!(messageStr = JS_NewStringCopyZ(cx, message)))
         return false;
     tv[2] = STRING_TO_JSVAL(messageStr);
 
-    filenameStr = JS_NewStringCopyZ(cx, reportp->filename);
-    if (!filenameStr)
+    if (!(filenameStr = JS_NewStringCopyZ(cx, reportp->filename)))
         return false;
     tv[3] = STRING_TO_JSVAL(filenameStr);
 
-    ok = InitExnPrivate(cx, errObject, messageStr, filenameStr,
-                        reportp->lineno, reportp, exn);
-    if (!ok)
+    if (!InitExnPrivate(cx, errObject, messageStr, filenameStr,
+                        reportp->lineno, reportp, exn)) {
         return false;
+    }
 
     JS_SetPendingException(cx, OBJECT_TO_JSVAL(errObject));
 

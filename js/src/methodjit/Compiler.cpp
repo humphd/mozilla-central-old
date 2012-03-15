@@ -408,8 +408,10 @@ mjit::Compiler::pushActiveFrame(JSScript *script, uint32_t argc)
         script->initCounts(cx);
 
     ActiveFrame *newa = OffTheBooks::new_<ActiveFrame>(cx);
-    if (!newa)
+    if (!newa) {
+        js_ReportOutOfMemory(cx);
         return Compile_Error;
+    }
 
     newa->parent = a;
     if (a)
@@ -624,8 +626,10 @@ mjit::Compiler::prepareInferenceTypes(JSScript *script, ActiveFrame *a)
 
     a->varTypes = (VarType *)
         OffTheBooks::calloc_(TotalSlots(script) * sizeof(VarType));
-    if (!a->varTypes)
+    if (!a->varTypes) {
+        js_ReportOutOfMemory(cx);
         return Compile_Error;
+    }
 
     for (uint32_t slot = ArgSlot(0); slot < TotalSlots(script); slot++) {
         VarType &vt = a->varTypes[slot];
@@ -1213,25 +1217,29 @@ mjit::Compiler::ensureDoubleArguments()
 }
 
 void
-mjit::Compiler::markUndefinedLocals()
+mjit::Compiler::markUndefinedLocal(uint32_t offset, uint32_t i)
 {
     uint32_t depth = ssa.getFrame(a->inlineIndex).depth;
+    uint32_t slot = LocalSlot(script, i);
+    Address local(JSFrameReg, sizeof(StackFrame) + (depth + i) * sizeof(Value));
+    if (!cx->typeInferenceEnabled() || !analysis->trackSlot(slot)) {
+        masm.storeValue(UndefinedValue(), local);
+    } else {
+        Lifetime *lifetime = analysis->liveness(slot).live(offset);
+        if (lifetime)
+            masm.storeValue(UndefinedValue(), local);
+    }
+}
 
+void
+mjit::Compiler::markUndefinedLocals()
+{
     /*
      * Set locals to undefined, as in initCallFrameLatePrologue.
      * Skip locals which aren't closed and are known to be defined before used,
      */
-    for (uint32_t i = 0; i < script->nfixed; i++) {
-        uint32_t slot = LocalSlot(script, i);
-        Address local(JSFrameReg, sizeof(StackFrame) + (depth + i) * sizeof(Value));
-        if (!cx->typeInferenceEnabled() || !analysis->trackSlot(slot)) {
-            masm.storeValue(UndefinedValue(), local);
-        } else {
-            Lifetime *lifetime = analysis->liveness(slot).live(0);
-            if (lifetime)
-                masm.storeValue(UndefinedValue(), local);
-        }
-    }
+    for (uint32_t i = 0; i < script->nfixed; i++)
+        markUndefinedLocal(0, i);
 }
 
 CompileStatus
@@ -3050,6 +3058,10 @@ mjit::Compiler::generateMethod()
           {
             uint32_t slot = GET_SLOTNO(PC);
             JSFunction *fun = script->getFunction(GET_UINT32_INDEX(PC + SLOTNO_LEN));
+
+            /* See JSOP_DEFLOCALFUN. */
+            markUndefinedLocal(PC - script->code, slot);
+
             prepareStubCall(Uses(frame.frameSlots()));
             masm.move(ImmPtr(fun), Registers::ArgReg1);
             INLINE_STUBCALL(stubs::DefLocalFun_FC, REJOIN_DEFLOCALFUN);
@@ -3130,6 +3142,16 @@ mjit::Compiler::generateMethod()
           {
             uint32_t slot = GET_SLOTNO(PC);
             JSFunction *fun = script->getFunction(GET_UINT32_INDEX(PC + SLOTNO_LEN));
+
+            /*
+             * The liveness analysis will report that the value in |slot| is
+             * defined at the start of this opcode. However, we don't actually
+             * fill it in until the stub returns. This will cause a problem if
+             * we GC inside the stub. So we write a safe value here so that the
+             * GC won't crash.
+             */
+            markUndefinedLocal(PC - script->code, slot);
+
             prepareStubCall(Uses(0));
             masm.move(ImmPtr(fun), Registers::ArgReg1);
             INLINE_STUBCALL(stubs::DefLocalFun, REJOIN_DEFLOCALFUN);
@@ -6909,7 +6931,7 @@ mjit::Compiler::jsop_regexp()
      */
     analyze::SSAUseChain *uses =
         analysis->useChain(analyze::SSAValue::PushedValue(PC - script->code, 0));
-    if (uses && uses->popped && !uses->next) {
+    if (uses && uses->popped && !uses->next && !reobj->global() && !reobj->sticky()) {
         jsbytecode *use = script->code + uses->offset;
         uint32_t which = uses->u.which;
         if (JSOp(*use) == JSOP_CALLPROP) {
@@ -6980,8 +7002,10 @@ mjit::Compiler::startLoop(jsbytecode *head, Jump entry, jsbytecode *entryTarget)
     }
 
     LoopState *nloop = OffTheBooks::new_<LoopState>(cx, &ssa, this, &frame);
-    if (!nloop || !nloop->init(head, entry, entryTarget))
+    if (!nloop || !nloop->init(head, entry, entryTarget)) {
+        js_ReportOutOfMemory(cx);
         return false;
+    }
 
     nloop->outer = loop;
     loop = nloop;
@@ -7157,8 +7181,10 @@ mjit::Compiler::jumpAndRun(Jump j, jsbytecode *target, Jump *slow, bool *trampol
         RegisterAllocation *&alloc = analysis->getAllocation(target);
         if (!alloc) {
             alloc = cx->typeLifoAlloc().new_<RegisterAllocation>(false);
-            if (!alloc)
+            if (!alloc) {
+                js_ReportOutOfMemory(cx);
                 return false;
+            }
         }
         lvtarget = alloc;
         consistent = frame.consistentRegisters(target);

@@ -452,7 +452,6 @@
 #include "nsDOMFile.h"
 #include "nsDOMFileReader.h"
 #include "nsIDOMFileException.h"
-#include "nsIDOMFileError.h"
 #include "nsIDOMFormData.h"
 
 #include "nsIDOMDOMStringMap.h"
@@ -507,6 +506,7 @@ using mozilla::dom::indexedDB::IDBWrapperCache;
 #include "nsIDOMBatteryManager.h"
 #include "BatteryManager.h"
 #include "nsIDOMPowerManager.h"
+#include "nsIDOMWakeLock.h"
 #include "nsIDOMSmsManager.h"
 #include "nsIDOMSmsMessage.h"
 #include "nsIDOMSmsEvent.h"
@@ -1393,8 +1393,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(FileException, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
-  NS_DEFINE_CLASSINFO_DATA(FileError, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(FileReader, nsEventTargetSH,
                            EVENTTARGET_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(MozURLProperty, nsDOMGenericSH,
@@ -1424,9 +1422,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
   NS_DEFINE_CLASSINFO_DATA(GeoPositionCoords, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
-  NS_DEFINE_CLASSINFO_DATA(GeoPositionAddress, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-
   NS_DEFINE_CLASSINFO_DATA(GeoPositionError, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
@@ -1434,6 +1429,9 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(MozPowerManager, nsDOMGenericSH,
+                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
+
+  NS_DEFINE_CLASSINFO_DATA(MozWakeLock, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(MozSmsManager, nsDOMGenericSH,
@@ -1671,6 +1669,12 @@ NS_DEFINE_EVENT_CTOR(PageTransitionEvent)
 NS_DEFINE_EVENT_CTOR(CloseEvent)
 NS_DEFINE_EVENT_CTOR(UIEvent)
 NS_DEFINE_EVENT_CTOR(MouseEvent)
+nsresult
+NS_DOMStorageEventCtor(nsISupports** aInstancePtrResult)
+{
+  nsDOMStorageEvent* e = new nsDOMStorageEvent();
+  return CallQueryInterface(e, aInstancePtrResult);
+}
 
 struct nsConstructorFuncMapData
 {
@@ -1686,6 +1690,7 @@ struct nsConstructorFuncMapData
 
 static const nsConstructorFuncMapData kConstructorFuncMap[] =
 {
+  NS_DEFINE_CONSTRUCTOR_FUNC_DATA(Blob, nsDOMMultipartFile::NewBlob)
   NS_DEFINE_CONSTRUCTOR_FUNC_DATA(File, nsDOMFileFile::NewFile)
   NS_DEFINE_CONSTRUCTOR_FUNC_DATA(MozBlobBuilder, NS_NewBlobBuilder)
   NS_DEFINE_EVENT_CONSTRUCTOR_FUNC_DATA(Event)
@@ -1696,6 +1701,7 @@ static const nsConstructorFuncMapData kConstructorFuncMap[] =
   NS_DEFINE_EVENT_CONSTRUCTOR_FUNC_DATA(CloseEvent)
   NS_DEFINE_EVENT_CONSTRUCTOR_FUNC_DATA(UIEvent)
   NS_DEFINE_EVENT_CONSTRUCTOR_FUNC_DATA(MouseEvent)
+  NS_DEFINE_EVENT_CONSTRUCTOR_FUNC_DATA(StorageEvent)
   NS_DEFINE_CONSTRUCTOR_FUNC_DATA(MozSmsFilter, sms::SmsFilter::NewSmsFilter)
 };
 
@@ -3891,6 +3897,7 @@ nsDOMClassInfo::Init()
 
   DOM_CLASSINFO_MAP_BEGIN(StorageEvent, nsIDOMStorageEvent)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMStorageEvent)
+    DOM_CLASSINFO_EVENT_MAP_ENTRIES
   DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(StorageEventObsolete, nsIDOMStorageEventObsolete)
@@ -3952,10 +3959,6 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMFileList)
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(FileError, nsIDOMFileError)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMFileError)
-  DOM_CLASSINFO_MAP_END
-
   DOM_CLASSINFO_MAP_BEGIN(Blob, nsIDOMBlob)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMBlob)
   DOM_CLASSINFO_MAP_END
@@ -4014,10 +4017,6 @@ nsDOMClassInfo::Init()
      DOM_CLASSINFO_MAP_ENTRY(nsIDOMGeoPositionCoords)
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(GeoPositionAddress, nsIDOMGeoPositionAddress)
-     DOM_CLASSINFO_MAP_ENTRY(nsIDOMGeoPositionAddress)
-  DOM_CLASSINFO_MAP_END
-
   DOM_CLASSINFO_MAP_BEGIN(GeoPositionError, nsIDOMGeoPositionError)
      DOM_CLASSINFO_MAP_ENTRY(nsIDOMGeoPositionError)
   DOM_CLASSINFO_MAP_END
@@ -4029,6 +4028,10 @@ nsDOMClassInfo::Init()
 
   DOM_CLASSINFO_MAP_BEGIN(MozPowerManager, nsIDOMMozPowerManager)
      DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozPowerManager)
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(MozWakeLock, nsIDOMMozWakeLock)
+     DOM_CLASSINFO_MAP_ENTRY(nsIDOMMozWakeLock)
   DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(MozSmsManager, nsIDOMMozSmsManager)
@@ -5683,6 +5686,138 @@ DefineInterfaceConstants(JSContext *cx, JSObject *obj, const nsIID *aIID)
   return NS_OK;
 }
 
+// This code is temporary until we remove support for the constants defined
+// on IDBCursor/IDBRequest/IDBTransaction
+
+struct IDBConstant
+{
+  const char* interface;
+  const char* name;
+  const char* value;
+  
+  static const char* IDBCursor;
+  static const char* IDBRequest;
+  static const char* IDBTransaction;
+};
+
+const char* IDBConstant::IDBCursor = "IDBCursor";
+const char* IDBConstant::IDBRequest = "IDBRequest";
+const char* IDBConstant::IDBTransaction = "IDBTransaction";
+
+static const IDBConstant sIDBConstants[] = {
+  { IDBConstant::IDBCursor,      "NEXT",              "next" },
+  { IDBConstant::IDBCursor,      "NEXT_NO_DUPLICATE", "nextunique" },
+  { IDBConstant::IDBCursor,      "PREV",              "prev" },
+  { IDBConstant::IDBCursor,      "PREV_NO_DUPLICATE", "prevunique" },
+  { IDBConstant::IDBRequest,     "LOADING",           "pending" },
+  { IDBConstant::IDBRequest,     "DONE",              "done" },
+  { IDBConstant::IDBTransaction, "READ_ONLY",         "readonly" },
+  { IDBConstant::IDBTransaction, "READ_WRITE",        "readwrite" },
+  { IDBConstant::IDBTransaction, "VERSION_CHANGE",    "versionchange" },
+};
+
+static JSBool
+IDBConstantGetter(JSContext *cx, JSObject *obj, jsid id, jsval* vp)
+{
+  MOZ_ASSERT(JSID_IS_INT(id));
+  
+  int8_t index = JSID_TO_INT(id);
+  
+  MOZ_ASSERT((uint8_t)index < mozilla::ArrayLength(sIDBConstants));
+
+  const IDBConstant& c = sIDBConstants[index];
+
+  // Put a warning on the console
+  nsString warnText =
+    NS_LITERAL_STRING("The constant ") +
+    NS_ConvertASCIItoUTF16(c.interface) +
+    NS_LITERAL_STRING(".") +
+    NS_ConvertASCIItoUTF16(c.name) +
+    NS_LITERAL_STRING(" has been deprecated. Use the string value \"") +
+    NS_ConvertASCIItoUTF16(c.value) +
+    NS_LITERAL_STRING("\" instead.");
+
+  PRUint64 windowID = 0;
+  nsIScriptContext* context = GetScriptContextFromJSContext(cx);
+  if (context) {
+    nsCOMPtr<nsPIDOMWindow> window =
+      do_QueryInterface(context->GetGlobalObject());
+    if (window) {
+      window = window->GetCurrentInnerWindow();
+    }
+    NS_WARN_IF_FALSE(window, "Missing a window, got a door?");
+    if (window) {
+      windowID = window->WindowID();
+    }
+  }
+
+  nsCOMPtr<nsIScriptError> errorObject =
+    do_CreateInstance(NS_SCRIPTERROR_CONTRACTID);
+  NS_WARN_IF_FALSE(errorObject, "Failed to create error object");
+  if (errorObject) {
+    nsresult rv = errorObject->InitWithWindowID(warnText.get(),
+                                                nsnull, // file name
+                                                nsnull, // source line
+                                                0, 0, // Line/col number
+                                                nsIScriptError::warningFlag,
+                                                "DOM Core", windowID);
+    NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Failed to init error object");
+
+    if (NS_SUCCEEDED(rv)) {
+      nsCOMPtr<nsIConsoleService> consoleServ =
+        do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+      if (consoleServ) {
+        consoleServ->LogMessage(errorObject);
+      }
+    }
+  }
+
+  // Redefine property to remove getter
+  NS_ConvertASCIItoUTF16 valStr(c.value);
+  jsval value;
+  if (!xpc::StringToJsval(cx, valStr, &value)) {
+    return JS_FALSE;
+  }
+  if (!::JS_DefineProperty(cx, obj, c.name, value, nsnull, nsnull,
+                           JSPROP_ENUMERATE)) {
+    return JS_FALSE;
+  }
+
+  // Return value
+  *vp = value;
+  return JS_TRUE;
+}
+
+static nsresult
+DefineIDBInterfaceConstants(JSContext *cx, JSObject *obj, const nsIID *aIID)
+{
+  const char* interface;
+  if (aIID->Equals(NS_GET_IID(nsIIDBCursor))) {
+    interface = IDBConstant::IDBCursor;
+  }
+  else if (aIID->Equals(NS_GET_IID(nsIIDBRequest))) {
+    interface = IDBConstant::IDBRequest;
+  }
+  else if (aIID->Equals(NS_GET_IID(nsIIDBTransaction))) {
+    interface = IDBConstant::IDBTransaction;
+  }
+
+  for (int8_t i = 0; i < (int8_t)mozilla::ArrayLength(sIDBConstants); ++i) {
+    const IDBConstant& c = sIDBConstants[i];
+    if (c.interface != interface) {
+      continue;
+    }
+
+    if (!::JS_DefinePropertyWithTinyId(cx, obj, c.name, i, JSVAL_VOID,
+                                       IDBConstantGetter, nsnull,
+                                       JSPROP_ENUMERATE)) {
+      return NS_ERROR_UNEXPECTED;
+    }
+  }
+
+  return NS_OK;
+}
+
 class nsDOMConstructor : public nsIDOMDOMConstructor
 {
 protected:
@@ -6089,6 +6224,15 @@ nsDOMConstructor::ResolveInterfaceConstants(JSContext *cx, JSObject *obj)
     return NS_ERROR_FAILURE;
   }
 
+  // Special case a few IDB interfaces which for now are getting transitional
+  // constants.
+  if (class_iid->Equals(NS_GET_IID(nsIIDBCursor)) ||
+      class_iid->Equals(NS_GET_IID(nsIIDBRequest)) ||
+      class_iid->Equals(NS_GET_IID(nsIIDBTransaction))) {
+    rv = DefineIDBInterfaceConstants(cx, obj, class_iid);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   return NS_OK;
 }
 
@@ -6230,6 +6374,15 @@ ResolvePrototype(nsIXPConnect *aXPConnect, nsGlobalWindow *aWin, JSContext *cx,
     if (primary_iid->Equals(NS_GET_IID(nsIIDBKeyRange)) &&
         !indexedDB::IDBKeyRange::DefineConstructors(cx, class_obj)) {
       return NS_ERROR_FAILURE;
+    }
+
+    // Special case a few IDB interfaces which for now are getting transitional
+    // constants.
+    if (primary_iid->Equals(NS_GET_IID(nsIIDBCursor)) ||
+        primary_iid->Equals(NS_GET_IID(nsIIDBRequest)) ||
+        primary_iid->Equals(NS_GET_IID(nsIIDBTransaction))) {
+      rv = DefineIDBInterfaceConstants(cx, class_obj, primary_iid);
+      NS_ENSURE_SUCCESS(rv, rv);
     }
 
     nsCOMPtr<nsIInterfaceInfoManager>
@@ -10631,7 +10784,7 @@ nsSVGListSH<ListInterfaceType, ListType>::GetItemAt(nsISupports *aNative,
   }
 #endif
 
-  return list->GetItemWithoutAddRef(aIndex);
+  return list->GetItemAt(aIndex);
 }
 
 
