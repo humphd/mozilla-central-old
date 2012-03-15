@@ -57,7 +57,7 @@ nsDOMUIEvent::nsDOMUIEvent(nsPresContext* aPresContext, nsGUIEvent* aEvent)
                static_cast<nsEvent *>(aEvent) :
                static_cast<nsEvent *>(new nsUIEvent(false, 0, 0)))
   , mClientPoint(0, 0), mLayerPoint(0, 0), mPagePoint(0, 0)
-  , mIsPointerLocked(nsEventStateManager::sPointerLock)
+  , mIsPointerLocked(!!nsEventStateManager::sPointerLockedElement)
 {
   if (aEvent) {
     mEventIsInternal = false;
