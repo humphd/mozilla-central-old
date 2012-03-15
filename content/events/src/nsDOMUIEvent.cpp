@@ -141,7 +141,7 @@ nsDOMUIEvent::GetMovementPoint()
   }
 
   // Calculate the delta between the previous screen point and the current one.
-  nsIntPoint currentPoint = ScreenPointInternal();
+  nsIntPoint currentPoint = CalculateScreenPoint(mPresContext, mEvent);
 
   // Adjust previous event's refPoint so it compares to current screenX, screenY
   nsIntPoint offset = mEvent->lastRefPoint +
@@ -154,37 +154,13 @@ nsDOMUIEvent::GetMovementPoint()
 }
 
 nsIntPoint
-nsDOMUIEvent::ScreenPointInternal()
-{
-  if (!mEvent ||
-       (mEvent->eventStructType != NS_MOUSE_EVENT &&
-        mEvent->eventStructType != NS_POPUP_EVENT &&
-        mEvent->eventStructType != NS_MOUSE_SCROLL_EVENT &&
-        mEvent->eventStructType != NS_MOZTOUCH_EVENT &&
-        mEvent->eventStructType != NS_DRAG_EVENT &&
-        mEvent->eventStructType != NS_SIMPLE_GESTURE_EVENT)) {
-    return nsIntPoint(0, 0);
-  }
-
-  if (!((nsGUIEvent*)mEvent)->widget ) {
-    return mEvent->refPoint;
-  }
-
-  nsIntPoint offset = mEvent->refPoint +
-    ((nsGUIEvent*)mEvent)->widget->WidgetToScreenOffset();
-  nscoord factor = mPresContext->DeviceContext()->UnscaledAppUnitsPerDevPixel();
-  return nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(offset.x * factor),
-                    nsPresContext::AppUnitsToIntCSSPixels(offset.y * factor));
-}
-
-nsIntPoint
 nsDOMUIEvent::GetScreenPoint()
 {
   if (mIsPointerLocked) {
     return nsEventStateManager::sLastScreenPoint;
   }
 
-  return CalculateScreenPoint(mPresContext, mEvent); // ScreenPointInternal();
+  return CalculateScreenPoint(mPresContext, mEvent);
 }
 
 nsIntPoint
@@ -195,33 +171,6 @@ nsDOMUIEvent::GetClientPoint()
   }
 
   return CalculateClientPoint(mPresContext, mEvent, &mClientPoint);
-
-/**
-
-  if (!mEvent ||
-      (mEvent->eventStructType != NS_MOUSE_EVENT &&
-       mEvent->eventStructType != NS_POPUP_EVENT &&
-       mEvent->eventStructType != NS_MOUSE_SCROLL_EVENT &&
-       mEvent->eventStructType != NS_MOZTOUCH_EVENT &&
-       mEvent->eventStructType != NS_DRAG_EVENT &&
-       mEvent->eventStructType != NS_SIMPLE_GESTURE_EVENT) ||
-      !mPresContext ||
-      !((nsGUIEvent*)mEvent)->widget) {
-    return mClientPoint;
-  }
-
-  nsPoint pt(0, 0);
-  nsIPresShell* shell = mPresContext->GetPresShell();
-  if (!shell) {
-    return nsIntPoint(0, 0);
-  }
-  nsIFrame* rootFrame = shell->GetRootFrame();
-  if (rootFrame)
-    pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(mEvent, rootFrame);
-
-  return nsIntPoint(nsPresContext::AppUnitsToIntCSSPixels(pt.x),
-                    nsPresContext::AppUnitsToIntCSSPixels(pt.y));
-**/
 }
 
 NS_IMETHODIMP
