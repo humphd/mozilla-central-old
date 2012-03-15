@@ -9295,10 +9295,10 @@ nsDocument::UnLockPointer()
     return;
   }
 
-  pointerLockElement->ClearPointerLock();
-  DispatchPointerLockChange(pointerLockDoc);
   sPointerLockElement = nsnull;
   sPointerLockDoc = nsnull;
+  pointerLockElement->ClearPointerLock();
+  DispatchPointerLockChange(pointerLockDoc);
 }
 
 void
