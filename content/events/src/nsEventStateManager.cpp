@@ -4126,12 +4126,13 @@ nsEventStateManager::GetMouseCoords(nsIntRect aBounds)
     NS_WARNING("GetMouseCoords(): No Document");
     return nsIntPoint(0,0);
   }
-  
+
   nsCOMPtr<nsPIDOMWindow> domWin = domDoc->GetInnerWindow();
   if (!domWin) {
     NS_WARNING("GetMouseCoords(): No Window");
     return nsIntPoint(0,0);
   }
+
   int innerHeight;
   domWin->GetInnerHeight(&innerHeight);
 
