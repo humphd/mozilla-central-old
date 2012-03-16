@@ -1055,7 +1055,8 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
     if (!mCurrentTarget) return NS_ERROR_NULL_POINTER;
   }
 
-  // Store mouse event position info for deltas in mouse lock calculations later.
+  // Store last known screenPoint and clientPoint so pointer lock
+  // can use these values as constants.
   if (NS_IS_TRUSTED_EVENT(aEvent) &&
       (NS_IS_MOUSE_EVENT_STRUCT(aEvent) &&
        IsMouseEventReal(aEvent)) ||
