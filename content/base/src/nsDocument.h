@@ -961,7 +961,6 @@ public:
   virtual void RestorePreviousFullScreenState();
   virtual bool IsFullScreenDoc();
   static void ExitFullScreen();
-  static void MaybeUnlockPointer(nsIDocument* aDocument);
 
   // This is called asynchronously by nsIDocument::AsyncRequestFullScreen()
   // to move document into full-screen mode if allowed. aWasCallerChrome
@@ -989,7 +988,8 @@ public:
   void RequestPointerLock(Element* aElement);
   bool ShouldLockPointer(Element* aElement);
   bool SetPointerLock(Element* aElement, int aCursorStyle);
-  static void UnLockPointer();
+  static void MaybeUnlockPointer();
+  static void UnlockPointer();
 
   // This method may fire a DOM event; if it does so it will happen
   // synchronously.

@@ -780,7 +780,7 @@ public:
 
   virtual void RequestPointerLock(Element* aElement) = 0;
 
-  static void UnLockPointer();
+  static void UnlockPointer();
 
 
   //----------------------------------------------------------------------

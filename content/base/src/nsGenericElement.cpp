@@ -3264,7 +3264,7 @@ nsGenericElement::UnbindFromTree(bool aDeep, bool aNullParent)
       nsIDocument::ExitFullScreen(false);
     }
     if (HasPointerLock()) {
-      nsIDocument::UnLockPointer();
+      nsIDocument::UnlockPointer();
     }
     if (GetParent()) {
       NS_RELEASE(mParent);
