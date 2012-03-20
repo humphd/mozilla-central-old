@@ -9225,6 +9225,7 @@ nsDocument::ShouldLockPointer(Element* aElement)
 bool
 nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
 {
+  // NOTE: aElement will be nsnull when unlocking.
   nsCOMPtr<nsPIDOMWindow> window = GetWindow();
   if (!window) {
     NS_WARNING("SetPointerLock(): No Window");
@@ -9316,10 +9317,26 @@ nsDocument::GetMozPointerLockElement(nsIDOMElement** aPointerLockElement)
   NS_ENSURE_ARG_POINTER(aPointerLockElement);
   *aPointerLockElement = nsnull;
   nsCOMPtr<Element> pointerLockElement = do_QueryReferent(sPointerLockElement);
-  if (pointerLockElement) {
-    CallQueryInterface(pointerLockElement, aPointerLockElement);
+  if (!pointerLockElement) {
+    return NS_OK;
   }
 
+  // Make sure pointer locked element is in the same document and domain.
+  nsCOMPtr<nsIDocument> pointerLockDoc = do_QueryReferent(sPointerLockDoc);
+  nsDocument* doc = static_cast<nsDocument*>(pointerLockDoc.get());
+  if (!doc) {
+    return NS_ERROR_FAILURE;
+  }
+  if (doc != this) {
+    return NS_ERROR_DOM_WRONG_DOCUMENT_ERR;
+  }
+  nsCOMPtr<nsIDOMNode> pointerLockNode = do_QueryInterface(pointerLockElement);
+  nsresult rv = nsContentUtils::CheckSameOrigin(this, pointerLockNode.get());
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  CallQueryInterface(pointerLockElement, aPointerLockElement);
   return NS_OK;
 }
 
