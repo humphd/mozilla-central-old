@@ -4124,20 +4124,20 @@ nsEventStateManager::GetMouseCoords(nsIntRect aBounds)
   nsCOMPtr<nsIDocument> domDoc = sPointerLockedElement->OwnerDoc();
   if (!domDoc) {
     NS_WARNING("GetMouseCoords(): No Document");
-    return nsIntPoint(0,0);
+    return nsIntPoint(0, 0);
   }
 
   nsCOMPtr<nsPIDOMWindow> domWin = domDoc->GetInnerWindow();
   if (!domWin) {
     NS_WARNING("GetMouseCoords(): No Window");
-    return nsIntPoint(0,0);
+    return nsIntPoint(0, 0);
   }
 
   int innerHeight;
   domWin->GetInnerHeight(&innerHeight);
 
-  return nsIntPoint((aBounds.width/2) + aBounds.x,
-                    (innerHeight/2) + (aBounds.y + (aBounds.height - innerHeight)));
+  return nsIntPoint((aBounds.width / 2) + aBounds.x,
+                    (innerHeight / 2) + (aBounds.y + (aBounds.height - innerHeight)));
 }
 
 void
