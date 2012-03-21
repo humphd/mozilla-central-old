@@ -1060,7 +1060,8 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
   }
 
   if (NS_IS_DRAG_EVENT(aEvent) && sIsPointerLocked) {
-    NS_ASSERTION(sIsPointerLocked, "sIsPointerLocked is true. Drag events should be suppressed when the pointer is locked.");
+    NS_ASSERTION(sIsPointerLocked,
+      "sIsPointerLocked is true. Drag events should be suppressed when the pointer is locked.");
   }
 
   // Store last known screenPoint and clientPoint so pointer lock
