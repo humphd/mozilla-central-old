@@ -4097,6 +4097,10 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   // Reset mouse wheel transaction
   nsMouseWheelTransaction::EndTransaction();
 
+  // Deal with DnD events
+  nsCOMPtr<nsIDragService> dragService =
+    do_GetService("@mozilla.org/widget/dragservice;1");
+
   if (sIsPointerLocked) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
@@ -4108,12 +4112,22 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
 
     // Retarget all events to this element via capture.
     nsIPresShell::SetCapturingContent(aElement, CAPTURE_POINTERLOCK);
+
+    // Suppress DnD
+    if (dragService) {
+      dragService->Suppress();
+    }
   } else {
     // Unlocking, so return pointer to the original position
     aWidget->SynthesizeNativeMouseMove(sLastScreenPoint);
 
     // Don't retarget events to this element any more.
     nsIPresShell::SetCapturingContent(nsnull, CAPTURE_POINTERLOCK);
+
+    // Unsuppress DnD
+    if (dragService) {
+      dragService->Unsuppress();
+    }
   }
 }
 
