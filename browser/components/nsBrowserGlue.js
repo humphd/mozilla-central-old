@@ -68,7 +68,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "KeywordURLResetPrompter",
                                   "resource:///modules/KeywordURLResetPrompter.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "webappsUI", 
-                                  "resource://gre/modules/webappsUI.jsm");
+                                  "resource:///modules/webappsUI.jsm");
 
 const PREF_PLUGINS_NOTIFYUSER = "plugins.update.notifyUser";
 const PREF_PLUGINS_UPDATEURL  = "plugins.update.url";
@@ -915,7 +915,7 @@ BrowserGlue.prototype = {
     Services.prefs.clearUserPref(PREF_TELEMETRY_PROMPTED);
     Services.prefs.clearUserPref(PREF_TELEMETRY_ENABLED);
     
-    var telemetryPrompt = browserBundle.formatStringFromName("telemetryPrompt", [productName, serverOwner], 2);
+    var telemetryPrompt = browserBundle.formatStringFromName("telemetryOptInPrompt", [productName, serverOwner], 2);
 
     var buttons = [
                     {

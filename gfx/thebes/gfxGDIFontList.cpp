@@ -107,7 +107,23 @@ BuildKeyNameFromFontName(nsAString &aName)
 // Implementation of gfxPlatformFontList for Win32 GDI,
 // using GDI font enumeration APIs to get the list of fonts
 
-static HMODULE fontlib;
+typedef LONG
+(WINAPI *TTLoadEmbeddedFontProc)(HANDLE* phFontReference, ULONG ulFlags,
+                                 ULONG* pulPrivStatus, ULONG ulPrivs,
+                                 ULONG* pulStatus,
+                                 READEMBEDPROC lpfnReadFromStream,
+                                 LPVOID lpvReadStream,
+                                 LPWSTR szWinFamilyName, 
+                                 LPSTR szMacFamilyName,
+                                 TTLOADINFO* pTTLoadInfo);
+
+typedef LONG
+(WINAPI *TTDeleteEmbeddedFontProc)(HANDLE hFontReference, ULONG ulFlags,
+                                   ULONG* pulStatus);
+
+
+static TTLoadEmbeddedFontProc TTLoadEmbeddedFontPtr = nsnull;
+static TTDeleteEmbeddedFontProc TTDeleteEmbeddedFontPtr = nsnull;
 
 class WinUserFontData : public gfxUserFontData {
 public:
@@ -120,7 +136,7 @@ public:
         if (mIsEmbedded) {
             ULONG pulStatus;
             LONG err;
-            err = TTDeleteEmbeddedFont(mFontRef, 0, &pulStatus);
+            err = TTDeleteEmbeddedFontPtr(mFontRef, 0, &pulStatus);
 #if DEBUG
             if (err != E_NONE) {
                 char buf[256];
@@ -342,7 +358,7 @@ GDIFontEntry::TestCharacterMap(PRUint32 aCh)
         // previous code was using the group style
         gfxFontStyle fakeStyle;  
         if (mItalic)
-            fakeStyle.style = FONT_STYLE_ITALIC;
+            fakeStyle.style = NS_FONT_STYLE_ITALIC;
         fakeStyle.weight = mWeight * 100;
 
         nsRefPtr<gfxFont> tempFont = FindOrMakeFont(&fakeStyle, false);
@@ -576,11 +592,7 @@ gfxGDIFontList::gfxGDIFontList()
 {
     mFontSubstitutes.Init(50);
 
-    // Make sure the t2embed library is available because it may be
-    // disabled to work around security vulnerabilities.
-    if (!fontlib) {
-        fontlib = LoadLibraryW(L"t2embed.dll");
-    }
+    InitializeFontEmbeddingProcs();
 }
 
 static void
@@ -756,7 +768,7 @@ gfxGDIFontList::LookupLocalFont(const gfxProxyFontEntry *aProxyEntry,
     // 'Arial Vet' which can be used as a key in GDI font lookups).
     gfxFontEntry *fe = GDIFontEntry::CreateFontEntry(lookup->Name(), 
         gfxWindowsFontType(isCFF ? GFX_FONT_TYPE_PS_OPENTYPE : GFX_FONT_TYPE_TRUETYPE) /*type*/, 
-        PRUint32(aProxyEntry->mItalic ? FONT_STYLE_ITALIC : FONT_STYLE_NORMAL), 
+        PRUint32(aProxyEntry->mItalic ? NS_FONT_STYLE_ITALIC : NS_FONT_STYLE_NORMAL), 
         w, aProxyEntry->mStretch, nsnull);
         
     if (!fe)
@@ -765,6 +777,17 @@ gfxGDIFontList::LookupLocalFont(const gfxProxyFontEntry *aProxyEntry,
     fe->mIsUserFont = true;
     fe->mIsLocalUserFont = true;
     return fe;
+}
+
+void gfxGDIFontList::InitializeFontEmbeddingProcs()
+{
+    static HMODULE fontlib = LoadLibraryW(L"t2embed.dll");
+    if (!fontlib)
+        return;
+    TTLoadEmbeddedFontPtr = (TTLoadEmbeddedFontProc)
+        GetProcAddress(fontlib, "TTLoadEmbeddedFont");
+    TTDeleteEmbeddedFontPtr = (TTDeleteEmbeddedFontProc)
+        GetProcAddress(fontlib, "TTDeleteEmbeddedFont");
 }
 
 // used to control stream read by Windows TTLoadEmbeddedFont API
@@ -870,10 +893,6 @@ gfxGDIFontList::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
     };
     FontDataDeleter autoDelete(aFontData);
 
-    // if the t2embed library isn't available, bail
-    if (!fontlib)
-        return nsnull;
-
     bool hasVertical;
     bool isCFF = gfxFontUtils::IsCffFont(aFontData, hasVertical);
 
@@ -886,8 +905,8 @@ gfxGDIFontList::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
     if (NS_FAILED(rv))
         return nsnull;
 
-    // for TTF fonts, first try using the t2embed library
-    if (!isCFF) {
+    // for TTF fonts, first try using the t2embed library if available
+    if (!isCFF && TTLoadEmbeddedFontPtr && TTDeleteEmbeddedFontPtr) {
         // TrueType-style glyphs, use EOT library
         AutoFallibleTArray<PRUint8,2048> eotHeader;
         PRUint8 *buffer;
@@ -912,11 +931,11 @@ gfxGDIFontList::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
             EOTFontStreamReader eotReader(aFontData, aLength, buffer, eotlen,
                                           &overlayNameData);
 
-            ret = TTLoadEmbeddedFont(&fontRef, TTLOAD_PRIVATE, &privStatus,
-                                     LICENSE_PREVIEWPRINT, &pulStatus,
-                                     EOTFontStreamReader::ReadEOTStream,
-                                     &eotReader,
-                                     (PRUnichar*)(fontName.get()), 0, 0);
+            ret = TTLoadEmbeddedFontPtr(&fontRef, TTLOAD_PRIVATE, &privStatus,
+                                        LICENSE_PREVIEWPRINT, &pulStatus,
+                                        EOTFontStreamReader::ReadEOTStream,
+                                        &eotReader,
+                                        (PRUnichar*)(fontName.get()), 0, 0);
             if (ret != E_NONE) {
                 fontRef = nsnull;
                 char buf[256];
@@ -966,7 +985,7 @@ gfxGDIFontList::MakePlatformFont(const gfxProxyFontEntry *aProxyEntry,
 
     GDIFontEntry *fe = GDIFontEntry::CreateFontEntry(uniqueName, 
         gfxWindowsFontType(isCFF ? GFX_FONT_TYPE_PS_OPENTYPE : GFX_FONT_TYPE_TRUETYPE) /*type*/, 
-        PRUint32(aProxyEntry->mItalic ? FONT_STYLE_ITALIC : FONT_STYLE_NORMAL), 
+        PRUint32(aProxyEntry->mItalic ? NS_FONT_STYLE_ITALIC : NS_FONT_STYLE_NORMAL), 
         w, aProxyEntry->mStretch, winUserFontData);
 
     if (!fe)

@@ -133,9 +133,11 @@ public:
   static void RecordSlowStatement(const nsACString &statement,
                                   const nsACString &dbName,
                                   PRUint32 delay);
+#if defined(MOZ_ENABLE_PROFILER_SPS)
   static void RecordChromeHang(PRUint32 duration,
                                const Telemetry::HangStack &callStack,
                                SharedLibraryInfo &moduleMap);
+#endif
   static nsresult GetHistogramEnumId(const char *name, Telemetry::ID *id);
   struct StmtStats {
     PRUint32 hitCount;
@@ -145,7 +147,9 @@ public:
   struct HangReport {
     PRUint32 duration;
     Telemetry::HangStack callStack;
+#if defined(MOZ_ENABLE_PROFILER_SPS)
     SharedLibraryInfo moduleMap;
+#endif
   };
 
 private:
@@ -450,8 +454,7 @@ WrapAndReturnHistogram(Histogram *h, JSContext *cx, jsval *ret)
     "JSHistogram",  /* name */
     JSCLASS_HAS_PRIVATE, /* flags */
     JS_PropertyStub, JS_PropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, JS_FinalizeStub,
-    JSCLASS_NO_OPTIONAL_MEMBERS
+    JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub
   };
 
   JSObject *obj = JS_NewObject(cx, &JSHistogram_class, NULL, NULL);
@@ -1020,6 +1023,7 @@ TelemetryImpl::GetChromeHangs(JSContext *cx, jsval *ret)
       return NS_ERROR_FAILURE;
     }
 
+#if defined(MOZ_ENABLE_PROFILER_SPS)
     const PRUint32 moduleCount = mHangReports[i].moduleMap.GetSize();
     for (size_t moduleIndex = 0; moduleIndex < moduleCount; ++moduleIndex) {
       // Current module
@@ -1085,7 +1089,22 @@ TelemetryImpl::GetChromeHangs(JSContext *cx, jsval *ret)
       if (!JS_SetElement(cx, moduleInfoArray, 4, &val)) {
         return NS_ERROR_FAILURE;
       }
+
+      // Name of associated PDB file
+      const char *pdbName = "";
+#if defined(MOZ_PROFILING) && defined(XP_WIN)
+      pdbName = module.GetPdbName();
+#endif
+      str = JS_NewStringCopyZ(cx, pdbName);
+      if (!str) {
+        return NS_ERROR_FAILURE;
+      }
+      val = STRING_TO_JSVAL(str);
+      if (!JS_SetElement(cx, moduleInfoArray, 5, &val)) {
+        return NS_ERROR_FAILURE;
+      }
     }
+#endif
   }
 
   return NS_OK;
@@ -1194,11 +1213,21 @@ TelemetrySessionData::SampleReflector(EntryType *entry, JSContext *cx,
     return false;
   }
   JS::AutoObjectRooter root(cx, snapshot);
-  return (ReflectHistogramAndSamples(cx, snapshot, h, entry->mData)
-          && JS_DefineProperty(cx, snapshots,
-                               h->histogram_name().c_str(),
-                               OBJECT_TO_JSVAL(snapshot), NULL, NULL,
-                               JSPROP_ENUMERATE));
+  switch (ReflectHistogramAndSamples(cx, snapshot, h, entry->mData)) {
+  case REFLECT_OK:
+    return JS_DefineProperty(cx, snapshots,
+                             h->histogram_name().c_str(),
+                             OBJECT_TO_JSVAL(snapshot), NULL, NULL,
+                             JSPROP_ENUMERATE);
+  case REFLECT_CORRUPT:
+    // Just ignore this one.
+    return true;
+  case REFLECT_FAILURE:
+    return false;
+  default:
+    MOZ_NOT_REACHED("unhandled reflection status");
+    return false;
+  }
 }
 
 NS_IMETHODIMP
@@ -1448,10 +1477,15 @@ private:
 
 NS_IMETHODIMP
 TelemetryImpl::LoadHistograms(nsIFile *file,
-                              nsITelemetryLoadSessionDataCallback *callback)
+                              nsITelemetryLoadSessionDataCallback *callback,
+                              bool isSynchronous)
 {
   nsCOMPtr<nsIRunnable> event = new LoadHistogramEvent(file, callback);
-  return NS_DispatchToCurrentThread(event);
+  if (isSynchronous) {
+    return event ? event->Run() : NS_ERROR_FAILURE;
+  } else {
+    return NS_DispatchToCurrentThread(event);
+  }
 }
 
 NS_IMETHODIMP
@@ -1527,6 +1561,7 @@ TelemetryImpl::RecordSlowStatement(const nsACString &statement,
   entry->mData.totalTime += delay;
 }
 
+#if defined(MOZ_ENABLE_PROFILER_SPS)
 void
 TelemetryImpl::RecordChromeHang(PRUint32 duration,
                                 const Telemetry::HangStack &callStack,
@@ -1554,6 +1589,7 @@ TelemetryImpl::RecordChromeHang(PRUint32 duration,
   HangReport newReport = { duration, callStack, moduleMap };
   sTelemetry->mHangReports.AppendElement(newReport);
 }
+#endif
 
 NS_IMPL_THREADSAFE_ISUPPORTS1(TelemetryImpl, nsITelemetry)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsITelemetry, TelemetryImpl::CreateTelemetryInstance)
@@ -1636,12 +1672,14 @@ void Init()
   MOZ_ASSERT(telemetryService);
 }
 
+#if defined(MOZ_ENABLE_PROFILER_SPS)
 void RecordChromeHang(PRUint32 duration,
                       const Telemetry::HangStack &callStack,
                       SharedLibraryInfo &moduleMap)
 {
   TelemetryImpl::RecordChromeHang(duration, callStack, moduleMap);
 }
+#endif
 
 } // namespace Telemetry
 } // namespace mozilla

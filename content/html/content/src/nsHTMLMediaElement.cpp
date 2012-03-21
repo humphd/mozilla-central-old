@@ -90,7 +90,6 @@
 #include "nsIDOMNotifyAudioAvailableEvent.h"
 #include "nsMediaFragmentURIParser.h"
 #include "nsURIHashKey.h"
-#include "nsContentUtils.h"
 #include "nsIScriptError.h"
 
 #ifdef MOZ_OGG
@@ -1410,7 +1409,10 @@ nsHTMLMediaElement::LookupMediaElementURITable(nsIURI* aURI)
     if (NS_SUCCEEDED(elem->NodePrincipal()->Equals(NodePrincipal(), &equal)) && equal &&
         elem->mCORSMode == mCORSMode) {
       NS_ASSERTION(elem->mDecoder && elem->mDecoder->GetResource(), "Decoder gone");
-      return elem;
+      MediaResource* resource = elem->mDecoder->GetResource();
+      if (resource->CanClone()) {
+        return elem;
+      }
     }
   }
   return nsnull;

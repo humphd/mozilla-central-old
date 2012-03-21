@@ -36,6 +36,13 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#ifndef SHARED_LIBRARIES_H_
+#define SHARED_LIBRARIES_H_
+
+#ifndef MOZ_ENABLE_PROFILER_SPS
+#error This header does not have a useful implementation on your platform!
+#endif
+
 #include <algorithm>
 #include <vector>
 #include <string.h>
@@ -52,6 +59,7 @@ public:
 #ifdef XP_WIN
                 nsID aPdbSignature,
                 unsigned long aPdbAge,
+                char *aPdbName,
 #endif
                 char *aName)
     : mStart(aStart)
@@ -60,6 +68,7 @@ public:
 #ifdef XP_WIN
     , mPdbSignature(aPdbSignature)
     , mPdbAge(aPdbAge)
+    , mPdbName(strdup(aPdbName))
 #endif
     , mName(strdup(aName))
   {}
@@ -71,6 +80,7 @@ public:
 #ifdef XP_WIN
     , mPdbSignature(aEntry.mPdbSignature)
     , mPdbAge(aEntry.mPdbAge)
+    , mPdbName(strdup(aEntry.mPdbName))
 #endif
     , mName(strdup(aEntry.mName))
   {}
@@ -86,6 +96,9 @@ public:
 #ifdef XP_WIN
     mPdbSignature = aEntry.mPdbSignature;
     mPdbAge = aEntry.mPdbAge;
+    if (mPdbName)
+      free(mPdbName);
+    mPdbName = strdup(aEntry.mPdbName);
 #endif
     if (mName)
       free(mName);
@@ -102,13 +115,18 @@ public:
 #ifdef XP_WIN
     equal = equal &&
             (mPdbSignature.Equals(other.mPdbSignature)) &&
-            (mPdbAge == other.mPdbAge);
+            (mPdbAge == other.mPdbAge) &&
+            (mPdbName && other.mPdbName && (strcmp(mPdbName, other.mPdbName) == 0));
 #endif
     return equal;
   }
 
   ~SharedLibrary()
   {
+#ifdef XP_WIN
+    free(mPdbName);
+    mPdbName = NULL;
+#endif
     free(mName);
     mName = NULL;
   }
@@ -118,6 +136,7 @@ public:
 #ifdef XP_WIN
   nsID GetPdbSignature() const { return mPdbSignature; }
   uint32_t GetPdbAge() const { return mPdbAge; }
+  char* GetPdbName() const { return mPdbName; }
 #endif
   char* GetName() const { return mName; }
 
@@ -131,6 +150,7 @@ private:
   // Windows-specific PDB file identifiers
   nsID mPdbSignature;
   uint32_t mPdbAge;
+  char *mPdbName;
 #endif
   char *mName;
 };
@@ -187,3 +207,5 @@ public:
 private:
   std::vector<SharedLibrary> mEntries;
 };
+
+#endif

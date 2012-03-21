@@ -666,7 +666,7 @@ namespace js {
 static inline JSAtom *
 CallObjectLambdaName(JSFunction *fun)
 {
-    return (fun->flags & JSFUN_LAMBDA) ? fun->atom : NULL;
+    return (fun->flags & JSFUN_LAMBDA) ? fun->atom.get() : NULL;
 }
 
 } /* namespace js */
@@ -678,7 +678,7 @@ JSObject::getDateUTCTime() const
     return getFixedSlot(JSSLOT_DATE_UTC_TIME);
 }
 
-inline void 
+inline void
 JSObject::setDateUTCTime(const js::Value &time)
 {
     JS_ASSERT(isDate());
@@ -1242,9 +1242,7 @@ JSObject::sizeOfExcludingThis(JSMallocSizeOfFun mallocSizeOf,
 
     /* Other things may be measured in the future if DMD indicates it is worthwhile. */
     *miscSize = 0;
-    if (isFunction()) {
-        *miscSize += toFunction()->sizeOfMisc(mallocSizeOf);
-    } else if (isArguments()) {
+    if (isArguments()) {
         *miscSize += asArguments().sizeOfMisc(mallocSizeOf);
     } else if (isRegExpStatics()) {
         *miscSize += js::SizeOfRegExpStaticsData(this, mallocSizeOf);

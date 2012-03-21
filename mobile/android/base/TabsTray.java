@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Build;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
@@ -46,6 +47,8 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
     private static final int TABS_LIST_ITEM_HEIGHT = 102;
     private static final int TABS_ADD_TAB_HEIGHT = 50;
 
+    private static final String ABOUT_HOME = "about:home";
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -72,6 +75,13 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             }
         });
 
+        RelativeLayout toolbar = (RelativeLayout) findViewById(R.id.toolbar);
+        toolbar.setOnClickListener(new Button.OnClickListener() {
+            public void onClick(View v) {
+                // Consume the click event to avoid enclosing container consuming it
+            }
+        });
+
         LinearLayout container = (LinearLayout) findViewById(R.id.container);
         container.setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
@@ -87,9 +97,8 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
         sPreferredHeight = (int) (0.67 * metrics.heightPixels);
         sMaxHeight = (int) (sPreferredHeight + (0.33 * sListItemHeight));
 
-        Tabs tabs = Tabs.getInstance();
-        tabs.registerOnTabsChangedListener(this);
-        tabs.refreshThumbnails();
+        Tabs.registerOnTabsChangedListener(this);
+        Tabs.getInstance().refreshThumbnails();
         onTabChanged(null, null);
 
         // If Sync is set up, query the database for remote clients.
@@ -114,7 +123,7 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Tabs.getInstance().unregisterOnTabsChangedListener(this);
+        Tabs.unregisterOnTabsChangedListener(this);
     }
 
     public void onTabChanged(Tab tab, Tabs.TabEvents msg) {
@@ -260,6 +269,8 @@ public class TabsTray extends Activity implements Tabs.OnTabsChangedListener {
             Drawable thumbnailImage = tab.getThumbnail();
             if (thumbnailImage != null)
                 thumbnail.setImageDrawable(thumbnailImage);
+            else if (TextUtils.equals(tab.getURL(), ABOUT_HOME))
+                thumbnail.setImageResource(R.drawable.abouthome_thumbnail);
             else
                 thumbnail.setImageResource(R.drawable.tab_thumbnail_default);
 

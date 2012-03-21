@@ -51,7 +51,7 @@
 #include <windows.h>
 #endif
 
-#if defined(MOZ_PROFILING) && defined(XP_WIN)
+#if defined(MOZ_ENABLE_PROFILER_SPS) && defined(MOZ_PROFILING) && defined(XP_WIN)
   #define REPORT_CHROME_HANGS
 #endif
 
@@ -150,8 +150,6 @@ static void
 GetChromeHangReport(Telemetry::HangStack &callStack, SharedLibraryInfo &moduleMap)
 {
   MOZ_ASSERT(winMainThreadHandle);
-  moduleMap = SharedLibraryInfo::GetInfoForSelf();
-  moduleMap.SortByAddress();
 
   DWORD ret = ::SuspendThread(winMainThreadHandle);
   if (ret == -1) {
@@ -167,6 +165,9 @@ GetChromeHangReport(Telemetry::HangStack &callStack, SharedLibraryInfo &moduleMa
     moduleMap.Clear();
     return;
   }
+
+  moduleMap = SharedLibraryInfo::GetInfoForSelf();
+  moduleMap.SortByAddress();
 
   // Remove all modules not referenced by a PC on the stack
   Telemetry::HangStack sortedStack = callStack;
@@ -217,8 +218,10 @@ ThreadMain(void*)
   PRIntervalTime lastTimestamp = 0;
   int waitCount = 0;
 
+#ifdef REPORT_CHROME_HANGS
   Telemetry::HangStack hangStack;
   SharedLibraryInfo hangModuleMap;
+#endif
 
   while (true) {
     if (gShutdown) {
