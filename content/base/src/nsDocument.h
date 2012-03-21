@@ -1315,9 +1315,6 @@ private:
 
   VisibilityState mVisibilityState;
 
-  static nsWeakPtr sPointerLockElement;
-  static nsWeakPtr sPointerLockDoc;
-
 #ifdef DEBUG
 protected:
   bool mWillReparent;

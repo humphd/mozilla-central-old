@@ -165,7 +165,11 @@ nsIntPoint nsEventStateManager::sLastRefPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenOffset = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastScreenPoint = nsIntPoint(0,0);
 nsIntPoint nsEventStateManager::sLastClientPoint = nsIntPoint(0,0);
-nsCOMPtr<nsIContent> nsEventStateManager::sPointerLockedElement = nsnull;
+bool nsEventStateManager::sIsPointerLocked = false;
+// Reference to the pointer locked element.
+nsWeakPtr nsEventStateManager::sPointerLockedElement;
+// Reference to the document which requested pointer lock.
+nsWeakPtr nsEventStateManager::sPointerLockedDoc;
 nsCOMPtr<nsIContent> nsEventStateManager::sDragOverContent = nsnull;
 
 static PRUint32 gMouseOrKeyboardEventCounter = 0;
@@ -1061,12 +1065,9 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       (NS_IS_MOUSE_EVENT_STRUCT(aEvent) &&
        IsMouseEventReal(aEvent)) ||
        aEvent->eventStructType == NS_MOUSE_SCROLL_EVENT) {
-    if (!sPointerLockedElement) {
-      nsEventStateManager::sLastScreenPoint =
-        nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
-
-      nsEventStateManager::sLastClientPoint =
-        nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
+    if (!sIsPointerLocked) {
+      sLastScreenPoint = nsDOMUIEvent::CalculateScreenPoint(aPresContext, aEvent);
+      sLastClientPoint = nsDOMUIEvent::CalculateClientPoint(aPresContext, aEvent, nsnull);
     }
   }
 
@@ -3801,13 +3802,20 @@ nsEventStateManager::DispatchMouseEvent(nsGUIEvent* aEvent, PRUint32 aMessage,
   // http://dvcs.w3.org/hg/webevents/raw-file/default/mouse-lock.html#methods
   // "[When the mouse is locked on an element...e]vents that require the concept
   // of a mouse cursor must not be dispatched (for example: mouseover, mouseout).
-  if (sPointerLockedElement &&
+  if (sIsPointerLocked &&
       (aMessage == NS_MOUSELEAVE ||
        aMessage == NS_MOUSEENTER ||
        aMessage == NS_MOUSE_ENTER_SYNTH ||
        aMessage == NS_MOUSE_EXIT_SYNTH)) {
     mCurrentTargetContent = nsnull;
-    return mPresContext->GetPrimaryFrameFor(sPointerLockedElement);
+    nsCOMPtr<Element> pointerLockedElement =
+      do_QueryReferent(nsEventStateManager::sPointerLockedElement);
+    if (!pointerLockedElement) {
+      NS_WARNING("Should have pointer locked element, but didn't.");
+      return nsnull;
+    }
+    nsCOMPtr<nsIContent> content = do_QueryInterface(pointerLockedElement);
+    return mPresContext->GetPrimaryFrameFor(content);
   }
 
   SAMPLE_LABEL("Input", "DispatchMouseEvent");
@@ -4020,7 +4028,7 @@ nsEventStateManager::GenerateMouseEnterExit(nsGUIEvent* aEvent)
   switch(aEvent->message) {
   case NS_MOUSE_MOVE:
     {
-      if (sPointerLockedElement && aEvent->widget) {
+      if (sIsPointerLocked && aEvent->widget) {
         // Perform mouse lock by recentering the mouse directly, then remembering the deltas.
         nsIntRect bounds;
         aEvent->widget->GetScreenBounds(bounds);
@@ -4079,9 +4087,8 @@ void
 nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
                                     nsIContent* aElement)
 {
-  // Remember which element is locked so we don't dispatch events for
-  // elements that aren't locked. aElement will be nsnull when unlocking.
-  sPointerLockedElement = aElement;
+  // NOTE: aElement will be nsnull when unlocking.
+  sIsPointerLocked = !!aElement;
 
   if (!aWidget) {
     return;
@@ -4090,7 +4097,7 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   // Reset mouse wheel transaction
   nsMouseWheelTransaction::EndTransaction();
 
-  if (sPointerLockedElement) {
+  if (sIsPointerLocked) {
     // Store the last known ref point so we can reposition the pointer after unlock.
     mPreLockPoint = sLastRefPoint + sLastScreenOffset;
 
@@ -4119,15 +4126,16 @@ nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset)
 nsIntPoint
 nsEventStateManager::GetMouseCoords(nsIntRect aBounds)
 {
-  NS_ASSERTION(sPointerLockedElement, "sPointerLockedElement is null in GetMouseCoords!");
+  NS_ASSERTION(sIsPointerLocked, "GetMouseCoords when not pointer locked!");
 
-  nsCOMPtr<nsIDocument> domDoc = sPointerLockedElement->OwnerDoc();
-  if (!domDoc) {
+  nsCOMPtr<nsIDocument> pointerLockedDoc =
+    do_QueryReferent(nsEventStateManager::sPointerLockedDoc);
+  if (!pointerLockedDoc) {
     NS_WARNING("GetMouseCoords(): No Document");
     return nsIntPoint(0, 0);
   }
 
-  nsCOMPtr<nsPIDOMWindow> domWin = domDoc->GetInnerWindow();
+  nsCOMPtr<nsPIDOMWindow> domWin = pointerLockedDoc->GetInnerWindow();
   if (!domWin) {
     NS_WARNING("GetMouseCoords(): No Window");
     return nsIntPoint(0, 0);

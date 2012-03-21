@@ -148,6 +148,8 @@ protected:
   nsIntPoint mPagePoint;
   nsIntPoint mMovement;
   bool mIsPointerLocked;
+  nsIntPoint mLastScreenPoint;
+  nsIntPoint mLastClientPoint;
 };
 
 #define NS_FORWARD_TO_NSDOMUIEVENT \

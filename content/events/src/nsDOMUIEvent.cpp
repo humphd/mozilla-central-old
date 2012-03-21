@@ -57,7 +57,9 @@ nsDOMUIEvent::nsDOMUIEvent(nsPresContext* aPresContext, nsGUIEvent* aEvent)
                static_cast<nsEvent *>(aEvent) :
                static_cast<nsEvent *>(new nsUIEvent(false, 0, 0)))
   , mClientPoint(0, 0), mLayerPoint(0, 0), mPagePoint(0, 0)
-  , mIsPointerLocked(!!nsEventStateManager::sPointerLockedElement)
+  , mIsPointerLocked(nsEventStateManager::sIsPointerLocked)
+  , mLastScreenPoint(nsEventStateManager::sLastScreenPoint)
+  , mLastClientPoint(nsEventStateManager::sLastClientPoint)
 {
   if (aEvent) {
     mEventIsInternal = false;
@@ -157,7 +159,7 @@ nsIntPoint
 nsDOMUIEvent::GetScreenPoint()
 {
   if (mIsPointerLocked) {
-    return nsEventStateManager::sLastScreenPoint;
+    return mLastScreenPoint;
   }
 
   return CalculateScreenPoint(mPresContext, mEvent);
@@ -167,7 +169,7 @@ nsIntPoint
 nsDOMUIEvent::GetClientPoint()
 {
   if (mIsPointerLocked) {
-    return nsEventStateManager::sLastClientPoint;
+    return mLastClientPoint;
   }
 
   return CalculateClientPoint(mPresContext, mEvent, &mClientPoint);

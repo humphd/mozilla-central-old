@@ -230,6 +230,9 @@ public:
 
   static nsIntPoint sLastScreenPoint;
   static nsIntPoint sLastClientPoint;
+  static bool sIsPointerLocked;
+  static nsWeakPtr sPointerLockedElement;
+  static nsWeakPtr sPointerLockedDoc;
 
 protected:
   friend class MouseEnterLeaveDispatcher;
@@ -568,9 +571,6 @@ public:
   nsIntPoint GetMouseCoords(nsIntRect aBounds);
   static void sClickHoldCallback ( nsITimer* aTimer, void* aESM ) ;
   static void SetLastScreenOffset(nsIntPoint aScreenOffset) ;
-
-  // The element that is mouse locked, if any.
-  static nsCOMPtr<nsIContent> sPointerLockedElement;
 };
 
 /**
