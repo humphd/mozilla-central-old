@@ -988,7 +988,6 @@ public:
   void RequestPointerLock(Element* aElement);
   bool ShouldLockPointer(Element* aElement);
   bool SetPointerLock(Element* aElement, int aCursorStyle);
-  static void MaybeUnlockPointer();
   static void UnlockPointer();
 
   // This method may fire a DOM event; if it does so it will happen

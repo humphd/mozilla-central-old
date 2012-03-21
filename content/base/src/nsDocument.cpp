@@ -8587,19 +8587,6 @@ ResetFullScreen(nsIDocument* aDocument, void* aData) {
 
 /* static */
 void
-nsDocument::MaybeUnlockPointer()
-{
-  nsCOMPtr<nsIDocument> pointerLockedDoc =
-    do_QueryReferent(nsEventStateManager::sPointerLockedDoc);
-  if (!pointerLockedDoc) {
-    return;
-  }
-
-  static_cast<nsDocument*>(pointerLockedDoc.get())->UnlockPointer();
-}
-
-/* static */
-void
 nsDocument::ExitFullScreen()
 {
   // Clear full-screen stacks in all descendant documents.
@@ -8668,7 +8655,7 @@ nsDocument::RestorePreviousFullScreenState()
   while (doc != this) {
     NS_ASSERTION(doc->IsFullScreenDoc(), "Should be full-screen doc");
     static_cast<nsDocument*>(doc)->ClearFullScreenStack();
-    MaybeUnlockPointer();
+    UnlockPointer();
     DispatchFullScreenChange(doc);
     doc = doc->GetParentDocument();
   }
@@ -8677,7 +8664,7 @@ nsDocument::RestorePreviousFullScreenState()
   NS_ASSERTION(doc == this, "Must have reached this doc.");
   while (doc != nsnull) {
     static_cast<nsDocument*>(doc)->FullScreenStackPop();
-    MaybeUnlockPointer();
+    UnlockPointer();
     DispatchFullScreenChange(doc);
     if (static_cast<nsDocument*>(doc)->mFullScreenStack.IsEmpty()) {
       // Full-screen stack in document is empty. Go back up to the parent
@@ -8959,7 +8946,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
   // If a document is already in fullscreen, then unlock the mouse pointer
   // before setting a new document to fullscreen
   if (fullScreenDoc) {
-    MaybeUnlockPointer();
+    UnlockPointer();
   }
 
   // If a document is already in fullscreen, then unlock the mouse pointer
@@ -9282,16 +9269,23 @@ nsDocument::SetPointerLock(Element* aElement, int aCursorStyle)
 void
 nsDocument::UnlockPointer()
 {
-  nsCOMPtr<Element> pointerLockedElement =
-    do_QueryReferent(nsEventStateManager::sPointerLockedElement);
-  if (!pointerLockedElement) {
+  if (!nsEventStateManager::sIsPointerLocked) {
     return;
   }
 
   nsCOMPtr<nsIDocument> pointerLockedDoc =
     do_QueryReferent(nsEventStateManager::sPointerLockedDoc);
+  if (!pointerLockedDoc) {
+    return;
+  }
   nsDocument* doc = static_cast<nsDocument*>(pointerLockedDoc.get());
   if (!doc->SetPointerLock(nsnull, NS_STYLE_CURSOR_AUTO)) {
+    return;
+  }
+
+  nsCOMPtr<Element> pointerLockedElement =
+    do_QueryReferent(nsEventStateManager::sPointerLockedElement);
+  if (!pointerLockedElement) {
     return;
   }
 
