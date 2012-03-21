@@ -6383,7 +6383,8 @@ nsINode::Contains(nsIDOMNode* aOther, bool* aReturn)
   return NS_OK;
 }
 
-nsresult nsGenericElement::MozRequestPointerLock()
+NS_IMETHODIMP
+nsGenericElement::MozRequestPointerLock()
 {
   OwnerDoc()->RequestPointerLock(this);
 
