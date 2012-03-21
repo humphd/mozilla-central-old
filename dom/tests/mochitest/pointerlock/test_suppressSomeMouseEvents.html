@@ -44,6 +44,13 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         this.mouseLeave = false;
         this.mouseOver = false;
         this.mouseOut = false;
+        this.drag = false;
+        this.dragStart = false;
+        this.dragEnter = false;
+        this.dragOver = false;
+        this.dragLeave = false;
+        this.dragEnd = false;
+        this.drop = false;
       }
 
       var parent
@@ -63,6 +70,21 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
            "child's mouseleave should not be firing in Full Screen and Pointer Lock.");
         is(childStats.mouseOut, false,
            "child's mouseout should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.drag, false,
+           "child's drag should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.dragStart, false,
+           "child's dragStart should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.dragEnter, false,
+           "child's dragEnter should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.dragOver, false,
+           "child's dragOver should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.dragLeave, false,
+           "child's dragLeave should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.dragEnd, false,
+           "child's dragEnd should not be firing in Full Screen and Pointer Lock.");
+        is(childStats.drop, false,
+           "child's drop should not be firing in Full Screen and Pointer Lock.");
+
 
         is(parentStats.mouseEnter, false,
            "parent's mouseenter should not be firing in Full Screen and Pointer Lock.");
@@ -72,11 +94,25 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
            "parent's mouseleave should not be firing in Full Screen and Pointer Lock.");
         is(parentStats.mouseOut, false,
            "parent's mouseout should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.drag, false,
+           "parent's drag should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.dragStart, false,
+           "parent's dragStart should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.dragEnter, false,
+           "parent's dragEnter should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.dragOver, false,
+           "parent's dragOver should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.dragLeave, false,
+          "parent's dragLeave should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.dragEnd, false,
+           "parent's dragEnd should not be firing in Full Screen and Pointer Lock.");
+        is(parentStats.drop, false,
+           "parent's drop should not be firing in Full Screen and Pointer Lock.");
       }
-      
+
       var parentMoveListener = function () {
         isPointerLocked = !!document.mozPointerLockElement;
-        removeEventListeners();       
+        removeEventListeners();
         document.mozExitPointerLock();
       };
 
@@ -92,6 +128,27 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var parentEnterListener = function (e) {
           parentStats.mouseEnter = true;
       };
+      var parentDragListener = function (e) {
+          parentStats.drag = true;
+      };
+      var parentDragStartListener = function (e) {
+          parentStats.dragStart = true;
+      };
+      var parentDragEnterListener = function (e) {
+          parentStats.dragEnter = true;
+      };
+      var parentDragOverListener = function (e) {
+          parentStats.dragOver = true;
+      };
+      var parentDragLeaveListener = function (e) {
+          parentStats.dragLeave = true;
+      };
+      var parentDragEndListener = function (e) {
+          parentStats.dragEnd = true;
+      };
+      var parentDropListener = function (e) {
+          parentStats.drop = true;
+      };
 
       var childOutListener = function (e) {
           childStats.mouseOut = true;
@@ -105,6 +162,27 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       var childEnterListener = function (e) {
           childStats.mouseEnter = true;
       };
+      var childDragListener = function (e) {
+          childStats.drag = true;
+      };
+      var childDragStartListener = function (e) {
+          childStats.dragStart = true;
+      };
+      var childDragEnterListener = function (e) {
+          childStats.dragEnter = true;
+      };
+      var childDragOverListener = function (e) {
+          childStats.dragOver = true;
+      };
+      var childDragLeaveListener = function (e) {
+          childStats.dragLeave = true;
+      };
+      var childDragEndListener = function (e) {
+          childStats.dragEnd = true;
+      };
+      var childDropListener = function (e) {
+          childStats.drop = true;
+      };
 
       function addEventListeners() {
         parent.addEventListener("mousemove", parentMoveListener, false);
@@ -113,11 +191,25 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         parent.addEventListener("mouseleave", parentLeaveListener, false);
         parent.addEventListener("mouseover", parentOverListener, false);
         parent.addEventListener("mouseenter", parentEnterListener, false);
+        parent.addEventListener("drag", parentDragListener, false);
+        parent.addEventListener("dragstart", parentDragStartListener, false);
+        parent.addEventListener("dragenter", parentDragEnterListener, false);
+        parent.addEventListener("dragover", parentDragOverListener, false);
+        parent.addEventListener("dragleave", parentDragLeaveListener, false);
+        parent.addEventListener("dragend", parentDragEndListener, false);
+        parent.addEventListener("drop", parentDropListener, false);
 
         child.addEventListener("mouseout", childOutListener, false);
         child.addEventListener("mouseleave", childLeaveListener, false);
         child.addEventListener("mouseover", childOverListener, false);
         child.addEventListener("mouseenter", childEnterListener, false);
+        child.addEventListener("drag", childDragListener, false);
+        child.addEventListener("dragstart", childDragStartListener, false);
+        child.addEventListener("dragenter", childDragEnterListener, false);
+        child.addEventListener("dragover", childDragOverListener, false);
+        child.addEventListener("dragleave", childDragLeaveListener, false);
+        child.addEventListener("dragend", childDragEndListener, false);
+        child.addEventListener("drop", childDropListener, false);
       }
 
       function removeEventListeners() {
@@ -127,16 +219,45 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         parent.removeEventListener("mouseleave", parentLeaveListener, false);
         parent.removeEventListener("mouseover", parentOverListener, false);
         parent.removeEventListener("mouseenter", parentEnterListener, false);
+        parent.removeEventListener("drag", parentDragListener, false);
+        parent.removeEventListener("dragstart", parentDragStartListener, false);
+        parent.removeEventListener("dragenter", parentDragEnterListener, false);
+        parent.removeEventListener("dragover", parentDragOverListener, false);
+        parent.removeEventListener("dragleave", parentDragLeaveListener, false);
+        parent.removeEventListener("dragend", parentDragEndListener, false);
+        parent.removeEventListener("drop", parentDropListener, false);
+
 
         child.removeEventListener("mouseout", childOutListener, false);
         child.removeEventListener("mouseleave", childLeaveListener, false);
-        child.removeEventListener("mouseover", childOverListener, false);
+        child.removeEventListener("mouseover"  , childOverListener, false);
         child.removeEventListener("mouseenter", childEnterListener, false);
+        child.removeEventListener("drag", childDragListener, false);
+        child.removeEventListener("dragstart", childDragStartListener, false);
+        child.removeEventListener("dragenter", childDragEnterListener, false);
+        child.removeEventListener("dragover", childDragOverListener, false);
+        child.removeEventListener("dragleave", childDragLeaveListener, false);
+        child.removeEventListener("dragend", childDragEndListener, false);
+        child.removeEventListener("drop", childDropListener, false);
+      }
+
+      function dispatchDragEvent(eventName) {
+        var event = document.createEvent("DragEvents");
+        event.initDragEvent(eventName, true, true, window, 0, 5, 5, 5, 5,
+                            false, false, false, false, 0, null, null);
+        child.dispatchEvent(event);
       }
 
       document.addEventListener("mozpointerlockchange", function (e) {
         if (document.mozPointerLockElement === parent) {
           addEventListeners();
+          dispatchDragEvent("dragstart");
+          dispatchDragEvent("drag");
+          dispatchDragEvent("dragenter");
+          dispatchDragEvent("dragover");
+          dispatchDragEvent("dragleave");
+          dispatchDragEvent("drop");
+          dispatchDragEvent("dragend");
           synthesizeMouseAtCenter(child, { type: "mousemove" }, window);
         }
         else {
