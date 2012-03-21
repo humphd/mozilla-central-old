@@ -73,34 +73,70 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         is(parentStats.mouseOut, false,
            "parent's mouseout should not be firing in Full Screen and Pointer Lock.");
       }
-
+      
       var parentMoveListener = function () {
         isPointerLocked = !!document.mozPointerLockElement;
-        parent.removeEventListener("mousemove", parentMoveListener, false);
+        removeEventListeners();       
         document.mozExitPointerLock();
       };
 
-      function setupEventHandlers(element, stats) {
-        element.addEventListener("mouseout", function(e) {
-          stats.mouseOut = true;
-        } , false);
+      var parentOutListener = function (e) {
+          parentStats.mouseOut = true;
+      };
+      var parentLeaveListener = function (e) {
+          parentStats.mouseLeave = true;
+      };
+      var parentOverListener = function (e) {
+          parentStats.mouseOver = true;
+      };
+      var parentEnterListener = function (e) {
+          parentStats.mouseEnter = true;
+      };
 
-        element.addEventListener("mouseleave", function(e) {
-          stats.mouseLeave = true;
-        } , false);
+      var childOutListener = function (e) {
+          childStats.mouseOut = true;
+      };
+      var childLeaveListener = function (e) {
+          childStats.mouseLeave = true;
+      };
+      var childOverListener = function (e) {
+          childStats.mouseOver = true;
+      };
+      var childEnterListener = function (e) {
+          childStats.mouseEnter = true;
+      };
 
-        element.addEventListener("mouseover", function(e) {
-          stats.mouseOver = true;
-        } , false);
+      function addEventListeners() {
+        parent.addEventListener("mousemove", parentMoveListener, false);
 
-        element.addEventListener("mouseenter", function(e) {
-          stats.mouseEnter = true;
-        } , false);
+        parent.addEventListener("mouseout", parentOutListener, false);
+        parent.addEventListener("mouseleave", parentLeaveListener, false);
+        parent.addEventListener("mouseover", parentOverListener, false);
+        parent.addEventListener("mouseenter", parentEnterListener, false);
+
+        child.addEventListener("mouseout", childOutListener, false);
+        child.addEventListener("mouseleave", childLeaveListener, false);
+        child.addEventListener("mouseover", childOverListener, false);
+        child.addEventListener("mouseenter", childEnterListener, false);
+      }
+
+      function removeEventListeners() {
+        parent.removeEventListener("mousemove", parentMoveListener, false);
+
+        parent.removeEventListener("mouseout", parentOutListener, false);
+        parent.removeEventListener("mouseleave", parentLeaveListener, false);
+        parent.removeEventListener("mouseover", parentOverListener, false);
+        parent.removeEventListener("mouseenter", parentEnterListener, false);
+
+        child.removeEventListener("mouseout", childOutListener, false);
+        child.removeEventListener("mouseleave", childLeaveListener, false);
+        child.removeEventListener("mouseover", childOverListener, false);
+        child.removeEventListener("mouseenter", childEnterListener, false);
       }
 
       document.addEventListener("mozpointerlockchange", function (e) {
         if (document.mozPointerLockElement === parent) {
-          parent.addEventListener("mousemove", parentMoveListener, false);
+          addEventListeners();
           synthesizeMouseAtCenter(child, { type: "mousemove" }, window);
         }
         else {
@@ -110,8 +146,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       document.addEventListener("mozfullscreenchange", function() {
         if (document.mozFullScreenElement === parent) {
-          setupEventHandlers(parent, parentStats);
-          setupEventHandlers(child, childStats);
           parent.mozRequestPointerLock();
         }
         else {
