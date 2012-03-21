@@ -28,17 +28,10 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       SimpleTest.waitForExplicitFinish();
 
-      function MouseEventCoords () {
-        this.clientX = false;
-        this.clientY = false;
-        this.screenX = false;
-        this.screenY = false;
-      }
-
-      var div = document.getElementById("div")
+      var div
         , divRect
-        , unLockedCoords = new MouseEventCoords()
-        , lockedCoords = new MouseEventCoords()
+        , unLockedCoords
+        , lockedCoords
         , isUnlocked = false
         , isLocked = false;
 
@@ -57,34 +50,37 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
            "screenY should be equal to where the mouse was originaly locked");
       }
 
-      var moveUnlocked = function (e) {
-        isUnlocked = !document.mozPointerLockElement;
-
-        unLockedCoords.screenX = e.screenX;
-        unLockedCoords.screenY = e.screenY;
-        unLockedCoords.clientX = e.clientX;
-        unLockedCoords.clientY = e.clientY;
-
+      function moveUnlocked(e) {
         div.removeEventListener("mousemove", moveUnlocked, false);
+
+        isUnlocked = !document.mozPointerLockElement;
+        unLockedCoords = {
+          screenX: e.screenX,
+          screenY: e.screenY,
+          clientX: e.clientX,
+          clientY: e.clientY
+        };
+
         div.mozRequestPointerLock();
-      };
+      }
 
-      var moveLocked = function (e) {
-        isLocked = !!document.mozPointerLockElement;
-
-        lockedCoords.screenX = e.screenX;
-        lockedCoords.screenY = e.screenY;
-        lockedCoords.clientX = e.clientX;
-        lockedCoords.clientY = e.clientY;
-
+      function moveLocked(e) {
         div.removeEventListener("mousemove", moveLocked, false);
+
+        isLocked = !!document.mozPointerLockElement;
+        lockedCoords = {
+          screenX: e.screenX,
+          screenY: e.screenY,
+          clientX: e.clientX,
+          clientY: e.clientY
+        };
+
         document.mozCancelFullScreen();
-      };
+      }
 
       document.addEventListener("mozpointerlockchange", function (e) {
         if (document.mozPointerLockElement === div) {
           div.addEventListener("mousemove", moveLocked, false);
-
           divRect = div.getBoundingClientRect();
           synthesizeMouse(div, (divRect.width / 4) * 3, (divRect.height / 4) * 3, {
             type: "mousemove"
@@ -96,8 +92,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         if (document.mozFullScreenElement === div) {
           div.addEventListener("mousemove", moveUnlocked, false);
           synthesizeMouseAtCenter(div, { type: "mousemove" }, window);
-        }
-        else {
+        } else {
           runTests();
           SimpleTest.finish();
         }
@@ -105,6 +100,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          div = document.getElementById("div");
           div.mozRequestFullScreen();
         });
       }
