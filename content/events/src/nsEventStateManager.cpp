@@ -4136,12 +4136,6 @@ nsEventStateManager::SetPointerLock(nsIWidget* aWidget,
   }
 }
 
-void
-nsEventStateManager::SetLastScreenOffset(nsIntPoint aScreenOffset)
-{
-  sLastScreenOffset = aScreenOffset;
-}
-
 nsIntPoint
 nsEventStateManager::GetMouseCoords(nsIntRect aBounds)
 {
