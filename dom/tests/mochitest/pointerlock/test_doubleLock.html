@@ -9,6 +9,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
           src="/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript"
           src="/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="testPrefs.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <style type="text/css">
       #test-element { background-color: #94E01B; width:100px; height:100px; }
@@ -25,10 +26,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
        * If element requests pointerlock on itself while in pointerlock state
        * mozpointerlockchange event should be dispatched
        */
-
-      SpecialPowers.setBoolPref("full-screen-api.enabled", true);
-      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                 false);
 
       SimpleTest.waitForExplicitFinish();
 
@@ -58,12 +55,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         }
         else {
           runTests();
+          testPrefs.restore();
           SimpleTest.finish();
         }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          testPrefs.init();
           div.mozRequestFullScreen();
         });
       }

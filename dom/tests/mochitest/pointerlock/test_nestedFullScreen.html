@@ -9,6 +9,7 @@
     </script>
     <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
+    <script type="application/javascript" src="testPrefs.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   </head>
   <body onload="start();">
@@ -27,10 +28,6 @@
        * Requesting fullscreen on a child element of the element with
        * the pointer locked should unlock the pointer
        */
-
-      SpecialPowers.setBoolPref("full-screen-api.enabled", true);
-      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                 false);
 
       SimpleTest.waitForExplicitFinish();
 
@@ -70,12 +67,14 @@
         }
         else {
           runTests();
+          testPrefs.restore();
           SimpleTest.finish();
         }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          testPrefs.init();
           parentDiv.mozRequestFullScreen();
         });
       }

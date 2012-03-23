@@ -9,6 +9,7 @@
     </script>
     <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
+    <script type="application/javascript" src="testPrefs.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   </head>
   <body onload="start();">
@@ -28,10 +29,6 @@
          * Test for Bug 633602
          * Test locking non-html element.
          */
-
-        SpecialPowers.setBoolPref("full-screen-api.enabled", true);
-        SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                  false);
 
         SimpleTest.waitForExplicitFinish(1);
 
@@ -55,6 +52,7 @@
             elem.mozRequestPointerLock();
           } else {
             ok(elemWasLocked, "Expected SVG elem to become locked.");
+            testPrefs.restore();
             SimpleTest.finish();
           }
         }, false);
@@ -63,6 +61,7 @@
           elem = document.getElementById("svg-elem");
 
           SimpleTest.waitForFocus(function() {
+            testPrefs.init();
             elem.mozRequestFullScreen();
           });
         }

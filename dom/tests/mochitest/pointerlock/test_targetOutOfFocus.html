@@ -9,6 +9,7 @@
     </script>
     <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
+    <script type="application/javascript" src="testPrefs.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   </head>
   <body onload="start();">
@@ -28,10 +29,6 @@
          * Element doesn't need to have focus to request
          * pointer lock
         */
-
-        SpecialPowers.setBoolPref("full-screen-api.enabled", true);
-        SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                 false);
 
         SimpleTest.waitForExplicitFinish();
 
@@ -61,12 +58,14 @@
           }
           else {
             runTests();
+            testPrefs.restore();
             SimpleTest.finish();
           }
         }, false);
 
         function start() {
           SimpleTest.waitForFocus(function() {
+            testPrefs.init();
             div.mozRequestFullScreen();
           });
         }

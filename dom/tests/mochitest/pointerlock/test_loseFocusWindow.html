@@ -9,6 +9,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
   </script>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
   </script>
+  <script type="application/javascript" src="testPrefs.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body onload="start();">
@@ -24,10 +25,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
        * If element has the pointer locked and window loses focus
        * pointer should be unlocked
        */
-
-      SpecialPowers.setBoolPref("full-screen-api.enabled", true);
-      SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only",
-                                 false);
 
       SimpleTest.waitForExplicitFinish();
 
@@ -59,12 +56,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         }
         else {
           runTests();
+          testPrefs.restore();
           SimpleTest.finish();
         }
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
+          testPrefs.init();
           div.mozRequestFullScreen();
         });
       }
