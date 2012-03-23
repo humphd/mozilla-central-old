@@ -9332,11 +9332,10 @@ nsDocument::GetMozPointerLockElement(nsIDOMElement** aPointerLockedElement)
     do_QueryInterface(pointerLockedElement);
   nsresult rv = nsContentUtils::CheckSameOrigin(this, pointerLockedNode.get());
   if (NS_FAILED(rv)) {
-    return rv;
+    return NS_OK;
   }
 
-  CallQueryInterface(pointerLockedElement, aPointerLockedElement);
-  return NS_OK;
+  return CallQueryInterface(pointerLockedElement, aPointerLockedElement);
 }
 
 #define EVENT(name_, id_, type_, struct_)                                 \
