@@ -1058,12 +1058,12 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
     NS_ASSERTION(mCurrentTarget, "mCurrentTarget is null.  this should not happen.  see bug #13007");
     if (!mCurrentTarget) return NS_ERROR_NULL_POINTER;
   }
-
+#ifdef DEBUG
   if (NS_IS_DRAG_EVENT(aEvent) && sIsPointerLocked) {
     NS_ASSERTION(sIsPointerLocked,
       "sIsPointerLocked is true. Drag events should be suppressed when the pointer is locked.");
   }
-
+#endif
   // Store last known screenPoint and clientPoint so pointer lock
   // can use these values as constants.
   if (NS_IS_TRUSTED_EVENT(aEvent) &&
