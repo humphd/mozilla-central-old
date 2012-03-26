@@ -148,6 +148,7 @@
 #include "nsBlobProtocolHandler.h"
 
 #include "nsCharsetAlias.h"
+#include "nsCharsetSource.h"
 #include "nsIParser.h"
 #include "nsIContentSink.h"
 
@@ -176,6 +177,7 @@
 #include "nsFrameLoader.h"
 #include "nsEscape.h"
 #include "nsObjectLoadingContent.h"
+#include "nsHtml5TreeOpExecutor.h"
 #ifdef MOZ_MEDIA
 #include "nsHTMLMediaElement.h"
 #endif // MOZ_MEDIA
@@ -1558,7 +1560,7 @@ nsDocument::nsDocument(const char* aContentType)
 }
 
 static PLDHashOperator
-ClearAllBoxObjects(const void* aKey, nsPIBoxObject* aBoxObject, void* aUserArg)
+ClearAllBoxObjects(nsIContent* aKey, nsPIBoxObject* aBoxObject, void* aUserArg)
 {
   if (aBoxObject) {
     aBoxObject->Clear();
@@ -1628,8 +1630,10 @@ nsDocument::~nsDocument()
   while (--indx >= 0) {
     mCatalogSheets[indx]->SetOwningDocument(nsnull);
   }
-  if (mAttrStyleSheet)
+  if (mAttrStyleSheet) {
     mAttrStyleSheet->SetOwningDocument(nsnull);
+    NS_RELEASE(mAttrStyleSheet);
+  }
   if (mStyleAttrStyleSheet)
     mStyleAttrStyleSheet->SetOwningDocument(nsnull);
 
@@ -1651,14 +1655,6 @@ nsDocument::~nsDocument()
   // XXX Ideally we'd do this cleanup in the nsIDocument destructor.
   if (mNodeInfoManager) {
     mNodeInfoManager->DropDocumentReference();
-  }
-
-  if (mAttrStyleSheet) {
-    mAttrStyleSheet->SetOwningDocument(nsnull);
-  }
-  
-  if (mStyleAttrStyleSheet) {
-    mStyleAttrStyleSheet->SetOwningDocument(nsnull);
   }
 
   delete mHeaderData;
@@ -1773,7 +1769,7 @@ RadioGroupsTraverser(const nsAString& aKey, nsRadioGroupStruct* aData,
 }
 
 static PLDHashOperator
-BoxObjectTraverser(const void* key, nsPIBoxObject* boxObject, void* userArg)
+BoxObjectTraverser(nsIContent* key, nsPIBoxObject* boxObject, void* userArg)
 {
   nsCycleCollectionTraversalCallback *cb = 
     static_cast<nsCycleCollectionTraversalCallback*>(userArg);
@@ -2273,8 +2269,11 @@ nsDocument::ResetStylesheetsToURI(nsIURI* aURI)
     }
     mAttrStyleSheet->Reset(aURI);
   } else {
-    rv = NS_NewHTMLStyleSheet(getter_AddRefs(mAttrStyleSheet), aURI, this);
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = NS_NewHTMLStyleSheet(&mAttrStyleSheet, aURI, this);
+    if (NS_FAILED(rv)) {
+      NS_IF_RELEASE(mAttrStyleSheet);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
   }
 
   // Don't use AddStyleSheet, since it'll put the sheet into style
@@ -3158,7 +3157,8 @@ nsDocument::SetHeaderData(nsIAtom* aHeaderField, const nsAString& aData)
 bool
 nsDocument::TryChannelCharset(nsIChannel *aChannel,
                               PRInt32& aCharsetSource,
-                              nsACString& aCharset)
+                              nsACString& aCharset,
+                              nsHtml5TreeOpExecutor* aExecutor)
 {
   if(kCharsetFromChannel <= aCharsetSource) {
     return true;
@@ -3172,6 +3172,8 @@ nsDocument::TryChannelCharset(nsIChannel *aChannel,
       if(NS_SUCCEEDED(rv)) {
         aCharsetSource = kCharsetFromChannel;
         return true;
+      } else if (aExecutor && !charsetVal.IsEmpty()) {
+        aExecutor->ComplainAboutBogusProtocolCharset(this);
       }
     }
   }
@@ -5358,7 +5360,7 @@ nsDocument::GetBoxObjectFor(nsIDOMElement* aElement, nsIBoxObject** aResult)
   *aResult = nsnull;
 
   if (!mBoxObjectTable) {
-    mBoxObjectTable = new nsInterfaceHashtable<nsVoidPtrHashKey, nsPIBoxObject>;
+    mBoxObjectTable = new nsInterfaceHashtable<nsPtrHashKey<nsIContent>, nsPIBoxObject>;
     if (mBoxObjectTable && !mBoxObjectTable->Init(12)) {
       mBoxObjectTable = nsnull;
     }
@@ -9000,7 +9002,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
   NS_ASSERTION(GetFullScreenElement() == aElement,
                "Full-screen element should be the requested element!");
   NS_ASSERTION(IsFullScreenDoc(), "Should be full-screen doc");
-  nsCOMPtr<nsIDOMHTMLElement> fse;
+  nsCOMPtr<nsIDOMElement> fse;
   GetMozFullScreenElement(getter_AddRefs(fse));
   nsCOMPtr<nsIContent> c(do_QueryInterface(fse));
   NS_ASSERTION(c->AsElement() == aElement,
@@ -9018,7 +9020,7 @@ nsDocument::RequestFullScreen(Element* aElement, bool aWasCallerChrome)
 }
 
 NS_IMETHODIMP
-nsDocument::GetMozFullScreenElement(nsIDOMHTMLElement **aFullScreenElement)
+nsDocument::GetMozFullScreenElement(nsIDOMElement **aFullScreenElement)
 {
   NS_ENSURE_ARG_POINTER(aFullScreenElement);
   *aFullScreenElement = nsnull;

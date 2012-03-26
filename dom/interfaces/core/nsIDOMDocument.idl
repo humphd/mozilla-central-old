@@ -369,7 +369,7 @@ interface nsIDOMDocument : nsIDOMNode
    *
    * @see <https://wiki.mozilla.org/index.php?title=Gecko:FullScreenAPI>
    */
-  readonly attribute nsIDOMHTMLElement mozFullScreenElement;
+  readonly attribute nsIDOMElement mozFullScreenElement;
 
   /**
    * Causes the document to leave DOM full-screen mode, if it's in

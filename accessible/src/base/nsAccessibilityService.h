@@ -173,8 +173,10 @@ public:
    */
   virtual void PresShellActivated(nsIPresShell* aPresShell);
 
-  virtual void RecreateAccessible(nsIPresShell* aPresShell,
-                                  nsIContent* aContent);
+  /**
+   * Recreate an accessible for the given content node in the presshell.
+   */
+  void RecreateAccessible(nsIPresShell* aPresShell, nsIContent* aContent);
 
   virtual void FireAccessibleEvent(PRUint32 aEvent, nsAccessible* aTarget);
 
@@ -413,7 +415,8 @@ static const char kRoleNames[][20] = {
   "gridcell",            //ROLE_GRID_CELL
   "embedded object",     //ROLE_EMBEDDED_OBJECT
   "note",                //ROLE_NOTE
-  "figure"               //ROLE_FIGURE
+  "figure",              //ROLE_FIGURE
+  "check rich option"    //ROLE_CHECK_RICH_OPTION
 };
 
 /**

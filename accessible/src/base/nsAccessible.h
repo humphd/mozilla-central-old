@@ -74,7 +74,7 @@ class nsIFrame;
 class nsIAtom;
 class nsIView;
 
-typedef nsRefPtrHashtable<nsVoidPtrHashKey, nsAccessible>
+typedef nsRefPtrHashtable<nsPtrHashKey<const void>, nsAccessible>
   nsAccessibleHashtable;
 
 // see nsAccessible::GetAttrValue
@@ -650,7 +650,7 @@ protected:
    * Set accessible parent and index in parent.
    */
   virtual void BindToParent(nsAccessible* aParent, PRUint32 aIndexInParent);
-  void UnbindFromParent();
+  virtual void UnbindFromParent();
 
   /**
    * Return sibling accessible at the given offset.

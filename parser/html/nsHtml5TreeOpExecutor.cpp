@@ -60,6 +60,7 @@
 #include "mozilla/css/Loader.h"
 #include "mozilla/Util.h" // DebugOnly
 #include "sampler.h"
+#include "nsIScriptError.h"
 
 using namespace mozilla;
 
@@ -75,7 +76,7 @@ NS_IMPL_ADDREF_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
 NS_IMPL_RELEASE_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSCOMARRAY(mOwnedElements)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE_NSTARRAY_OF_NSCOMPTR(mOwnedElements)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
@@ -117,6 +118,20 @@ nsHtml5TreeOpExecutor::WillParse()
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+nsHtml5TreeOpExecutor::WillBuildModel(nsDTDMode aDTDMode)
+{
+  if (mDocShell && !GetDocument()->GetScriptGlobalObject()) {
+    // Not loading as data but script global object not ready
+    return MarkAsBroken(NS_ERROR_DOM_INVALID_STATE_ERR);
+  }
+  mDocument->AddObserver(this);
+  WillBuildModelImpl();
+  GetDocument()->BeginLoad();
+  return NS_OK;
+}
+
+
 // This is called when the tree construction has ended
 NS_IMETHODIMP
 nsHtml5TreeOpExecutor::DidBuildModel(bool aTerminated)
@@ -143,7 +158,9 @@ nsHtml5TreeOpExecutor::DidBuildModel(bool aTerminated)
   GetParser()->DropStreamParser();
 
   // This comes from nsXMLContentSink and nsHTMLContentSink
-  DidBuildModelImpl(aTerminated);
+  // If this parser has been marked as broken, treat the end of parse as
+  // forced termination.
+  DidBuildModelImpl(aTerminated || IsBroken());
 
   if (!mLayoutStarted) {
     // We never saw the body, and layout never got started. Force
@@ -274,12 +291,12 @@ nsHtml5TreeOpExecutor::UpdateChildCounts()
   // No-op
 }
 
-void
-nsHtml5TreeOpExecutor::MarkAsBroken()
+nsresult
+nsHtml5TreeOpExecutor::MarkAsBroken(nsresult aReason)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!mRunsToCompletion, "Fragment parsers can't be broken!");
-  mBroken = true;
+  mBroken = aReason;
   if (mStreamParser) {
     mStreamParser->Terminate();
   }
@@ -293,6 +310,7 @@ nsHtml5TreeOpExecutor::MarkAsBroken()
       NS_WARNING("failed to dispatch executor flush event");
     }
   }
+  return aReason;
 }
 
 nsresult
@@ -791,7 +809,8 @@ nsHtml5TreeOpExecutor::Start()
 
 void
 nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(const char* aEncoding,
-                                            PRInt32 aSource)
+                                            PRInt32 aSource,
+                                            PRUint32 aLineNumber)
 {
   EndDocUpdate();
 
@@ -814,12 +833,71 @@ nsHtml5TreeOpExecutor::NeedsCharsetSwitchTo(const char* aEncoding,
 
   if (!mParser) {
     // success
+    if (aSource == kCharsetFromMetaTag) {
+      MaybeComplainAboutCharset("EncLateMetaReload", false, aLineNumber);
+    }
     return;
+  }
+
+  if (aSource == kCharsetFromMetaTag) {
+    MaybeComplainAboutCharset("EncLateMetaTooLate", true, aLineNumber);
   }
 
   GetParser()->ContinueAfterFailedCharsetSwitch();
 
   BeginDocUpdate();
+}
+
+void
+nsHtml5TreeOpExecutor::MaybeComplainAboutCharset(const char* aMsgId,
+                                                 bool aError,
+                                                 PRUint32 aLineNumber)
+{
+  if (mAlreadyComplainedAboutCharset) {
+    return;
+  }
+  // The EncNoDeclaration case for advertising iframes is so common that it
+  // would result is way too many errors. The iframe case doesn't matter
+  // when the ad is an image or a Flash animation anyway. When the ad is
+  // textual, a misrendered ad probably isn't a huge loss for users.
+  // Let's suppress the message in this case.
+  // This means that errors about other different-origin iframes in mashups
+  // are lost as well, but generally, the site author isn't in control of
+  // the embedded different-origin pages anyway and can't fix problems even
+  // if alerted about them.
+  if (!strcmp(aMsgId, "EncNoDeclaration") && mDocShell) {
+    nsCOMPtr<nsIDocShellTreeItem> treeItem = do_QueryInterface(mDocShell);
+    nsCOMPtr<nsIDocShellTreeItem> parent;
+    treeItem->GetSameTypeParent(getter_AddRefs(parent));
+    if (parent) {
+      return;
+    }
+  }
+  mAlreadyComplainedAboutCharset = true;
+  nsContentUtils::ReportToConsole(aError ? nsIScriptError::errorFlag
+                                         : nsIScriptError::warningFlag,
+                                  "HTML parser",
+                                  mDocument,
+                                  nsContentUtils::eHTMLPARSER_PROPERTIES,
+                                  aMsgId,
+                                  nsnull,
+                                  0,
+                                  nsnull,
+                                  EmptyString(),
+                                  aLineNumber);
+}
+
+void
+nsHtml5TreeOpExecutor::ComplainAboutBogusProtocolCharset(nsIDocument* aDoc)
+{
+  NS_ASSERTION(!mAlreadyComplainedAboutCharset,
+               "How come we already managed to complain?");
+  mAlreadyComplainedAboutCharset = true;
+  nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
+                                  "HTML parser",
+                                  aDoc,
+                                  nsContentUtils::eHTMLPARSER_PROPERTIES,
+                                  "EncProtocolUnsupported");
 }
 
 nsHtml5Parser*

@@ -177,8 +177,18 @@ public:
   virtual nsresult        SynthesizeNativeMouseEvent(nsIntPoint aPoint,
                                                      PRUint32 aNativeMessage,
                                                      PRUint32 aModifierFlags);
+
   virtual nsresult        SynthesizeNativeMouseMove(nsIntPoint aPoint)
                           { return SynthesizeNativeMouseEvent(aPoint, MOUSEEVENTF_MOVE, 0); }
+
+  virtual nsresult        SynthesizeNativeMouseScrollEvent(nsIntPoint aPoint,
+                                                           PRUint32 aNativeMessage,
+                                                           double aDeltaX,
+                                                           double aDeltaY,
+                                                           double aDeltaZ,
+                                                           PRUint32 aModifierFlags,
+                                                           PRUint32 aAdditionalFlags);
+
   NS_IMETHOD              ResetInputState();
   NS_IMETHOD_(void)       SetInputContext(const InputContext& aContext,
                                           const InputContextAction& aAction);
@@ -297,6 +307,8 @@ public:
   void                    PickerClosed();
 
   bool                    const DestroyCalled() { return mDestroyCalled; }
+
+  static void             SetupKeyModifiersSequence(nsTArray<KeyPair>* aArray, PRUint32 aModifiers);
 protected:
 
   // A magic number to identify the FAKETRACKPOINTSCROLLABLE window created
@@ -460,7 +472,6 @@ protected:
   UINT                    MapFromNativeToDOM(UINT aNativeKeyCode);
   void                    StopFlashing();
   static bool             IsTopLevelMouseExit(HWND aWnd);
-  static void             SetupKeyModifiersSequence(nsTArray<KeyPair>* aArray, PRUint32 aModifiers);
   nsresult                SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
                                               bool aIntersectWithExisting);
   nsIntRegion             GetRegionToPaint(bool aForceFullRepaint, 

@@ -453,10 +453,10 @@ abstract public class GeckoApp
 
         forward.setEnabled(tab.canDoForward());
 
-        // Disable share menuitem for about:, chrome: and file: URIs
+        // Disable share menuitem for about:, chrome:, file:, and resource: URIs
         String scheme = Uri.parse(tab.getURL()).getScheme();
         share.setEnabled(!(scheme.equals("about") || scheme.equals("chrome") ||
-                           scheme.equals("file")));
+                           scheme.equals("file") || scheme.equals("resource")));
 
         // Disable save as PDF for about:home and xul pages
         saveAsPDF.setEnabled(!(tab.getURL().equals("about:home") ||
@@ -1570,7 +1570,8 @@ abstract public class GeckoApp
                 view.setVisibility(View.VISIBLE);
             }
 
-            mPluginContainer.updateViewLayout(view, lp);
+            if (mPluginContainer.indexOfChild(view) >= 0)
+                mPluginContainer.updateViewLayout(view, lp);
         }
     }
 
@@ -1592,15 +1593,11 @@ abstract public class GeckoApp
     // The ActionBar needs to be refreshed on rotation as different orientation uses different resources
     public void refreshActionBar() {
         if (Build.VERSION.SDK_INT >= 11) {
-            mBrowserToolbar = (BrowserToolbar) getLayoutInflater().inflate(R.layout.browser_toolbar, null);
-            mBrowserToolbar.init();
+            LinearLayout actionBar = (LinearLayout) getLayoutInflater().inflate(R.layout.browser_toolbar, null);
+            mBrowserToolbar.from(actionBar);
             mBrowserToolbar.refresh();
             GeckoActionBar.setBackgroundDrawable(this, getResources().getDrawable(R.drawable.gecko_actionbar_bg));
-            GeckoActionBar.setDisplayOptions(this, ActionBar.DISPLAY_SHOW_CUSTOM, ActionBar.DISPLAY_SHOW_CUSTOM |
-                                                                                  ActionBar.DISPLAY_SHOW_HOME |
-                                                                                  ActionBar.DISPLAY_SHOW_TITLE |
-                                                                                  ActionBar.DISPLAY_USE_LOGO);
-            GeckoActionBar.setCustomView(this, mBrowserToolbar);
+            GeckoActionBar.setCustomView(this, actionBar);
         }
     }
 
@@ -1627,17 +1624,23 @@ abstract public class GeckoApp
             mRestoreSession = savedInstanceState.getBoolean(SAVED_STATE_SESSION);
         }
 
+        LayoutInflater.from(this).setFactory(GeckoViewsFactory.getInstance());
+
         super.onCreate(savedInstanceState);
 
         mOrientation = getResources().getConfiguration().orientation;
 
         setContentView(R.layout.gecko_app);
 
+        LinearLayout actionBar;
         if (Build.VERSION.SDK_INT >= 11) {
-            mBrowserToolbar = (BrowserToolbar) GeckoActionBar.getCustomView(this);
+            actionBar = (LinearLayout) GeckoActionBar.getCustomView(this);
         } else {
-            mBrowserToolbar = (BrowserToolbar) findViewById(R.id.browser_toolbar);
+            actionBar = (LinearLayout) findViewById(R.id.browser_toolbar);
         }
+
+        mBrowserToolbar = new BrowserToolbar(mAppContext);
+        mBrowserToolbar.from(actionBar);
 
         // setup gecko layout
         mGeckoLayout = (RelativeLayout) findViewById(R.id.gecko_layout);
@@ -1670,7 +1673,6 @@ abstract public class GeckoApp
             checkAndLaunchUpdate();
         }
 
-        mBrowserToolbar.init();
         mBrowserToolbar.setTitle(mLastTitle);
 
         String passedUri = null;
@@ -1744,9 +1746,15 @@ abstract public class GeckoApp
              * run experience, perhaps?
              */
             mLayerController = new LayerController(this);
-            mPlaceholderLayerClient = new PlaceholderLayerClient(mLayerController, mLastViewport);
+            View v = mLayerController.getView();
 
-            mGeckoLayout.addView(mLayerController.getView(), 0);
+            mPlaceholderLayerClient = new PlaceholderLayerClient(mLayerController, mLastViewport);
+            if (!mPlaceholderLayerClient.loadScreenshot()) {
+                // Instead of flickering the checkerboard, show a white screen until Gecko paints
+                v.setBackgroundColor(Color.WHITE);
+            }
+
+            mGeckoLayout.addView(v, 0);
         }
 
         mPluginContainer = (AbsoluteLayout) findViewById(R.id.plugin_container);
@@ -2786,19 +2794,15 @@ abstract public class GeckoApp
         GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Tab:Add", args.toString()));
     }
 
+    /* This method is referenced by Robocop via reflection. */
     public GeckoLayerClient getLayerClient() { return mLayerClient; }
     public LayerController getLayerController() { return mLayerController; }
 
     // accelerometer
-    public void onAccuracyChanged(Sensor sensor, int accuracy)
-    {
-        Log.w(LOGTAG, "onAccuracyChanged "+accuracy);
-        GeckoAppShell.sendEventToGecko(GeckoEvent.createSensorAccuracyEvent(accuracy));
-    }
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     public void onSensorChanged(SensorEvent event)
     {
-        Log.w(LOGTAG, "onSensorChanged "+event);
         GeckoAppShell.sendEventToGecko(GeckoEvent.createSensorEvent(event));
     }
 
@@ -2806,7 +2810,6 @@ abstract public class GeckoApp
     public void onLocationChanged(Location location)
     {
         Log.w(LOGTAG, "onLocationChanged "+location);
-
         GeckoAppShell.sendEventToGecko(GeckoEvent.createLocationEvent(location));
     }
 

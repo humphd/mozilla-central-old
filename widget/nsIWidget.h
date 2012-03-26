@@ -1382,6 +1382,35 @@ class nsIWidget : public nsISupports {
     virtual nsresult SynthesizeNativeMouseMove(nsIntPoint aPoint) = 0;
 
     /**
+     * Utility method intended for testing. Dispatching native mouse scroll
+     * events may move the mouse cursor.
+     *
+     * @param aPoint            Mouse cursor position in screen coordinates.
+     *                          In device pixels, the origin at the top left of
+     *                          the primary display.
+     * @param aNativeMessage    Platform native message.
+     * @param aDeltaX           The delta value for X direction.  If the native
+     *                          message doesn't indicate X direction scrolling,
+     *                          this may be ignored.
+     * @param aDeltaY           The delta value for Y direction.  If the native
+     *                          message doesn't indicate Y direction scrolling,
+     *                          this may be ignored.
+     * @param aDeltaZ           The delta value for Z direction.  If the native
+     *                          message doesn't indicate Z direction scrolling,
+     *                          this may be ignored.
+     * @param aModifierFlags    Must be values of Modifiers, or zero.
+     * @param aAdditionalFlags  See nsIDOMWidnowUtils' consts and their
+     *                          document.
+     */
+    virtual nsresult SynthesizeNativeMouseScrollEvent(nsIntPoint aPoint,
+                                                      PRUint32 aNativeMessage,
+                                                      double aDeltaX,
+                                                      double aDeltaY,
+                                                      double aDeltaZ,
+                                                      PRUint32 aModifierFlags,
+                                                      PRUint32 aAdditionalFlags) = 0;
+
+    /**
      * Activates a native menu item at the position specified by the index
      * string. The index string is a string of positive integers separated
      * by the "|" (pipe) character. The last integer in the string represents

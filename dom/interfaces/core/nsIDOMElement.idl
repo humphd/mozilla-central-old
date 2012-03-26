@@ -220,5 +220,14 @@ interface nsIDOMElement : nsIDOMNode
    */
   void releaseCapture();
 
+  // Mozilla extensions
+  /**
+   * Requests that this element be made the full-screen element, as per the DOM
+   * full-screen api.
+   *
+   * @see <https://wiki.mozilla.org/index.php?title=Gecko:FullScreenAPI>
+   */
+  void mozRequestFullScreen();
+
   void mozRequestPointerLock();
 };

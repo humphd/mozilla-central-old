@@ -65,7 +65,6 @@
 #include "nsAutoPtr.h"
 #include "nsIXPConnect.h"
 #include "nsContentErrors.h"
-#include "nsIParser.h"
 #include "nsThreadUtils.h"
 #include "nsDocShellCID.h"
 #include "nsIContentSecurityPolicy.h"
@@ -418,8 +417,7 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement)
     return false;
   }
   
-  nsIScriptContext *context = globalObject->GetScriptContext(
-                                        nsIProgrammingLanguage::JAVASCRIPT);
+  nsIScriptContext *context = globalObject->GetScriptContext();
 
   // If scripts aren't enabled in the current context, there's no
   // point in going on.
@@ -891,14 +889,14 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
   PRUint32 stid = scriptContent ? scriptContent->GetScriptTypeID() :
                                   nsIProgrammingLanguage::JAVASCRIPT;
   // and make sure we are setup for this type of script.
-  rv = globalObject->EnsureScriptEnvironment(stid);
+  rv = globalObject->EnsureScriptEnvironment();
   if (NS_FAILED(rv))
     return rv;
 
   // Make sure context is a strong reference since we access it after
   // we've executed a script, which may cause all other references to
   // the context to go away.
-  nsCOMPtr<nsIScriptContext> context = globalObject->GetScriptContext(stid);
+  nsCOMPtr<nsIScriptContext> context = globalObject->GetScriptContext();
   if (!context) {
     return NS_ERROR_FAILURE;
   }
@@ -1283,10 +1281,10 @@ nsScriptLoader::PrepareLoadedRequest(nsScriptLoadRequest* aRequest,
   // inserting the request in the array. However it's an unlikely case
   // so if you see this assertion it is likely something else that is
   // wrong, especially if you see it more than once.
-  NS_ASSERTION(mDeferRequests.IndexOf(aRequest) >= 0 ||
-               mAsyncRequests.IndexOf(aRequest) >= 0 ||
-               mNonAsyncExternalScriptInsertedRequests.IndexOf(aRequest) >= 0 ||
-               mXSLTRequests.IndexOf(aRequest) >= 0 ||
+  NS_ASSERTION(mDeferRequests.Contains(aRequest) ||
+               mAsyncRequests.Contains(aRequest) ||
+               mNonAsyncExternalScriptInsertedRequests.Contains(aRequest) ||
+               mXSLTRequests.Contains(aRequest)  ||
                mPreloads.Contains(aRequest, PreloadRequestComparator()) ||
                mParserBlockingRequest,
                "aRequest should be pending!");

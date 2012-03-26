@@ -271,6 +271,15 @@ protected:
   { return NS_ERROR_UNEXPECTED; }
 
   virtual nsresult SynthesizeNativeMouseMove(nsIntPoint aPoint)
+
+  virtual nsresult SynthesizeNativeMouseScrollEvent(nsIntPoint aPoint,
+                                                    PRUint32 aNativeMessage,
+                                                    double aDeltaX,
+                                                    double aDeltaY,
+                                                    double aDeltaZ,
+                                                    PRUint32 aModifierFlags,
+                                                    PRUint32 aAdditionalFlags)
+
   { return NS_ERROR_UNEXPECTED; }
 
   // Stores the clip rectangles in aRects into mClipRects. Returns true

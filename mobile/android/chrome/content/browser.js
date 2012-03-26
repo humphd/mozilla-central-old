@@ -193,6 +193,7 @@ var BrowserApp = {
     Services.obs.addObserver(this, "Viewport:Change", false);
     Services.obs.addObserver(this, "Passwords:Init", false);
     Services.obs.addObserver(this, "FormHistory:Init", false);
+    Services.obs.addObserver(this, "ToggleProfiling", false);
 
     Services.obs.addObserver(this, "sessionstore-state-purge-complete", false);
 
@@ -234,6 +235,7 @@ var BrowserApp = {
     PermissionsHelper.init();
     CharacterEncoding.init();
     SearchEngines.init();
+    ActivityObserver.init();
 
     // Init LoginManager
     Cc["@mozilla.org/login-manager;1"].getService(Ci.nsILoginManager);
@@ -326,7 +328,7 @@ var BrowserApp = {
     });
 
     if (this.isAppUpdated())
-      this.onUpdate();
+      this.onAppUpdated();
   },
 
   isAppUpdated: function() {
@@ -951,6 +953,14 @@ var BrowserApp = {
       Services.obs.removeObserver(this, "FormHistory:Init", false);
     } else if (aTopic == "sessionstore-state-purge-complete") {
       sendMessageToJava({ gecko: { type: "Session:StatePurged" }});
+    } else if (aTopic == "ToggleProfiling") {
+      let profiler = Cc["@mozilla.org/tools/profiler;1"].
+                       getService(Ci.nsIProfiler);
+      if (profiler.IsActive()) {
+        profiler.StopProfiler();
+      } else {
+        profiler.StartProfiler(100000, 25, ["stackwalk"], 1);
+      }
     }
   },
 
@@ -1500,8 +1510,7 @@ Tab.prototype = {
     sendMessageToJava(message);
 
     this.overscrollController = new OverscrollController(this);
-    this.browser.contentWindow.controllers
-      .insertControllerAt(0, this.overscrollController);
+    this.browser.contentWindow.controllers.insertControllerAt(0, this.overscrollController);
 
     let flags = Ci.nsIWebProgress.NOTIFY_STATE_ALL |
                 Ci.nsIWebProgress.NOTIFY_LOCATION |
@@ -1515,6 +1524,7 @@ Tab.prototype = {
     this.browser.addEventListener("DOMWindowClose", this, true);
     this.browser.addEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.addEventListener("scroll", this, true);
+    this.browser.addEventListener("MozScrolledAreaChanged", this, true);
     this.browser.addEventListener("PluginClickToPlay", this, true);
     this.browser.addEventListener("pagehide", this, true);
     this.browser.addEventListener("pageshow", this, true);
@@ -1551,8 +1561,7 @@ Tab.prototype = {
     if (!this.browser)
       return;
 
-    this.browser.controllers.contentWindow
-      .removeController(this.overscrollController);
+    this.browser.contentWindow.controllers.removeController(this.overscrollController);
 
     this.browser.removeProgressListener(this);
     this.browser.removeEventListener("DOMContentLoaded", this, true);
@@ -1562,6 +1571,7 @@ Tab.prototype = {
     this.browser.removeEventListener("DOMWillOpenModalDialog", this, true);
     this.browser.removeEventListener("scroll", this, true);
     this.browser.removeEventListener("PluginClickToPlay", this, true);
+    this.browser.removeEventListener("MozScrolledAreaChanged", this, true);
     this.browser.removeEventListener("pagehide", this, true);
     this.browser.removeEventListener("pageshow", this, true);
 
@@ -1589,6 +1599,10 @@ Tab.prototype = {
       this.browser.setAttribute("type", "content-targetable");
       this.browser.docShellIsActive = false;
     }
+  },
+
+  getActive: function getActive() {
+      return this.browser.docShellIsActive;
   },
 
   setDisplayPort: function(aViewportX, aViewportY, aDisplayPortRect) {
@@ -1689,17 +1703,16 @@ Tab.prototype = {
     return viewport;
   },
 
-  sendViewportUpdate: function() {
+  sendViewportUpdate: function(aPageSizeUpdate) {
     let message;
-    if (BrowserApp.selectedTab == this) {
-      // for foreground tabs, send the viewport update unless the document
-      // displayed is different from the content document
-      if (!BrowserApp.isBrowserContentDocumentDisplayed())
-        return;
+    // for foreground tabs, send the viewport update unless the document
+    // displayed is different from the content document. In that case, just
+    // calculate the display port.
+    if (BrowserApp.selectedTab == this && BrowserApp.isBrowserContentDocumentDisplayed()) {
       message = this.getViewport();
-      message.type = "Viewport:Update";
+      message.type = aPageSizeUpdate ? "Viewport:PageSize" : "Viewport:Update";
     } else {
-      // for bcakground tabs, request a new display port calculation, so that
+      // for background tabs, request a new display port calculation, so that
       // when we do switch to that tab, we have the correct display port and
       // don't need to draw twice (once to allow the first-paint viewport to
       // get to java, and again once java figures out the display port).
@@ -1856,6 +1869,17 @@ Tab.prototype = {
         if (this.userScrollPos.x != win.scrollX || this.userScrollPos.y != win.scrollY) {
           this.sendViewportUpdate();
         }
+        break;
+      }
+
+      case "MozScrolledAreaChanged": {
+        // This event is only fired for root scroll frames, and only when the
+        // scrolled area has actually changed, so no need to check for that.
+        // Just make sure it's the event for the correct root scroll frame.
+        if (aEvent.originalTarget != this.browser.contentDocument)
+          return;
+
+        this.sendViewportUpdate(true);
         break;
       }
 
@@ -2188,17 +2212,32 @@ Tab.prototype = {
         // Is it on the top level?
         let contentDocument = aSubject;
         if (contentDocument == this.browser.contentDocument) {
-          // reset CSS viewport and zoom to default on new page
+          // reset CSS viewport and zoom to default on new page, and then calculate
+          // them properly using the actual metadata from the page. note that the
+          // updateMetadata call takes into account the existing CSS viewport size
+          // and zoom when calculating the new ones, so we need to reset these
+          // things here before calling updateMetadata.
           this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight);
           this.setResolution(gScreenWidth / this.browserWidth, false);
-          // and then use the metadata to figure out how it needs to be updated
           ViewportHandler.updateMetadata(this);
 
-          // The document element must have a display port on it whenever we are about to
-          // paint. This is the point just before the first paint, so we set the display port
-          // to a default value here. Once Java is aware of this document it will overwrite
-          // it with a better-calculated display port.
-          this.setDisplayPort(0, 0, {left: 0, top: 0, right: gScreenWidth, bottom: gScreenHeight });
+          // Note that if we draw without a display-port, things can go wrong. By the
+          // time we execute this, it's almost certain a display-port has been set via
+          // the MozScrolledAreaChanged event. If that didn't happen, the updateMetadata
+          // call above does so at the end of the updateViewportSize function. As long
+          // as that is happening, we don't need to do it again here.
+
+          if (contentDocument instanceof ImageDocument) {
+            // for images, scale to fit width. this needs to happen *after* the call
+            // to updateMetadata above, because that call sets the CSS viewport which
+            // will affect the page size (i.e. contentDocument.body.scroll*) that we
+            // use in this calculation. also we call sendViewportUpdate after changing
+            // the resolution so that the display port gets recalculated appropriately.
+            let fitZoom = Math.min(gScreenWidth / contentDocument.body.scrollWidth,
+                                   gScreenHeight / contentDocument.body.scrollHeight);
+            this.setResolution(fitZoom, false);
+            this.sendViewportUpdate();
+          }
 
           BrowserApp.displayedDocumentChanged();
           this.contentDocumentIsDisplayed = true;
@@ -2899,7 +2938,8 @@ var FormAssistant = {
       // Reset invalid submit state on each pageshow
       case "pageshow":
         let target = aEvent.originalTarget;
-        if (target == content.document || target.ownerDocument == content.document)
+        let selectedDocument = BrowserApp.selectedBrowser.contentDocument;
+        if (target == selectedDocument || target.ownerDocument == selectedDocument)
           this._invalidSubmit = false;
     }
   },
@@ -4405,5 +4445,28 @@ var SearchEngines = {
         }
       }
     });
+  }
+};
+
+var ActivityObserver = {
+  init: function ao_init() {
+    Services.obs.addObserver(this, "application-background", false);
+    Services.obs.addObserver(this, "application-foreground", false);
+  },
+
+  observe: function ao_observe(aSubject, aTopic, aData) {
+    let isForeground = false
+    switch (aTopic) {
+      case "application-background" :
+        isForeground = false;
+        break;
+      case "application-foreground" :
+        isForeground = true;
+        break;
+    }
+
+    if (BrowserApp.selectedTab.getActive() != isForeground) {
+      BrowserApp.selectedTab.setActive(isForeground);
+    }
   }
 };
