@@ -9,7 +9,7 @@
     </script>
     <script type="application/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
-    <script type="application/javascript" src="testPrefs.js"></script>
+    <script type="application/javascript" src="pointerlock_utils.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
   </head>
   <body onload="start();">
@@ -52,7 +52,6 @@
             elem.mozRequestPointerLock();
           } else {
             ok(elemWasLocked, "Expected SVG elem to become locked.");
-            testPrefs.restore();
             SimpleTest.finish();
           }
         }, false);
@@ -61,7 +60,6 @@
           elem = document.getElementById("svg-elem");
 
           SimpleTest.waitForFocus(function() {
-            testPrefs.init();
             elem.mozRequestFullScreen();
           });
         }

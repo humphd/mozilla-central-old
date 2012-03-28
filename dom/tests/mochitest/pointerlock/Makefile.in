@@ -13,24 +13,25 @@ include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 
 _TEST_FILES	= \
-		testPrefs.js \
 		test_pointerlock-api.html \
-		test_pointerlockerror.html \
-		test_escapeKey.html \
-		test_withoutDOM.html \
-		test_removedFromDOM.html \
-		test_pointerLockPref.html \
-		test_nestedFullScreen.html \
-		test_doubleLock.html \
-		test_loseFocusWindow.html \
-		test_childIframe.html \
-		test_movementXY.html \
-		test_infiniteMovement.html \
-		test_retargetMouseEvents.html \
-		test_targetOutOfFocus.html \
-		test_screenClientXYConst.html \
-		test_suppressSomeMouseEvents.html \
-		test_locksvgelement.html \
+		pointerlock_utils.js \
+		file_pointerlock-api.html \
+		file_pointerlockerror.html \
+		file_escapeKey.html \
+		file_withoutDOM.html \
+		file_removedFromDOM.html \
+		file_pointerLockPref.html \
+		file_nestedFullScreen.html \
+		file_doubleLock.html \
+		file_loseFocusWindow.html \
+		file_childIframe.html \
+		file_movementXY.html \
+		file_infiniteMovement.html \
+		file_retargetMouseEvents.html \
+		file_targetOutOfFocus.html \
+		file_screenClientXYConst.html \
+		file_suppressSomeMouseEvents.html \
+		file_locksvgelement.html \
 		iframe_differentDOM.html \
 		$(NULL)
 
