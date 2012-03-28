@@ -9,7 +9,7 @@
     </script>
     <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
     </script>
-    <script type="application/javascript" src="testPrefs.js"></script>
+    <script type="application/javascript" src="pointerlock_utils.js"></script>
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   </head>
   <body onload="start();">
@@ -58,14 +58,12 @@
           }
           else {
             runTests();
-            testPrefs.restore();
             SimpleTest.finish();
           }
         }, false);
 
         function start() {
           SimpleTest.waitForFocus(function() {
-            testPrefs.init();
             div.mozRequestFullScreen();
           });
         }
