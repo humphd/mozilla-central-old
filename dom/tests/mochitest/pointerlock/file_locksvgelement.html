@@ -40,11 +40,9 @@
               document.mozPointerLockElement === elem) {
             elemWasLocked = true;
             document.mozExitPointerLock();
+          } else {
+            document.mozCancelFullScreen();
           }
-        }, false);
-
-        document.addEventListener("mozpointerlockerror", function (e) {
-          document.mozCancelFullScreen();
         }, false);
 
         document.addEventListener("mozfullscreenchange", function (e) {
