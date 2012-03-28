@@ -9327,11 +9327,8 @@ nsDocument::GetMozPointerLockElement(nsIDOMElement** aPointerLockedElement)
   nsCOMPtr<nsIDocument> pointerLockedDoc =
     do_QueryReferent(nsEventStateManager::sPointerLockedDoc);
   nsDocument* doc = static_cast<nsDocument*>(pointerLockedDoc.get());
-  if (!doc) {
-    return NS_ERROR_FAILURE;
-  }
   if (doc != this) {
-    return NS_ERROR_DOM_WRONG_DOCUMENT_ERR;
+    return NS_OK;
   }
   nsCOMPtr<nsIDOMNode> pointerLockedNode =
     do_QueryInterface(pointerLockedElement);
