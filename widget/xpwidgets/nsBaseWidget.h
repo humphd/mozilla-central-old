@@ -280,7 +280,6 @@ protected:
                                                     double aDeltaZ,
                                                     PRUint32 aModifierFlags,
                                                     PRUint32 aAdditionalFlags)
-
   { return NS_ERROR_UNEXPECTED; }
 
   // Stores the clip rectangles in aRects into mClipRects. Returns true

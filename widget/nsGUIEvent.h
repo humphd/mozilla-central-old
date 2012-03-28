@@ -550,7 +550,6 @@ class nsHashKey;
 #define NS_FULLSCREENCHANGE          (NS_FULL_SCREEN_START)
 #define NS_FULLSCREENERROR           (NS_FULL_SCREEN_START + 1)
 
-
 #define NS_TOUCH_EVENT_START         5200
 #define NS_TOUCH_START               (NS_TOUCH_EVENT_START)
 #define NS_TOUCH_MOVE                (NS_TOUCH_EVENT_START+1)

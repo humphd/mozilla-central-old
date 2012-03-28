@@ -188,7 +188,6 @@ public:
                                                            double aDeltaZ,
                                                            PRUint32 aModifierFlags,
                                                            PRUint32 aAdditionalFlags);
-
   NS_IMETHOD              ResetInputState();
   NS_IMETHOD_(void)       SetInputContext(const InputContext& aContext,
                                           const InputContextAction& aAction);
