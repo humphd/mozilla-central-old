@@ -7,7 +7,7 @@
   </script>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
   </script>
-  <script type="application/javascript" src="testPrefs.js"></script>
+  <script type="application/javascript" src="pointerlock_utils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
 <body onload="start();">
@@ -27,14 +27,12 @@
 
       document.addEventListener("mozpointerlockerror", function (e) {
         ok(true, "pointerlockerror event should fire.");
-        testPrefs.restore();
         SimpleTest.finish();
       }, false);
 
       function start() {
         SimpleTest.waitForFocus(function() {
           // element not in the DOM, not fullscreen, should fail to lock
-          testPrefs.init();
           div = document.createElement("div");
           div.mozRequestPointerLock();
         });
