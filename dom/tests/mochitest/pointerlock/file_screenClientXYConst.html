@@ -96,10 +96,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }, false);
 
       function start() {
-        SimpleTest.waitForFocus(function() {
-          div = document.getElementById("div");
-          div.mozRequestFullScreen();
-        });
+        div = document.getElementById("div");
+        div.mozRequestFullScreen();
       }
   </script>
 </body>

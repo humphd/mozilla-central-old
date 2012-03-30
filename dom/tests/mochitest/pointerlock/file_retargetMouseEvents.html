@@ -146,17 +146,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       document.addEventListener("mozfullscreenchange", function (e)  {
         if (document.mozFullScreenElement === parent) {
           parent.mozRequestPointerLock();
-        }
-        else {
+        } else {
           runTests();
           SimpleTest.finish();
         }
       }, false);
 
       function start() {
-        SimpleTest.waitForFocus(function() {
-          parent.mozRequestFullScreen();
-        });
+        parent.mozRequestFullScreen();
       }
     </script>
   </pre>

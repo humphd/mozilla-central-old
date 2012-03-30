@@ -152,11 +152,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
       }, false);
 
       function start() {
-        SimpleTest.waitForFocus(function() {
-          parent = document.getElementById("parent");
-          child = document.getElementById("child");
-          parent.mozRequestFullScreen();
-        });
+        parent = document.getElementById("parent");
+        child = document.getElementById("child");
+        parent.mozRequestFullScreen();
       }
   </script>
 </body>

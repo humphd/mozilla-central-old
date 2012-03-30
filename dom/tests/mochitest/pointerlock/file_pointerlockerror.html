@@ -31,11 +31,9 @@
       }, false);
 
       function start() {
-        SimpleTest.waitForFocus(function() {
-          // element not in the DOM, not fullscreen, should fail to lock
-          div = document.createElement("div");
-          div.mozRequestPointerLock();
-        });
+        // element not in the DOM, not fullscreen, should fail to lock
+        div = document.createElement("div");
+        div.mozRequestPointerLock();
       }
     </script>
   </pre>

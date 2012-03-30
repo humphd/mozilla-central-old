@@ -55,17 +55,14 @@
         document.addEventListener("mozfullscreenchange", function() {
           if (document.mozFullScreenElement === div) {
             input.focus();
-          }
-          else {
+          } else {
             runTests();
             SimpleTest.finish();
           }
         }, false);
 
         function start() {
-          SimpleTest.waitForFocus(function() {
-            div.mozRequestFullScreen();
-          });
+          div.mozRequestFullScreen();
         }
       </script>
     </pre>

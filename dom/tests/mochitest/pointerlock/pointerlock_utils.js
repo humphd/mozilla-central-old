@@ -1,5 +1,6 @@
 // Get test filename for page being run in popup so errors are more useful
 var testName = location.pathname.split('/').pop();
+dump("[POINTERLOCK] Starting " + testName+ "\n");
 
 // Wrap test functions and pass to parent window
 function ok(a, msg) {
@@ -28,7 +29,6 @@ function todo_isnot(a, b, msg) {
 
 // Override SimpleTest so test files work stand-alone
 SimpleTest.finish = function () {
+  dump("[POINTERLOCK] Finishing " + testName+ "\n");
   opener.nextTest();
 };
-
-SimpleTest.waitForExplicitFinish = function() {};
