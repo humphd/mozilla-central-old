@@ -66,6 +66,11 @@ class nsHTMLImageMapAccessible;
 class nsHTMLLIAccessible;
 struct nsRoleMapEntry;
 class Relation;
+namespace mozilla {
+namespace a11y {
+class TableAccessible;
+}
+}
 class nsTextAccessible;
 
 struct nsRect;
@@ -471,6 +476,8 @@ public:
   inline bool IsRoot() const { return mFlags & eRootAccessible; }
   nsRootAccessible* AsRoot();
 
+  virtual mozilla::a11y::TableAccessible* AsTable() { return nsnull; }
+
   inline bool IsTextLeaf() const { return mFlags & eTextLeafAccessible; }
   nsTextAccessible* AsTextLeaf();
 
@@ -636,6 +643,11 @@ public:
    */
   static void TranslateString(const nsAString& aKey, nsAString& aStringOut);
 
+  /**
+   * Return true if the accessible is defunct.
+   */
+  bool IsDefunct() const { return mFlags & eIsDefunct; }
+
 protected:
 
   //////////////////////////////////////////////////////////////////////////////
@@ -680,25 +692,33 @@ protected:
     { mFlags = (mFlags & ~kChildrenFlagsMask) | aFlag; }
 
   /**
-   * Flags describing the accessible itself.
+   * Flags used to describe the state of this accessible.
    * @note keep these flags in sync with ChildrenFlags
    */
+  enum StateFlags {
+    eIsDefunct = 1 << 2 // accessible is defunct
+  };
+
+  /**
+   * Flags describing the type of this accessible.
+   * @note keep these flags in sync with ChildrenFlags and StateFlags
+   */
   enum AccessibleTypes {
-    eApplicationAccessible = 1 << 2,
-    eAutoCompleteAccessible = 1 << 3,
-    eAutoCompletePopupAccessible = 1 << 4,
-    eComboboxAccessible = 1 << 5,
-    eDocAccessible = 1 << 6,
-    eHyperTextAccessible = 1 << 7,
-    eHTMLFileInputAccessible = 1 << 8,
-    eHTMLListItemAccessible = 1 << 9,
-    eImageAccessible = 1 << 10,
-    eImageMapAccessible = 1 << 11,
-    eListControlAccessible = 1 << 12,
-    eMenuButtonAccessible = 1 << 13,
-    eMenuPopupAccessible = 1 << 14,
-    eRootAccessible = 1 << 15,
-    eTextLeafAccessible = 1 << 16
+    eApplicationAccessible = 1 << 3,
+    eAutoCompleteAccessible = 1 << 4,
+    eAutoCompletePopupAccessible = 1 << 5,
+    eComboboxAccessible = 1 << 6,
+    eDocAccessible = 1 << 7,
+    eHyperTextAccessible = 1 << 8,
+    eHTMLFileInputAccessible = 1 << 9,
+    eHTMLListItemAccessible = 1 << 10,
+    eImageAccessible = 1 << 11,
+    eImageMapAccessible = 1 << 12,
+    eListControlAccessible = 1 << 13,
+    eMenuButtonAccessible = 1 << 14,
+    eMenuPopupAccessible = 1 << 15,
+    eRootAccessible = 1 << 16,
+    eTextLeafAccessible = 1 << 17
   };
 
   //////////////////////////////////////////////////////////////////////////////

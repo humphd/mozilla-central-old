@@ -347,6 +347,9 @@ void XPCJSRuntime::TraceBlackJS(JSTracer* trc, void* data)
         for (e = self->mObjectHolderRoots; e; e = e->GetNextRoot())
             static_cast<XPCJSObjectHolder*>(e)->TraceJS(trc);
     }
+
+    dom::TraceBlackJS(trc);
+
 }
 
 // static
@@ -446,9 +449,15 @@ CheckParticipatesInCycleCollection(PRUint32 aLangID, void *aThing,
 {
     Closure *closure = static_cast<Closure*>(aClosure);
 
-    closure->cycleCollectionEnabled =
-        aLangID == nsIProgrammingLanguage::JAVASCRIPT &&
-        AddToCCKind(js_GetGCThingTraceKind(aThing));
+    if (closure->cycleCollectionEnabled)
+        return;
+
+    if (aLangID == nsIProgrammingLanguage::JAVASCRIPT &&
+        AddToCCKind(js_GetGCThingTraceKind(aThing)) &&
+        xpc_IsGrayGCThing(aThing))
+    {
+        closure->cycleCollectionEnabled = true;
+    }
 }
 
 static JSDHashOperator
@@ -458,6 +467,7 @@ NoteJSHolder(JSDHashTable *table, JSDHashEntryHdr *hdr, uint32_t number,
     ObjectHolder* entry = reinterpret_cast<ObjectHolder*>(hdr);
     Closure *closure = static_cast<Closure*>(arg);
 
+    closure->cycleCollectionEnabled = false;
     entry->tracer->Trace(entry->holder, CheckParticipatesInCycleCollection,
                          closure);
     if (!closure->cycleCollectionEnabled)

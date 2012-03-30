@@ -8348,13 +8348,6 @@ nsDocShell::InternalLoad(nsIURI * aURI,
            sameExceptHashes && !newHash.IsEmpty());
 
         if (doShortCircuitedLoad) {
-            // If our load group contains a LOAD_DOCUMENT_URI request with a
-            // channel which doesn't match our document's channel, cancel it.
-            //
-            // That is, a short-circuited load will cancel a non-short-circuited
-            // load of a different document.
-            StopOutstandingOtherDocumentLoad();
-
             // Save the current URI; we need it if we fire a hashchange later.
             nsCOMPtr<nsIURI> oldURI = mCurrentURI;
 
@@ -8652,47 +8645,6 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     }
 
     return rv;
-}
-
-// If our load group contains a LOAD_DOCUMENT_URI channel that's not our
-// document's channel, cancel it.
-void
-nsDocShell::StopOutstandingOtherDocumentLoad()
-{
-    nsCOMPtr<nsIChannel> docChannel = GetCurrentDocChannel();
-    if (!docChannel || !mLoadGroup) {
-        return;
-    }
-
-    nsCOMPtr<nsISimpleEnumerator> requests;
-    mLoadGroup->GetRequests(getter_AddRefs(requests));
-    if (!requests) {
-        return;
-    }
-
-    while (true) {
-        bool hasMoreElements = false;
-        requests->HasMoreElements(&hasMoreElements);
-        if (!hasMoreElements) {
-            break;
-        }
-
-        nsCOMPtr<nsISupports> next;
-        requests->GetNext(getter_AddRefs(next));
-
-        nsCOMPtr<nsIChannel> channel = do_QueryInterface(next);
-        if (!channel) {
-            continue;
-        }
-
-        nsLoadFlags flags;
-        channel->GetLoadFlags(&flags);
-
-        // As promised, cancel the channel if it's loading a different document.
-        if ((flags & nsIChannel::LOAD_DOCUMENT_URI) && channel != docChannel) {
-            channel->Cancel(NS_BINDING_ABORTED);
-        }
-    }
 }
 
 nsIPrincipal*
@@ -9311,9 +9263,7 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
     }
 #endif
 
-    bool updateHistory = true;
     bool equalUri = false;
-    bool shAvailable = true;  
 
     // Get the post data from the channel
     nsCOMPtr<nsIInputStream> inputStream;
@@ -9340,6 +9290,15 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
             }
         }
     }
+
+    // Determine if this type of load should update history.
+    bool updateGHistory = !(aLoadType == LOAD_BYPASS_HISTORY ||
+                            aLoadType == LOAD_ERROR_PAGE ||
+                            aLoadType & LOAD_CMD_HISTORY);
+
+    // We don't update session history on reload.
+    bool updateSHistory = updateGHistory && (!(aLoadType & LOAD_CMD_RELOAD));
+
     /* Create SH Entry (mLSHE) only if there is a  SessionHistory object (mSessionHistory) in
      * the current frame or in the root docshell
      */
@@ -9347,26 +9306,26 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
     if (!rootSH) {
         // Get the handle to SH from the root docshell          
         GetRootSessionHistory(getter_AddRefs(rootSH));
-        if (!rootSH)
-            shAvailable = false;
+        if (!rootSH) {
+            updateSHistory = false;
+            updateGHistory = false; // XXX Why global history too?
+        }
     }  // rootSH
-
-
-    // Determine if this type of load should update history.
-    if (aLoadType == LOAD_BYPASS_HISTORY ||
-        aLoadType == LOAD_ERROR_PAGE ||
-        aLoadType & LOAD_CMD_HISTORY ||
-        aLoadType & LOAD_CMD_RELOAD)
-        updateHistory = false;
 
     // Check if the url to be loaded is the same as the one already loaded.
     if (mCurrentURI)
         aURI->Equals(mCurrentURI, &equalUri);
 
 #ifdef DEBUG
+    bool shAvailable = (rootSH != nsnull);
+
+    // XXX This log message is almost useless because |updateSHistory|
+    //     and |updateGHistory| are not correct at this point.
+
     PR_LOG(gDocShellLog, PR_LOG_DEBUG,
-           ("  shAvailable=%i updateHistory=%i equalURI=%i\n",
-            shAvailable, updateHistory, equalUri));
+           ("  shAvailable=%i updateSHistory=%i updateGHistory=%i"
+            " equalURI=%i\n",
+            shAvailable, updateSHistory, updateGHistory, equalUri));
 
     if (shAvailable && mCurrentURI && !mOSHE && aLoadType != LOAD_ERROR_PAGE) {
         NS_ASSERTION(NS_IsAboutBlank(mCurrentURI), "no SHEntry for a non-transient viewer?");
@@ -9414,8 +9373,9 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
         (aLoadType == LOAD_RELOAD_BYPASS_CACHE ||
          aLoadType == LOAD_RELOAD_BYPASS_PROXY ||
          aLoadType == LOAD_RELOAD_BYPASS_PROXY_AND_CACHE)) {
-        NS_ASSERTION(!updateHistory,
-                     "We shouldn't be updating history for forced reloads!");
+        NS_ASSERTION(!updateSHistory,
+                     "We shouldn't be updating session history for forced"
+                     " reloads!");
         
         nsCOMPtr<nsICachingChannel> cacheChannel(do_QueryInterface(aChannel));
         nsCOMPtr<nsISupports>  cacheKey;
@@ -9453,7 +9413,7 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
         ClearFrameHistory(mOSHE);
     }
 
-    if (updateHistory && shAvailable) { 
+    if (updateSHistory) { 
         // Update session history if necessary...
         if (!mLSHE && (mItemType == typeContent) && mURIResultedInDocument) {
             /* This is  a fresh page getting loaded for the first time
@@ -9463,24 +9423,31 @@ nsDocShell::OnNewURI(nsIURI * aURI, nsIChannel * aChannel, nsISupports* aOwner,
             (void) AddToSessionHistory(aURI, aChannel, aOwner, aCloneSHChildren,
                                        getter_AddRefs(mLSHE));
         }
+    }
 
-        if (aAddToGlobalHistory) {
-            // If this is a POST request, we do not want to include this in global
-            // history.
-            if (!ChannelIsPost(aChannel)) {
-                nsCOMPtr<nsIURI> previousURI;
-                PRUint32 previousFlags = 0;
-                ExtractLastVisit(aChannel, getter_AddRefs(previousURI),
-                                 &previousFlags);
+    // If this is a POST request, we do not want to include this in global
+    // history.
+    if (updateGHistory &&
+        aAddToGlobalHistory && 
+        !ChannelIsPost(aChannel)) {
+        nsCOMPtr<nsIURI> previousURI;
+        PRUint32 previousFlags = 0;
 
-                nsCOMPtr<nsIURI> referrer;
-                // Treat referrer as null if there is an error getting it.
-                (void)NS_GetReferrerFromChannel(aChannel,
-                                                getter_AddRefs(referrer));
-
-                AddURIVisit(aURI, referrer, previousURI, previousFlags);
-            }
+        if (aLoadType & LOAD_CMD_RELOAD) {
+            // On a reload request, we don't set redirecting flags.
+            previousURI = aURI;
+        } else {
+            ExtractLastVisit(aChannel, getter_AddRefs(previousURI),
+                             &previousFlags);
         }
+
+        // Note: We don't use |referrer| when our global history is
+        //       based on IHistory.
+        nsCOMPtr<nsIURI> referrer;
+        // Treat referrer as null if there is an error getting it.
+        (void)NS_GetReferrerFromChannel(aChannel, getter_AddRefs(referrer));
+
+        AddURIVisit(aURI, referrer, previousURI, previousFlags);
     }
 
     // If this was a history load or a refresh,
@@ -11814,6 +11781,42 @@ nsDocShell::GetIsBrowserFrame(bool *aOut)
 NS_IMETHODIMP
 nsDocShell::SetIsBrowserFrame(bool aValue)
 {
+  // Disallow transitions from browser frame to not-browser-frame.  Once a
+  // browser frame, always a browser frame.  (Otherwise, observers of
+  // docshell-marked-as-browser-frame would have to distinguish between
+  // newly-created browser frames and frames which went from true to false back
+  // to true.)
+  NS_ENSURE_STATE(!mIsBrowserFrame);
+
+  bool wasBrowserFrame = mIsBrowserFrame;
   mIsBrowserFrame = aValue;
+  if (aValue && !wasBrowserFrame) {
+    nsCOMPtr<nsIObserverService> os = services::GetObserverService();
+    if (os) {
+      os->NotifyObservers(GetAsSupports(this),
+                          "docshell-marked-as-browser-frame", NULL);
+    }
+  }
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocShell::GetContainedInBrowserFrame(bool *aOut)
+{
+    *aOut = false;
+
+    if (mIsBrowserFrame) {
+        *aOut = true;
+        return NS_OK;
+    }
+
+    nsCOMPtr<nsIDocShellTreeItem> parentAsItem;
+    GetSameTypeParent(getter_AddRefs(parentAsItem));
+
+    nsCOMPtr<nsIDocShell> parent = do_QueryInterface(parentAsItem);
+    if (parent) {
+        return parent->GetContainedInBrowserFrame(aOut);
+    }
+
+    return NS_OK;
 }
