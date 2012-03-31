@@ -2,6 +2,9 @@
 var testName = location.pathname.split('/').pop();
 dump("[POINTERLOCK] Starting " + testName+ "\n");
 
+const isWinXP = opener.isWinXP;
+const isOSXLion = opener.isOSXLion;
+
 // Wrap test functions and pass to parent window
 function ok(a, msg) {
   opener.ok(a, testName + ": " + msg);
