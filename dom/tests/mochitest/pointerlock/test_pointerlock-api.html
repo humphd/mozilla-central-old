@@ -80,7 +80,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
               return;
             }
           }
-          runNextTest();
+          SimpleTest.waitForFocus(function() { runNextTest(); });
         }
 
         function runNextTest() {
@@ -90,12 +90,19 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             // before starting the test, which will get kicked off on "focus".
             // This ensures that we're essentially back on the primary "desktop" on
             // OS X Lion before we run the test.
-            gTestWindow.addEventListener("load", function onload() {
-              gTestWindow.removeEventListener("load", onload, false);
-              SimpleTest.waitForFocus(function() {
-                SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
-              });
-            }, false);
+/*
+            if (isOSXLion) {
+              gTestWindow.addEventListener("load", function onload() {
+                gTestWindow.removeEventListener("load", onload, false);
+                SimpleTest.waitForFocus(function() {
+                  SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
+                });
+              }, false);
+            } else {
+              SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
+            }
+*/
+//            SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
             gTestIndex++;
           } else {
             SpecialPowers.clearUserPref("full-screen-api.enabled");
