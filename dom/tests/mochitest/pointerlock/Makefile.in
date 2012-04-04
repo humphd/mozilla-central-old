@@ -23,8 +23,6 @@ _TEST_FILES	= \
 		file_pointerLockPref.html \
 		file_nestedFullScreen.html \
 		file_doubleLock.html \
-		file_loseFocusWindow.html \
-		file_loseFocusWindow-child.html \
 		file_childIframe.html \
 		file_movementXY.html \
 		file_infiniteMovement.html \
@@ -35,6 +33,11 @@ _TEST_FILES	= \
 		file_locksvgelement.html \
 		iframe_differentDOM.html \
 		$(NULL)
+
+#		file_loseFocusWindow.html \
+
+#		file_loseFocusWindow-child.html \
+
 
 libs:: $(_TEST_FILES)
 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
