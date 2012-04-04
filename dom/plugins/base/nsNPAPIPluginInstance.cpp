@@ -61,6 +61,8 @@
 #include "nsNetCID.h"
 #include "nsIContent.h"
 
+#include "mozilla/Preferences.h"
+
 #ifdef MOZ_WIDGET_ANDROID
 #include "ANPBase.h"
 #include <android/log.h>
@@ -78,7 +80,7 @@ static NS_DEFINE_IID(kIPluginStreamListenerIID, NS_IPLUGINSTREAMLISTENER_IID);
 
 NS_IMPL_THREADSAFE_ISUPPORTS0(nsNPAPIPluginInstance)
 
-nsNPAPIPluginInstance::nsNPAPIPluginInstance(nsNPAPIPlugin* plugin)
+nsNPAPIPluginInstance::nsNPAPIPluginInstance()
   :
     mDrawingModel(kDefaultDrawingModel),
 #ifdef MOZ_WIDGET_ANDROID
@@ -92,7 +94,7 @@ nsNPAPIPluginInstance::nsNPAPIPluginInstance(nsNPAPIPlugin* plugin)
     mCached(false),
     mUsesDOMForCursor(false),
     mInPluginInitCall(false),
-    mPlugin(plugin),
+    mPlugin(nsnull),
     mMIMEType(nsnull),
     mOwner(nsnull),
     mCurrentPluginEvent(nsnull),
@@ -102,20 +104,11 @@ nsNPAPIPluginInstance::nsNPAPIPluginInstance(nsNPAPIPlugin* plugin)
     mUsePluginLayersPref(false)
 #endif
 {
-  NS_ASSERTION(mPlugin != NULL, "Plugin is required when creating an instance.");
-
-  // Initialize the NPP structure.
-
   mNPP.pdata = NULL;
   mNPP.ndata = this;
 
-  nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefs) {
-    bool useLayersPref;
-    nsresult rv = prefs->GetBoolPref("plugins.use_layers", &useLayersPref);
-    if (NS_SUCCEEDED(rv))
-      mUsePluginLayersPref = useLayersPref;
-  }
+  mUsePluginLayersPref =
+    Preferences::GetBool("plugins.use_layers", mUsePluginLayersPref);
 
   PLUGIN_LOG(PLUGIN_LOG_BASIC, ("nsNPAPIPluginInstance ctor: this=%p\n",this));
 }
@@ -143,30 +136,24 @@ nsNPAPIPluginInstance::StopTime()
   return mStopTime;
 }
 
-nsresult nsNPAPIPluginInstance::Initialize(nsIPluginInstanceOwner* aOwner, const char* aMIMEType)
+nsresult nsNPAPIPluginInstance::Initialize(nsNPAPIPlugin *aPlugin, nsIPluginInstanceOwner* aOwner, const char* aMIMEType)
 {
   PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("nsNPAPIPluginInstance::Initialize this=%p\n",this));
 
+  NS_ENSURE_ARG_POINTER(aPlugin);
+  NS_ENSURE_ARG_POINTER(aOwner);
+
+  mPlugin = aPlugin;
   mOwner = aOwner;
 
   if (aMIMEType) {
     mMIMEType = (char*)PR_Malloc(PL_strlen(aMIMEType) + 1);
-
-    if (mMIMEType)
+    if (mMIMEType) {
       PL_strcpy(mMIMEType, aMIMEType);
+    }
   }
 
-  return InitializePlugin();
-}
-
-nsresult nsNPAPIPluginInstance::Start()
-{
-  PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("nsNPAPIPluginInstance::Start this=%p\n",this));
-
-  if (RUNNING == mRunning)
-    return NS_OK;
-
-  return InitializePlugin();
+  return Start();
 }
 
 nsresult nsNPAPIPluginInstance::Stop()
@@ -316,8 +303,12 @@ nsNPAPIPluginInstance::FileCachedStreamListeners()
 }
 
 nsresult
-nsNPAPIPluginInstance::InitializePlugin()
-{ 
+nsNPAPIPluginInstance::Start()
+{
+  if (mRunning == RUNNING) {
+    return NS_OK;
+  }
+
   PluginDestructionGuard guard(this);
 
   PRUint16 count = 0;

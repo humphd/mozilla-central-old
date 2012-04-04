@@ -285,7 +285,7 @@ var shell = {
   let idleHandler = function idleHandler(subject, topic, time) {
     if (topic === "idle") {
       if (power.getWakeLockState("screen") != "locked-foreground") {
-        screen.mozEnabled = false;
+        navigator.mozPower.screenEnabled = false;
       }
     }
   }
@@ -298,18 +298,37 @@ var shell = {
     if (topic == "screen") {
       if (state != "locked-foreground") {
         if (Services.idle.idleTime > idleTimeout*1000) {
-          screen.mozEnabled = false;
+          navigator.mozPower.screenEnabled = false;
         }
       } else {
-        screen.mozEnabled = true;
+        navigator.mozPower.screenEnabled = true;
       }
     }
   }
   let idleTimeout = Services.prefs.getIntPref("power.screen.timeout");
-  if (idleTimeout) {
-    Services.idle.addIdleObserver(idleHandler, idleTimeout);
-    power.addWakeLockListener(wakeLockHandler);
+  let request = navigator.mozSettings.getLock().get("power.screen.timeout");
+  request.onsuccess = function onSuccess() {
+    idleTimeout = request.result["power.screen.timeout"] || idleTimeout;
+    if (idleTimeout) {
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+      power.addWakeLockListener(wakeLockHandler);
+    }
   }
+  request.onerror = function onError() {
+    if (idleTimeout) {
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+      power.addWakeLockListener(wakeLockHandler);
+    }
+  }
+  // XXX We may override other's callback here, but this is the only
+  // user of mozSettings in shell.js at this moment.
+  navigator.mozSettings.onsettingchange = function onSettingChange(e) {
+    if (e.settingName == "power.screen.timeout" && e.settingValue) {
+      Services.idle.removeIdleObserver(idleHandler, idleTimeout);
+      idleTimeout = e.settingValue;
+      Services.idle.addIdleObserver(idleHandler, idleTimeout);
+    }
+  };
 })();
 
 function nsBrowserAccess() {

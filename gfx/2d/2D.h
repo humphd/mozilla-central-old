@@ -485,6 +485,13 @@ public:
    */
   virtual TemporaryRef<Path> GetPathForGlyphs(const GlyphBuffer &aBuffer, const DrawTarget *aTarget) = 0;
 
+  /* This copies the path describing the glyphs into a PathBuilder. We use this
+   * API rather than a generic API to append paths because it allows easier
+   * implementation in some backends, and more efficient implementation in
+   * others.
+   */
+  virtual void CopyGlyphsToBuilder(const GlyphBuffer &aBuffer, PathBuilder *aBuilder) = 0;
+
 protected:
   ScaledFont() {}
 };
@@ -822,6 +829,11 @@ public:
 
 #ifdef WIN32
   static TemporaryRef<DrawTarget> CreateDrawTargetForD3D10Texture(ID3D10Texture2D *aTexture, SurfaceFormat aFormat);
+  static TemporaryRef<DrawTarget>
+    CreateDualDrawTargetForD3D10Textures(ID3D10Texture2D *aTextureA,
+                                         ID3D10Texture2D *aTextureB,
+                                         SurfaceFormat aFormat);
+
   static void SetDirect3D10Device(ID3D10Device1 *aDevice);
   static ID3D10Device1 *GetDirect3D10Device();
 

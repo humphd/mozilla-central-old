@@ -72,6 +72,7 @@ class TableAccessible;
 }
 }
 class nsTextAccessible;
+class nsXULTreeAccessible;
 
 struct nsRect;
 class nsIContent;
@@ -178,9 +179,9 @@ public:
   inline mozilla::a11y::role Role()
   {
     if (!mRoleMapEntry || mRoleMapEntry->roleRule != kUseMapRole)
-      return NativeRole();
+      return ARIATransformRole(NativeRole());
 
-    return ARIARoleInternal();
+    return ARIATransformRole(mRoleMapEntry->role);
   }
 
   /**
@@ -200,7 +201,7 @@ public:
     if (!mRoleMapEntry || mRoleMapEntry->roleRule != kUseMapRole)
       return mozilla::a11y::roles::NOTHING;
 
-    return ARIARoleInternal();
+    return ARIATransformRole(mRoleMapEntry->role);
   }
 
   /**
@@ -467,6 +468,9 @@ public:
   bool IsImageMapAccessible() const { return mFlags & eImageMapAccessible; }
   nsHTMLImageMapAccessible* AsImageMap();
 
+  inline bool IsXULTree() const { return mFlags & eXULTreeAccessible; }
+  nsXULTreeAccessible* AsXULTree();
+
   inline bool IsListControl() const { return mFlags & eListControlAccessible; }
 
   inline bool IsMenuButton() const { return mFlags & eMenuButtonAccessible; }
@@ -718,7 +722,8 @@ protected:
     eMenuButtonAccessible = 1 << 14,
     eMenuPopupAccessible = 1 << 15,
     eRootAccessible = 1 << 16,
-    eTextLeafAccessible = 1 << 17
+    eTextLeafAccessible = 1 << 17,
+    eXULTreeAccessible = 1 << 18
   };
 
   //////////////////////////////////////////////////////////////////////////////
@@ -727,7 +732,7 @@ protected:
   /**
    * Return ARIA role (helper method).
    */
-  mozilla::a11y::role ARIARoleInternal();
+  mozilla::a11y::role ARIATransformRole(mozilla::a11y::role aRole);
 
   virtual nsIFrame* GetBoundsFrame();
   virtual void GetBoundsRect(nsRect& aRect, nsIFrame** aRelativeFrame);

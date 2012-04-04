@@ -79,6 +79,7 @@ FENNEC_JAVA_FILES = \
   FloatUtils.java \
   FormAssistPopup.java \
   GeckoActionBar.java \
+  GeckoApplication.java \
   GeckoApp.java \
   GeckoAppShell.java \
   GeckoAsyncTask.java \
@@ -126,7 +127,6 @@ FENNEC_JAVA_FILES = \
   gfx/FloatSize.java \
   gfx/GeckoLayerClient.java \
   gfx/GLController.java \
-  gfx/GLThread.java \
   gfx/ImmutableViewportMetrics.java \
   gfx/InputConnectionHandler.java \
   gfx/IntSize.java \
@@ -136,7 +136,6 @@ FENNEC_JAVA_FILES = \
   gfx/LayerView.java \
   gfx/NinePatchTileLayer.java \
   gfx/PanningPerfAPI.java \
-  gfx/PlaceholderLayerClient.java \
   gfx/PointUtils.java \
   gfx/RectUtils.java \
   gfx/ScrollbarLayer.java \
@@ -163,6 +162,7 @@ endif
 
 FENNEC_PP_JAVA_FILES = \
   App.java \
+  GeckoActivity.java \
   LauncherShortcuts.java \
   NotificationHandler.java \
   Restarter.java \
