@@ -4,7 +4,7 @@
 https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 -->
 <head>
-  <title>Bug 633602 - file_exitMouseLockOnLoseFocus.html</title>
+  <title>Bug 633602 - file_loseFocusWindow.html</title>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js">
   </script>
   <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js">
@@ -28,7 +28,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
 
       SimpleTest.waitForExplicitFinish();
 
-      var div = document.getElementById("div")
+      var div
         , newWindow = null
         , loseFocusUnlock = false;
 
@@ -40,7 +40,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         if (document.mozPointerLockElement === div) {
           divPointerLocked = true;
           // Open new window to blur current one
-          newWindow = window.open();
+          newWindow = window.open("file_loseFocusWindow-child.html", "", "width=500,height=500");
         } else {
           loseFocusUnlock = true;
         }
@@ -51,18 +51,23 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
         SimpleTest.finish();
       }
 
+      // Will get triggered by newWindow when it's open and focused.
+      function childReady() {
+        newWindow.close();
+        // On OS X Lion, tests cause problems. Timeouts are a bad way to get around
+        // the problem and may lead to future [orange], but they are the only option
+        // at this point.
+        SimpleTest.waitForFocus(function() { setTimeout(finish, 3000); });
+      }
+
       document.addEventListener("mozfullscreenchange", function() {
         if (document.mozFullScreenElement === div) {
           div.mozRequestPointerLock();
-        } else {
-          if (newWindow) {
-            newWindow.close();
-            SimpleTest.waitForFocus(finish);
-          }
         }
       }, false);
 
       function start() {
+        div = document.getElementById("div");
         div.mozRequestFullScreen();
       }
     </script>

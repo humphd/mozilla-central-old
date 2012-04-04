@@ -24,6 +24,7 @@ _TEST_FILES	= \
 		file_nestedFullScreen.html \
 		file_doubleLock.html \
 		file_loseFocusWindow.html \
+		file_loseFocusWindow-child.html \
 		file_childIframe.html \
 		file_movementXY.html \
 		file_infiniteMovement.html \
