@@ -34,10 +34,5 @@ _TEST_FILES	= \
 		iframe_differentDOM.html \
 		$(NULL)
 
-#		file_loseFocusWindow.html \
-
-#		file_loseFocusWindow-child.html \
-
-
 libs:: $(_TEST_FILES)
 	$(INSTALL) $(foreach f,$^,"$f") $(DEPTH)/_tests/testing/mochitest/tests/$(relativesrcdir)
