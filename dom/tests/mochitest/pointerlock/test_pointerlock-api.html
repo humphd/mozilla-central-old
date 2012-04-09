@@ -79,12 +79,22 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
               return;
             }
           }
-          SimpleTest.waitForFocus(function() { runNextTest(); });
+          runNextTest();
         }
 
         function runNextTest() {
           if (gTestIndex < gTestFiles.length) {
             gTestWindow = window.open(gTestFiles[gTestIndex], "", "width=500,height=500");
+            // We'll wait for the window to load, then make sure our window is refocused
+            // before starting the test, which will get kicked off on "focus".
+            // This ensures that we're essentially back on the primary "desktop" on
+            // OS X Lion before we run the test.
+            gTestWindow.addEventListener("load", function onload() {
+              gTestWindow.removeEventListener("load", onload, false);
+              SimpleTest.waitForFocus(function() {
+                SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
+              });
+            }, false);
             gTestIndex++;
           } else {
             SpecialPowers.clearUserPref("full-screen-api.enabled");
