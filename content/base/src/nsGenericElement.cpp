@@ -3612,6 +3612,7 @@ nsGenericElement::GetInlineStyleRule()
 
 NS_IMETHODIMP
 nsGenericElement::SetInlineStyleRule(css::StyleRule* aStyleRule,
+                                     const nsAString* aSerialized,
                                      bool aNotify)
 {
   NS_NOTYETIMPLEMENTED("nsGenericElement::SetInlineStyleRule");

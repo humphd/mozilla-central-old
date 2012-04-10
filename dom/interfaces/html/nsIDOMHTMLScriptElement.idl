@@ -62,4 +62,5 @@ interface nsIDOMHTMLScriptElement : nsIDOMHTMLElement
 
            attribute DOMString        htmlFor;
            attribute DOMString        event;
+           attribute DOMString        crossOrigin;
 };

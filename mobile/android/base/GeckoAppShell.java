@@ -469,16 +469,6 @@ public class GeckoAppShell
         final LayerController layerController = GeckoApp.mAppContext.getLayerController();
         LayerView v = layerController.getView();
         mInputConnection = v.setInputConnectionHandler();
-
-        layerController.setOnTouchListener(new View.OnTouchListener() {
-            public boolean onTouch(View view, MotionEvent event) {
-                if (event == null)
-                    return true;
-                GeckoAppShell.sendEventToGecko(GeckoEvent.createMotionEvent(event));
-                return true;
-            }
-        });
-
         layerController.notifyLayerClientOfGeometryChange();
     }
 
@@ -1211,11 +1201,11 @@ public class GeckoAppShell
         });
     }
 
-    public static void setPreventPanning(final boolean aPreventPanning) {
+    public static void notifyDefaultPrevented(final boolean defaultPrevented) {
         getMainHandler().post(new Runnable() {
             public void run() {
-                LayerController layerController = GeckoApp.mAppContext.getLayerController();
-                layerController.preventPanning(aPreventPanning);
+                LayerView view = GeckoApp.mAppContext.getLayerController().getView();
+                view.getTouchEventHandler().handleEventListenerAction(!defaultPrevented);
             }
         });
     }
@@ -2059,5 +2049,25 @@ public class GeckoAppShell
 
     public static void unlockScreenOrientation() {
         GeckoScreenOrientationListener.getInstance().unlockScreenOrientation();
+    }
+
+    static class AsyncResultHandler extends GeckoApp.FilePickerResultHandler {
+        private long mId;
+        AsyncResultHandler(long id) {
+            mId = id;
+        }
+
+        public void onActivityResult(int resultCode, Intent data) {
+            GeckoAppShell.notifyFilePickerResult(handleActivityResult(resultCode, data), mId);
+        }
+        
+    }
+
+    static native void notifyFilePickerResult(String filePath, long id);
+
+    /* Called by JNI from AndroidBridge */
+    public static void showFilePickerAsync(String aMimeType, long id) {
+        if (!GeckoApp.mAppContext.showFilePicker(aMimeType, new AsyncResultHandler(id)))
+            GeckoAppShell.notifyFilePickerResult("", id);
     }
 }

@@ -328,7 +328,7 @@ class BaseShape : public js::gc::Cell
     PropertyTable       *table_;
 
   public:
-    void finalize(JSContext *cx, bool background);
+    void finalize(FreeOp *fop);
 
     inline BaseShape(Class *clasp, JSObject *parent, uint32_t objectFlags);
     inline BaseShape(Class *clasp, JSObject *parent, uint32_t objectFlags,
@@ -802,7 +802,7 @@ struct Shape : public js::gc::Cell
      * care of making this work, but that suffices only because we require that
      * start points with the same shape have the same successor object in the
      * search path --- a cache hit means the starting shapes were equal, which
-     * means the seach path tail (everything but the first object in the path)
+     * means the search path tail (everything but the first object in the path)
      * was shared, which in turn means the effects of a purge will be seen by
      * all affected starting search points.
      *
@@ -865,7 +865,7 @@ struct Shape : public js::gc::Cell
     void dumpSubtree(JSContext *cx, int level, FILE *fp) const;
 #endif
 
-    void finalize(JSContext *cx, bool background);
+    void finalize(FreeOp *fop);
     void removeChild(js::Shape *child);
 
     static inline void writeBarrierPre(const Shape *shape);

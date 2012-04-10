@@ -45,7 +45,7 @@
 
 #include "jsapi.h"
 
-#include "nsIJSContextStack.h"
+#include "nsIJSRuntimeService.h"
 #include "nsIAppStartup.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsILocalFile.h"
@@ -837,14 +837,15 @@ nsXREDirProvider::DoShutdown()
 
       // Phase 2c: Now that things are torn down, force JS GC so that things which depend on
       // resources which are about to go away in "profile-before-change" are destroyed first.
-      nsCOMPtr<nsIThreadJSContextStack> stack
-        (do_GetService("@mozilla.org/js/xpc/ContextStack;1"));
-      if (stack)
+
+      nsCOMPtr<nsIJSRuntimeService> rtsvc
+        (do_GetService("@mozilla.org/js/xpc/RuntimeService;1"));
+      if (rtsvc)
       {
-        JSContext *cx = nsnull;
-        stack->GetSafeJSContext(&cx);
-        if (cx)
-          ::JS_GC(cx);
+        JSRuntime *rt = nsnull;
+        rtsvc->GetRuntime(&rt);
+        if (rt)
+          ::JS_GC(rt);
       }
 
       // Phase 3: Notify observers of a profile change
@@ -1103,7 +1104,7 @@ nsXREDirProvider::GetUserDataDirectoryHome(nsILocalFile** aFile, bool aLocal)
     rv = NS_NewNativeLocalFile(nsDependentCString(appDir), true, getter_AddRefs(localDir));
   }
 #elif defined(MOZ_WIDGET_GONK)
-  rv = NS_NewNativeLocalFile(NS_LITERAL_CSTRING("/data/b2g"), PR_TRUE,
+  rv = NS_NewNativeLocalFile(NS_LITERAL_CSTRING("/data/b2g"), true,
                              getter_AddRefs(localDir));
 #elif defined(XP_UNIX)
   const char* homeDir = getenv("HOME");

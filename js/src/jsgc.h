@@ -84,7 +84,6 @@ enum State {
     NO_INCREMENTAL,
     MARK_ROOTS,
     MARK,
-    SWEEP,
     INVALID
 };
 
@@ -592,7 +591,7 @@ struct Arena {
     }
 
     template <typename T>
-    bool finalize(JSContext *cx, AllocKind thingKind, size_t thingSize, bool background);
+    bool finalize(FreeOp *fop, AllocKind thingKind, size_t thingSize);
 };
 
 /* The chunk header (located at the end of the chunk to preserve arena alignment). */
@@ -1251,18 +1250,18 @@ struct ArenaLists {
         JS_ASSERT(freeLists[kind].isEmpty());
     }
 
-    void finalizeObjects(JSContext *cx);
-    void finalizeStrings(JSContext *cx);
-    void finalizeShapes(JSContext *cx);
-    void finalizeScripts(JSContext *cx);
+    void finalizeObjects(FreeOp *fop);
+    void finalizeStrings(FreeOp *fop);
+    void finalizeShapes(FreeOp *fop);
+    void finalizeScripts(FreeOp *fop);
 
 #ifdef JS_THREADSAFE
-    static void backgroundFinalize(JSContext *cx, ArenaHeader *listHead);
+    static void backgroundFinalize(FreeOp *fop, ArenaHeader *listHead);
 #endif
 
   private:
-    inline void finalizeNow(JSContext *cx, AllocKind thingKind);
-    inline void finalizeLater(JSContext *cx, AllocKind thingKind);
+    inline void finalizeNow(FreeOp *fop, AllocKind thingKind);
+    inline void finalizeLater(FreeOp *fop, AllocKind thingKind);
 
     inline void *allocateFromArena(JSCompartment *comp, AllocKind thingKind);
 };
@@ -1384,7 +1383,7 @@ extern void
 ShrinkGCBuffers(JSRuntime *rt);
 
 extern void
-PrepareCompartmentForGC(JSCompartment *comp);
+PrepareForFullGC(JSRuntime *rt);
 
 /*
  * Kinds of js_GC invocation.
@@ -1397,15 +1396,17 @@ typedef enum JSGCInvocationKind {
     GC_SHRINK             = 1
 } JSGCInvocationKind;
 
-/* Pass NULL for |comp| to get a full GC. */
 extern void
-GC(JSContext *cx, bool full, JSGCInvocationKind gckind, js::gcreason::Reason reason);
+GC(JSRuntime *rt, JSGCInvocationKind gckind, js::gcreason::Reason reason);
 
 extern void
-GCSlice(JSContext *cx, bool full, JSGCInvocationKind gckind, js::gcreason::Reason reason);
+GCSlice(JSRuntime *rt, JSGCInvocationKind gckind, js::gcreason::Reason reason);
 
 extern void
-GCDebugSlice(JSContext *cx, int64_t objCount);
+GCDebugSlice(JSRuntime *rt, bool limit, int64_t objCount);
+
+extern void
+PrepareForDebugGC(JSRuntime *rt);
 
 } /* namespace js */
 
@@ -1444,7 +1445,7 @@ class GCHelperThread {
     PRCondVar         *done;
     volatile State    state;
 
-    JSContext         *finalizationContext;
+    bool              sweepFlag;
     bool              shrinkFlag;
 
     Vector<void **, 16, js::SystemAllocPolicy> freeVector;
@@ -1480,7 +1481,7 @@ class GCHelperThread {
         wakeup(NULL),
         done(NULL),
         state(IDLE),
-        finalizationContext(NULL),
+        sweepFlag(false),
         shrinkFlag(false),
         freeCursor(NULL),
         freeCursorEnd(NULL),
@@ -1491,7 +1492,7 @@ class GCHelperThread {
     void finish();
 
     /* Must be called with the GC lock taken. */
-    void startBackgroundSweep(JSContext *cx, bool shouldShrink);
+    void startBackgroundSweep(bool shouldShrink);
 
     /* Must be called with the GC lock taken. */
     void startBackgroundShrink();
@@ -1729,14 +1730,14 @@ struct SliceBudget {
         counter = INTPTR_MAX;
     }
 
-    void step() {
-        counter--;
+    void step(intptr_t amt = 1) {
+        counter -= amt;
     }
 
     bool checkOverBudget();
 
     bool isOverBudget() {
-        if (counter > 0)
+        if (counter >= 0)
             return false;
         return checkOverBudget();
     }
@@ -1992,7 +1993,7 @@ const int ZealFrameVerifierValue = 5;
 
 /* Check that write barriers have been used correctly. See jsgc.cpp. */
 void
-VerifyBarriers(JSContext *cx);
+VerifyBarriers(JSRuntime *rt);
 
 void
 MaybeVerifyBarriers(JSContext *cx, bool always = false);
@@ -2000,7 +2001,7 @@ MaybeVerifyBarriers(JSContext *cx, bool always = false);
 #else
 
 static inline void
-VerifyBarriers(JSContext *cx)
+VerifyBarriers(JSRuntime *rt)
 {
 }
 
