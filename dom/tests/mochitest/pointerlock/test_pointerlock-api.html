@@ -69,32 +69,20 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=633602
             SimpleTest.finish();
             return;
           }
+          if (isOSXLion) {
+            todo(false, "Can't reliably run full-screen tests on Lion XXX -- need bug #");
+            SimpleTest.finish();
+            return;
+          }
           if (gTestWindow) {
             gTestWindow.close();
-            if (isOSXLion) {
-              // On OS X Lion, tests cause problems. Timeouts are a bad way to get around
-              // the problem and may lead to future [orange], but they are the only option
-              // at this point.
-              SimpleTest.waitForFocus(function() { setTimeout(runNextTest, 3000); });
-              return;
-            }
           }
-          runNextTest();
+          SimpleTest.waitForFocus(runNextTest);
         }
 
         function runNextTest() {
           if (gTestIndex < gTestFiles.length) {
             gTestWindow = window.open(gTestFiles[gTestIndex], "", "width=500,height=500");
-            // We'll wait for the window to load, then make sure our window is refocused
-            // before starting the test, which will get kicked off on "focus".
-            // This ensures that we're essentially back on the primary "desktop" on
-            // OS X Lion before we run the test.
-            gTestWindow.addEventListener("load", function onload() {
-              gTestWindow.removeEventListener("load", onload, false);
-              SimpleTest.waitForFocus(function() {
-                SimpleTest.waitForFocus(gTestWindow.start, gTestWindow);
-              });
-            }, false);
             gTestIndex++;
           } else {
             SpecialPowers.clearUserPref("full-screen-api.enabled");

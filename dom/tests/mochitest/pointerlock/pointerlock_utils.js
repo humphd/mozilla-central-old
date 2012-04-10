@@ -52,8 +52,8 @@ if (window.opener) {
 
   // Disable the requirement for trusted contexts only, so the tests are easier to write.
   SpecialPowers.setBoolPref("full-screen-api.allow-trusted-requests-only", false);
-
-  addLoadEvent(function() {
-    SimpleTest.waitForFocus(start);
-  });
 }
+
+addLoadEvent(function() {
+  SimpleTest.waitForFocus(start);
+});
